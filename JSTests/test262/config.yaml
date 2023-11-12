@@ -3,20 +3,22 @@
 flags:
   SharedArrayBuffer: useSharedArrayBuffer
   Atomics: useSharedArrayBuffer
+  Intl.DurationFormat: useIntlDurationFormat
   Temporal: useTemporal
   array-grouping: useArrayGroupMethod
   ShadowRealm: useShadowRealm
-  import-assertions: useImportAssertion
-  json-modules: useImportAssertion
-  resizable-arraybuffer: useArrayBufferTransfer
+  resizable-arraybuffer: useResizableArrayBuffer
+  arraybuffer-transfer: useArrayBufferTransfer
+  import-assertions: useImportAttributes
+  json-modules: useImportAttributes
+  promise-with-resolvers: usePromiseWithResolversMethod
 skip:
   features:
-    - regexp-v-flag
     - callable-boundary-realms
     - FinalizationRegistry.prototype.cleanupSome
     - decorators
-    - Intl.DurationFormat
-    - regexp-duplicate-named-groups
+    - iterator-helpers
+    - Intl.Locale-info # Getters are replaced with methods.
   paths:
     - test/built-ins/Temporal/Calendar
     - test/built-ins/Temporal/Instant/prototype/toZonedDateTime
@@ -54,7 +56,9 @@ skip:
     - test/intl402/Temporal/PlainYearMonth
     - test/intl402/Temporal/TimeZone
     - test/intl402/Temporal/ZonedDateTime
-    - test/staging
+    - test/staging/Intl402
+    - test/staging/JSON
+    - test/staging/Temporal
   files:
     # https://github.com/claudepache/es-legacy-function-reflection
     - test/built-ins/ThrowTypeError/unique-per-realm-function-proto.js
@@ -68,114 +72,39 @@ skip:
     - test/intl402/NumberFormat/prototype/format/unit-zh-TW.js
     - test/intl402/NumberFormat/prototype/formatToParts/unit-ja-JP.js
     - test/intl402/NumberFormat/prototype/formatToParts/unit-zh-TW.js
+    - test/intl402/DurationFormat/prototype/format/style-narrow-en.js
 
     # New ICU (66~) raises a different failure
     - test/intl402/Locale/constructor-apply-options-canonicalizes-twice.js
     - test/intl402/Locale/constructor-non-iana-canon.js
     - test/intl402/Locale/likely-subtags.js
+    - test/intl402/Locale/getters-grandfathered.js
+    - test/intl402/Locale/likely-subtags-grandfathered.js
 
-    # Pass only in ICU 68~
-    - test/intl402/Locale/constructor-options-region-valid.js
-    - test/intl402/Locale/constructor-tag.js
-    - test/intl402/Intl/getCanonicalLocales/complex-language-subtag-replacement.js
-    - test/intl402/Intl/getCanonicalLocales/complex-region-subtag-replacement.js
-    - test/intl402/Intl/getCanonicalLocales/grandfathered.js
-    - test/intl402/Intl/getCanonicalLocales/canonicalized-tags.js
-    - test/intl402/Intl/getCanonicalLocales/unicode-ext-key-with-digit.js
-    - test/intl402/supportedLocalesOf-unicode-extensions-ignored.js
+    # ICU 72~ is required
+    - test/intl402/NumberFormat/prototype/format/format-rounding-priority-less-precision.js
+    - test/intl402/NumberFormat/prototype/format/format-rounding-priority-more-precision.js
+    - test/intl402/NumberFormat/test-option-roundingPriority-mixed-options.js
 
     # ICU canonicalization bug
     # https://unicode-org.atlassian.net/browse/ICU-21367
     - test/intl402/Intl/getCanonicalLocales/unicode-ext-canonicalize-yes-to-true.js
-
-    # Failing because we are building WebKit with very old ICU headers
-    - test/intl402/ListFormat/constructor/constructor/locales-invalid.js
-    - test/intl402/ListFormat/constructor/constructor/locales-valid.js
-    - test/intl402/ListFormat/constructor/constructor/newtarget-undefined.js
-    - test/intl402/ListFormat/constructor/constructor/options-invalid.js
-    - test/intl402/ListFormat/constructor/constructor/options-localeMatcher-invalid.js
-    - test/intl402/ListFormat/constructor/constructor/options-order.js
-    - test/intl402/ListFormat/constructor/constructor/options-style-invalid.js
-    - test/intl402/ListFormat/constructor/constructor/options-style-valid.js
-    - test/intl402/ListFormat/constructor/constructor/options-throwing-getters.js
-    - test/intl402/ListFormat/constructor/constructor/options-toobject-prototype.js
-    - test/intl402/ListFormat/constructor/constructor/options-toobject.js
-    - test/intl402/ListFormat/constructor/constructor/options-type-invalid.js
-    - test/intl402/ListFormat/constructor/constructor/options-type-valid.js
-    - test/intl402/ListFormat/constructor/constructor/options-undefined.js
-    - test/intl402/ListFormat/constructor/constructor/proto-from-ctor-realm.js
-    - test/intl402/ListFormat/constructor/constructor/subclassing.js
-    - test/intl402/ListFormat/constructor/length.js
-    - test/intl402/ListFormat/constructor/name.js
-    - test/intl402/ListFormat/constructor/prop-desc.js
-    - test/intl402/ListFormat/constructor/prototype.js
-    - test/intl402/ListFormat/constructor/supportedLocalesOf/basic.js
-    - test/intl402/ListFormat/constructor/supportedLocalesOf/branding.js
-    - test/intl402/ListFormat/constructor/supportedLocalesOf/length.js
-    - test/intl402/ListFormat/constructor/supportedLocalesOf/locales-invalid.js
-    - test/intl402/ListFormat/constructor/supportedLocalesOf/name.js
-    - test/intl402/ListFormat/constructor/supportedLocalesOf/options-localeMatcher-invalid.js
-    - test/intl402/ListFormat/constructor/supportedLocalesOf/options-null.js
-    - test/intl402/ListFormat/constructor/supportedLocalesOf/options-toobject.js
-    - test/intl402/ListFormat/constructor/supportedLocalesOf/options-undefined.js
-    - test/intl402/ListFormat/constructor/supportedLocalesOf/prop-desc.js
-    - test/intl402/ListFormat/constructor/supportedLocalesOf/result-type.js
-    - test/intl402/ListFormat/instance/extensibility.js
-    - test/intl402/ListFormat/instance/prototype.js
-    - test/intl402/ListFormat/prototype/constructor/prop-desc.js
-    - test/intl402/ListFormat/prototype/format/branding.js
-    - test/intl402/ListFormat/prototype/format/en-us-default.js
-    - test/intl402/ListFormat/prototype/format/en-us-disjunction.js
-    - test/intl402/ListFormat/prototype/format/en-us-narrow.js
-    - test/intl402/ListFormat/prototype/format/en-us-short.js
-    - test/intl402/ListFormat/prototype/format/en-us-unit.js
-    - test/intl402/ListFormat/prototype/format/es-es-long.js
-    - test/intl402/ListFormat/prototype/format/es-es-narrow.js
-    - test/intl402/ListFormat/prototype/format/es-es-short.js
-    - test/intl402/ListFormat/prototype/format/iterable-getiterator-throw.js
-    - test/intl402/ListFormat/prototype/format/iterable-invalid.js
-    - test/intl402/ListFormat/prototype/format/iterable-iteratorclose.js
-    - test/intl402/ListFormat/prototype/format/iterable-iteratorstep-throw.js
-    - test/intl402/ListFormat/prototype/format/iterable-iteratorvalue-throw.js
-    - test/intl402/ListFormat/prototype/format/iterable-undefined.js
-    - test/intl402/ListFormat/prototype/format/iterable.js
-    - test/intl402/ListFormat/prototype/format/length.js
-    - test/intl402/ListFormat/prototype/format/name.js
-    - test/intl402/ListFormat/prototype/format/prop-desc.js
-    - test/intl402/ListFormat/prototype/formatToParts/branding.js
-    - test/intl402/ListFormat/prototype/formatToParts/en-us-default.js
-    - test/intl402/ListFormat/prototype/formatToParts/en-us-disjunction.js
-    - test/intl402/ListFormat/prototype/formatToParts/en-us-narrow.js
-    - test/intl402/ListFormat/prototype/formatToParts/en-us-short.js
-    - test/intl402/ListFormat/prototype/formatToParts/en-us-unit.js
-    - test/intl402/ListFormat/prototype/formatToParts/es-es-long.js
-    - test/intl402/ListFormat/prototype/formatToParts/es-es-narrow.js
-    - test/intl402/ListFormat/prototype/formatToParts/es-es-short.js
-    - test/intl402/ListFormat/prototype/formatToParts/iterable-getiterator-throw.js
-    - test/intl402/ListFormat/prototype/formatToParts/iterable-invalid.js
-    - test/intl402/ListFormat/prototype/formatToParts/iterable-iteratorclose.js
-    - test/intl402/ListFormat/prototype/formatToParts/iterable-iteratorstep-throw.js
-    - test/intl402/ListFormat/prototype/formatToParts/iterable-iteratorvalue-throw.js
-    - test/intl402/ListFormat/prototype/formatToParts/iterable-undefined.js
-    - test/intl402/ListFormat/prototype/formatToParts/iterable.js
-    - test/intl402/ListFormat/prototype/formatToParts/length.js
-    - test/intl402/ListFormat/prototype/formatToParts/name.js
-    - test/intl402/ListFormat/prototype/formatToParts/prop-desc.js
-    - test/intl402/ListFormat/prototype/prop-desc.js
-    - test/intl402/ListFormat/prototype/resolvedOptions/branding.js
-    - test/intl402/ListFormat/prototype/resolvedOptions/caching.js
-    - test/intl402/ListFormat/prototype/resolvedOptions/length.js
-    - test/intl402/ListFormat/prototype/resolvedOptions/name.js
-    - test/intl402/ListFormat/prototype/resolvedOptions/order.js
-    - test/intl402/ListFormat/prototype/resolvedOptions/prop-desc.js
-    - test/intl402/ListFormat/prototype/resolvedOptions/type.js
-    - test/intl402/ListFormat/prototype/toStringTag/toString.js
-    - test/intl402/ListFormat/prototype/toStringTag/toStringTag.js
-
+    - test/intl402/Locale/constructor-options-region-valid.js
+    - test/intl402/Intl/getCanonicalLocales/complex-language-subtag-replacement.js
+    - test/intl402/Intl/getCanonicalLocales/complex-region-subtag-replacement.js
+    - test/intl402/Intl/getCanonicalLocales/grandfathered.js
+    - test/intl402/Intl/getCanonicalLocales/canonicalized-tags.js
+    - test/intl402/Intl/getCanonicalLocales/preferred-grandfathered.js
+    - test/intl402/Intl/getCanonicalLocales/transformed-ext-canonical.js
+    - test/intl402/Intl/getCanonicalLocales/unicode-ext-canonicalize-region.js
+    - test/intl402/Intl/getCanonicalLocales/unicode-ext-canonicalize-subdivision.js
 
     # Test is obsolete. microseconds and nanoseconds are added in the spec.
     - test/intl402/Intl/supportedValuesOf/units.js
     - test/intl402/NumberFormat/prototype/format/units-invalid.js
+
+    # Approximately sign is only supported after ICU 71.
+    - test/intl402/NumberFormat/prototype/formatRangeToParts/en-US.js
 
     # Depends on Temporal.Duration relativeTo option
     - test/built-ins/Temporal/Duration/compare/basic.js
@@ -223,6 +152,8 @@ skip:
     - test/built-ins/Temporal/Duration/prototype/add/nanoseconds-is-number-max-safe-integer.js
     - test/built-ins/Temporal/Duration/prototype/add/nanoseconds-is-number-max-value-1.js
     - test/built-ins/Temporal/Duration/prototype/add/nanoseconds-is-number-max-value-2.js
+    - test/built-ins/Temporal/Duration/prototype/add/nanoseconds-to-days-loop-indefinitely-1.js
+    - test/built-ins/Temporal/Duration/prototype/add/nanoseconds-to-days-loop-indefinitely-2.js
     - test/built-ins/Temporal/Duration/prototype/add/negative-infinity-throws-rangeerror.js
     - test/built-ins/Temporal/Duration/prototype/add/options-wrong-type.js
     - test/built-ins/Temporal/Duration/prototype/add/order-of-operations.js
@@ -263,6 +194,7 @@ skip:
     - test/built-ins/Temporal/Duration/prototype/round/calendar-possibly-required.js
     - test/built-ins/Temporal/Duration/prototype/round/calendar-temporal-object.js
     - test/built-ins/Temporal/Duration/prototype/round/dateuntil-field.js
+    - test/built-ins/Temporal/Duration/prototype/round/duration-out-of-range-added-to-relativeto.js
     - test/built-ins/Temporal/Duration/prototype/round/february-leap-year.js
     - test/built-ins/Temporal/Duration/prototype/round/largestunit-smallestunit-default.js
     - test/built-ins/Temporal/Duration/prototype/round/nanoseconds-to-days-loop-indefinitely-1.js
@@ -331,6 +263,8 @@ skip:
     - test/built-ins/Temporal/Duration/prototype/subtract/nanoseconds-is-number-max-safe-integer.js
     - test/built-ins/Temporal/Duration/prototype/subtract/nanoseconds-is-number-max-value-1.js
     - test/built-ins/Temporal/Duration/prototype/subtract/nanoseconds-is-number-max-value-2.js
+    - test/built-ins/Temporal/Duration/prototype/subtract/nanoseconds-to-days-loop-indefinitely-1.js
+    - test/built-ins/Temporal/Duration/prototype/subtract/nanoseconds-to-days-loop-indefinitely-2.js
     - test/built-ins/Temporal/Duration/prototype/subtract/negative-infinity-throws-rangeerror.js
     - test/built-ins/Temporal/Duration/prototype/subtract/options-wrong-type.js
     - test/built-ins/Temporal/Duration/prototype/subtract/order-of-operations.js
@@ -371,6 +305,9 @@ skip:
     - test/built-ins/Temporal/Duration/prototype/total/calendar-possibly-required.js
     - test/built-ins/Temporal/Duration/prototype/total/calendar-temporal-object.js
     - test/built-ins/Temporal/Duration/prototype/total/dateuntil-field.js
+    - test/built-ins/Temporal/Duration/prototype/total/duration-out-of-range-added-to-relativeto.js
+    - test/built-ins/Temporal/Duration/prototype/total/nanoseconds-to-days-loop-indefinitely-1.js
+    - test/built-ins/Temporal/Duration/prototype/total/nanoseconds-to-days-loop-indefinitely-2.js
     - test/built-ins/Temporal/Duration/prototype/total/order-of-operations.js
     - test/built-ins/Temporal/Duration/prototype/total/read-time-fields-before-datefromfields.js
     - test/built-ins/Temporal/Duration/prototype/total/relativeto-infinity-throws-rangeerror.js
@@ -805,23 +742,27 @@ skip:
     - test/built-ins/Temporal/Duration/compare/relativeto-zoneddatetime-timezone-getoffsetnanosecondsfor-not-callable.js
     - test/built-ins/Temporal/Duration/compare/relativeto-zoneddatetime-timezone-getoffsetnanosecondsfor-out-of-range.js
     - test/built-ins/Temporal/Duration/compare/relativeto-zoneddatetime-timezone-getoffsetnanosecondsfor-wrong-type.js
+    - test/built-ins/Temporal/Duration/prototype/add/relativeto-zoneddatetime-nanoseconds-to-days-range-errors.js
     - test/built-ins/Temporal/Duration/prototype/add/relativeto-zoneddatetime-negative-epochnanoseconds.js
     - test/built-ins/Temporal/Duration/prototype/add/relativeto-zoneddatetime-timezone-getoffsetnanosecondsfor-non-integer.js
     - test/built-ins/Temporal/Duration/prototype/add/relativeto-zoneddatetime-timezone-getoffsetnanosecondsfor-not-callable.js
     - test/built-ins/Temporal/Duration/prototype/add/relativeto-zoneddatetime-timezone-getoffsetnanosecondsfor-out-of-range.js
     - test/built-ins/Temporal/Duration/prototype/add/relativeto-zoneddatetime-timezone-getoffsetnanosecondsfor-wrong-type.js
     - test/built-ins/Temporal/Duration/prototype/round/relativeto-zoneddatetime-convert.js
+    - test/built-ins/Temporal/Duration/prototype/round/relativeto-zoneddatetime-nanoseconds-to-days-range-errors.js
     - test/built-ins/Temporal/Duration/prototype/round/relativeto-zoneddatetime-negative-epochnanoseconds.js
     - test/built-ins/Temporal/Duration/prototype/round/relativeto-zoneddatetime-slots.js
     - test/built-ins/Temporal/Duration/prototype/round/relativeto-zoneddatetime-timezone-getoffsetnanosecondsfor-non-integer.js
     - test/built-ins/Temporal/Duration/prototype/round/relativeto-zoneddatetime-timezone-getoffsetnanosecondsfor-not-callable.js
     - test/built-ins/Temporal/Duration/prototype/round/relativeto-zoneddatetime-timezone-getoffsetnanosecondsfor-out-of-range.js
     - test/built-ins/Temporal/Duration/prototype/round/relativeto-zoneddatetime-timezone-getoffsetnanosecondsfor-wrong-type.js
+    - test/built-ins/Temporal/Duration/prototype/subtract/relativeto-zoneddatetime-nanoseconds-to-days-range-errors.js
     - test/built-ins/Temporal/Duration/prototype/subtract/relativeto-zoneddatetime-negative-epochnanoseconds.js
     - test/built-ins/Temporal/Duration/prototype/subtract/relativeto-zoneddatetime-timezone-getoffsetnanosecondsfor-non-integer.js
     - test/built-ins/Temporal/Duration/prototype/subtract/relativeto-zoneddatetime-timezone-getoffsetnanosecondsfor-not-callable.js
     - test/built-ins/Temporal/Duration/prototype/subtract/relativeto-zoneddatetime-timezone-getoffsetnanosecondsfor-out-of-range.js
     - test/built-ins/Temporal/Duration/prototype/subtract/relativeto-zoneddatetime-timezone-getoffsetnanosecondsfor-wrong-type.js
+    - test/built-ins/Temporal/Duration/prototype/total/relativeto-zoneddatetime-nanoseconds-to-days-range-errors.js
     - test/built-ins/Temporal/Duration/prototype/total/relativeto-zoneddatetime-negative-epochnanoseconds.js
     - test/built-ins/Temporal/Duration/prototype/total/relativeto-zoneddatetime-timezone-getoffsetnanosecondsfor-non-integer.js
     - test/built-ins/Temporal/Duration/prototype/total/relativeto-zoneddatetime-timezone-getoffsetnanosecondsfor-not-callable.js
@@ -951,4 +892,4 @@ skip:
     - test/built-ins/FinalizationRegistry/prototype/register/unregisterToken-not-object-or-undefined-throws.js
 
     # Skip while https://bugs.webkit.org/show_bug.cgi?id=249330 is being investigated
-    - test/built-ins/RegExp/named-groups/lookbehind.js 
+    - test/built-ins/RegExp/named-groups/lookbehind.js

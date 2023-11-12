@@ -339,7 +339,7 @@ void FTPDirectoryDocumentParser::createBasicDocument()
 
     bodyElement->appendChild(*m_tableElement);
 
-    document.processViewport("width=device-width"_s, ViewportArguments::ViewportMeta);
+    document.processViewport("width=device-width"_s, ViewportArguments::Type::ViewportMeta);
 }
 
 void FTPDirectoryDocumentParser::append(RefPtr<StringImpl>&& inputSource)
@@ -419,7 +419,7 @@ void FTPDirectoryDocumentParser::finish()
     HTMLDocumentParser::finish();
 }
 
-FTPDirectoryDocument::FTPDirectoryDocument(Frame* frame, const Settings& settings, const URL& url)
+FTPDirectoryDocument::FTPDirectoryDocument(LocalFrame* frame, const Settings& settings, const URL& url)
     : HTMLDocument(frame, settings, url, { })
 {
 #if !LOG_DISABLED

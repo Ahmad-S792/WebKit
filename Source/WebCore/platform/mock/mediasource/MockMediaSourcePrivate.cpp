@@ -20,7 +20,7 @@
  * PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY
  * OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
- * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE. 
+ * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
 #include "config.h"
@@ -56,11 +56,7 @@ MockMediaSourcePrivate::MockMediaSourcePrivate(MockMediaPlayerMediaSource& paren
 #endif
 }
 
-MockMediaSourcePrivate::~MockMediaSourcePrivate()
-{
-    for (auto& buffer : m_sourceBuffers)
-        buffer->clearMediaSource();
-}
+MockMediaSourcePrivate::~MockMediaSourcePrivate() = default;
 
 MediaSourcePrivate::AddStatus MockMediaSourcePrivate::addSourceBuffer(const ContentType& contentType, bool, RefPtr<SourceBufferPrivate>& outPrivate)
 {
@@ -70,48 +66,36 @@ MediaSourcePrivate::AddStatus MockMediaSourcePrivate::addSourceBuffer(const Cont
     if (MockMediaPlayerMediaSource::supportsType(parameters) == MediaPlayer::SupportsType::IsNotSupported)
         return AddStatus::NotSupported;
 
-    m_sourceBuffers.append(MockSourceBufferPrivate::create(this));
+    m_sourceBuffers.append(MockSourceBufferPrivate::create(*this));
     outPrivate = m_sourceBuffers.last();
 
     return AddStatus::Ok;
 }
 
-void MockMediaSourcePrivate::removeSourceBuffer(SourceBufferPrivate* buffer)
-{
-    ASSERT(m_sourceBuffers.contains(buffer));
-    m_activeSourceBuffers.removeFirst(buffer);
-    m_sourceBuffers.removeFirst(buffer);
-}
-
-MediaTime MockMediaSourcePrivate::duration()
+MediaTime MockMediaSourcePrivate::duration() const
 {
     if (m_client)
         return m_client->duration();
     return MediaTime::invalidTime();
 }
 
-std::unique_ptr<PlatformTimeRanges> MockMediaSourcePrivate::buffered()
+const PlatformTimeRanges& MockMediaSourcePrivate::buffered()
 {
     if (m_client)
         return m_client->buffered();
-    return nullptr;
+    return PlatformTimeRanges::emptyRanges();
 }
 
-void MockMediaSourcePrivate::durationChanged(const MediaTime&)
+void MockMediaSourcePrivate::durationChanged(const MediaTime& duration)
 {
-    m_player.updateDuration(duration());
+    m_player.updateDuration(duration);
 }
 
 void MockMediaSourcePrivate::markEndOfStream(EndOfStreamStatus status)
 {
     if (status == EosNoError)
         m_player.setNetworkState(MediaPlayer::NetworkState::Loaded);
-    m_isEnded = true;
-}
-
-void MockMediaSourcePrivate::unmarkEndOfStream()
-{
-    m_isEnded = false;
+    MediaSourcePrivate::markEndOfStream(status);
 }
 
 MediaPlayer::ReadyState MockMediaSourcePrivate::readyState() const
@@ -124,61 +108,25 @@ void MockMediaSourcePrivate::setReadyState(MediaPlayer::ReadyState readyState)
     m_player.setReadyState(readyState);
 }
 
-void MockMediaSourcePrivate::waitForSeekCompleted()
+void MockMediaSourcePrivate::notifyActiveSourceBuffersChanged()
 {
-    m_player.waitForSeekCompleted();
+    m_player.notifyActiveSourceBuffersChanged();
 }
 
-void MockMediaSourcePrivate::seekCompleted()
-{
-    m_player.seekCompleted();
-}
-
-void MockMediaSourcePrivate::sourceBufferPrivateDidChangeActiveState(MockSourceBufferPrivate* buffer, bool active)
-{
-    if (active && !m_activeSourceBuffers.contains(buffer))
-        m_activeSourceBuffers.append(buffer);
-
-    if (!active)
-        m_activeSourceBuffers.removeFirst(buffer);
-}
-
-static bool MockSourceBufferPrivateHasAudio(MockSourceBufferPrivate* sourceBuffer)
-{
-    return sourceBuffer->hasAudio();
-}
-
-bool MockMediaSourcePrivate::hasAudio() const
-{
-    return std::any_of(m_activeSourceBuffers.begin(), m_activeSourceBuffers.end(), MockSourceBufferPrivateHasAudio);
-}
-
-static bool MockSourceBufferPrivateHasVideo(MockSourceBufferPrivate* sourceBuffer)
-{
-    return sourceBuffer->hasVideo();
-}
-
-bool MockMediaSourcePrivate::hasVideo() const
-{
-    return std::any_of(m_activeSourceBuffers.begin(), m_activeSourceBuffers.end(), MockSourceBufferPrivateHasVideo);
-}
-
-void MockMediaSourcePrivate::seekToTime(const MediaTime& time)
+void MockMediaSourcePrivate::waitForTarget(const SeekTarget& target, CompletionHandler<void(const MediaTime&)>&& completionHandler)
 {
     if (m_client)
-        m_client->seekToTime(time);
+        m_client->waitForTarget(target, WTFMove(completionHandler));
+    else
+        completionHandler(MediaTime::invalidTime());
 }
 
-MediaTime MockMediaSourcePrivate::seekToTime(const MediaTime& targetTime, const MediaTime& negativeThreshold, const MediaTime& positiveThreshold)
+void MockMediaSourcePrivate::seekToTime(const MediaTime& time, CompletionHandler<void()>&& completionHandler)
 {
-    MediaTime seekTime = targetTime;
-    for (auto& buffer : m_activeSourceBuffers) {
-        MediaTime sourceSeekTime = buffer->fastSeekTimeForMediaTime(targetTime, negativeThreshold, positiveThreshold);
-        if (abs(targetTime - sourceSeekTime) > abs(targetTime - seekTime))
-            seekTime = sourceSeekTime;
-    }
-
-    return seekTime;
+    if (m_client)
+        m_client->seekToTime(time, WTFMove(completionHandler));
+    else
+        completionHandler();
 }
 
 MediaTime MockMediaSourcePrivate::currentMediaTime() const

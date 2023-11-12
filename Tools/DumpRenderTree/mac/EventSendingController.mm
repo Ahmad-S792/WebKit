@@ -39,6 +39,7 @@
 #import "DumpRenderTreePasteboard.h"
 #import "ModifierKeys.h"
 #import "WebCoreTestSupport.h"
+#import <WebCore/PlatformMouseEvent.h>
 #import <WebKit/DOMPrivate.h>
 #import <WebKit/WebViewPrivate.h>
 #import <functional>
@@ -136,7 +137,7 @@ static RetainPtr<NSMutableArray>& savedMouseEvents()
 
 #if !PLATFORM(IOS_FAMILY)
 @interface WebView (WebViewInternalForTesting)
-- (WebCore::Frame*)_mainCoreFrame;
+- (WebCore::LocalFrame*)_mainCoreFrame;
 @end
 #endif
 
@@ -600,7 +601,7 @@ static NSUInteger swizzledEventPressedMouseButtons()
                                          context:[NSGraphicsContext currentContext] 
                                      eventNumber:++eventNumber 
                                       clickCount:clickCount 
-                                        pressure:0.0]);
+                                        pressure:WebCore::ForceAtClick]);
 #else
     auto event = adoptNS([[WebEvent alloc] initWithMouseEventType:WebEventMouseDown
                                                      timeStamp:[self currentEventTime]
@@ -923,7 +924,7 @@ static NSUInteger swizzledEventPressedMouseButtons()
                                          context:[NSGraphicsContext currentContext] 
                                      eventNumber:++eventNumber 
                                       clickCount:clickCount 
-                                        pressure:0.0];
+                                        pressure:WebCore::ForceAtClick];
 
     NSView *subView = [[mainFrame webView] hitTest:[event locationInWindow]];
     NSMutableArray *menuItemStrings = [NSMutableArray array];
@@ -1279,7 +1280,7 @@ static NSUInteger swizzledEventPressedMouseButtons()
 - (void)monitorWheelEventsWithOptions:(WebScriptObject*)options
 {
 #if PLATFORM(MAC)
-    WebCore::Frame* frame = [[mainFrame webView] _mainCoreFrame];
+    auto* frame = [[mainFrame webView] _mainCoreFrame];
     if (!frame)
         return;
 
@@ -1310,7 +1311,7 @@ static NSUInteger swizzledEventPressedMouseButtons()
     if (!jsCallbackFunction)
         return;
 
-    WebCore::Frame* frame = [[mainFrame webView] _mainCoreFrame];
+    auto* frame = [[mainFrame webView] _mainCoreFrame];
     if (!frame)
         return;
 

@@ -150,11 +150,7 @@ Vector<AtomString> CDMPrivateThunder::supportedInitDataTypes() const
     static std::once_flag onceFlag;
     static Vector<AtomString> supportedInitDataTypes;
     std::call_once(onceFlag, [] {
-        supportedInitDataTypes.reserveInitialCapacity(4);
-        supportedInitDataTypes.uncheckedAppend("keyids"_s);
-        supportedInitDataTypes.uncheckedAppend("cenc"_s);
-        supportedInitDataTypes.uncheckedAppend("webm"_s);
-        supportedInitDataTypes.uncheckedAppend("cbcs"_s);
+        supportedInitDataTypes.appendList({ "keyids"_s, "cenc"_s, "webm"_s, "cbcs"_s });
     });
     return supportedInitDataTypes;
 }
@@ -443,7 +439,7 @@ void CDMInstanceSessionThunder::keyUpdatedCallback(KeyIDType&& keyID)
 
     auto keyStatus = status(keyID);
     GST_DEBUG("updated with with key status %s", toString(keyStatus));
-    m_doesKeyStoreNeedMerging |= m_keyStore.add(KeyHandle::create(keyStatus, WTFMove(keyID), BoxPtr<OpenCDMSession>(m_session)));
+
     auto instance = cdmInstanceThunder();
     if (instance && GStreamerEMEUtilities::isPlayReadyKeySystem(instance->keySystem())) {
         // PlayReady corner case hack: It happens that the key ID
@@ -458,6 +454,8 @@ void CDMInstanceSessionThunder::keyUpdatedCallback(KeyIDType&& keyID)
         GST_MEMDUMP("updated swapped key", swappedKeyID.data(), swappedKeyID.size());
         m_doesKeyStoreNeedMerging |= m_keyStore.add(KeyHandle::create(keyStatus, WTFMove(swappedKeyID), BoxPtr<OpenCDMSession>(m_session)));
     }
+
+    m_doesKeyStoreNeedMerging |= m_keyStore.add(KeyHandle::create(keyStatus, WTFMove(keyID), BoxPtr<OpenCDMSession>(m_session)));
 }
 
 void CDMInstanceSessionThunder::keysUpdateDoneCallback()
@@ -493,7 +491,7 @@ void CDMInstanceSessionThunder::errorCallback(RefPtr<SharedBuffer>&& message)
     m_sessionChangedCallbacks.clear();
 }
 
-void CDMInstanceSessionThunder::requestLicense(LicenseType licenseType, const AtomString& initDataType, Ref<SharedBuffer>&& initDataSharedBuffer,
+void CDMInstanceSessionThunder::requestLicense(LicenseType licenseType, KeyGroupingStrategy, const AtomString& initDataType, Ref<SharedBuffer>&& initDataSharedBuffer,
     LicenseCallback&& callback)
 {
     ASSERT(isMainThread());
@@ -694,6 +692,8 @@ CDMInstanceThunder* CDMInstanceSessionThunder::cdmInstanceThunder() const
     auto proxy = cdmInstanceProxy();
     return static_cast<CDMInstanceThunder*>(proxy.get());
 }
+
+#undef GST_CAT_DEFAULT
 
 } // namespace WebCore
 

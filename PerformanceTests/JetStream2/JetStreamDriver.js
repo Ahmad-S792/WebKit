@@ -139,7 +139,7 @@ function geomean(values) {
 }
 
 function toScore(timeValue) {
-    return 5000 / timeValue;
+    return 5000 / Math.max(timeValue, 1);
 }
 
 function toTimeValue(score) {
@@ -332,6 +332,10 @@ class Driver {
                     return Realm.eval(realm, s);
                 };
                 globalObject.readFile = read;
+            } else if (isSpiderMonkey) {
+                globalObject = newGlobal();
+                globalObject.loadString = globalObject.evaluate;
+                globalObject.readFile = globalObject.readRelativeToScript;
             } else
                 globalObject = runString("");
 

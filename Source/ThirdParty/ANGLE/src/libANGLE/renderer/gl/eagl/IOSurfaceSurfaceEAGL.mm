@@ -7,25 +7,22 @@
 // IOSurfaceSurfaceEAGL.mm: an implementation of PBuffers created from IOSurfaces using
 //                          EGL_ANGLE_iosurface_client_buffer
 
+#import "libANGLE/renderer/gl/eagl/IOSurfaceSurfaceEAGL.h"
+
+#import <OpenGLES/EAGL.h>
+#import <OpenGLES/EAGLDrawable.h>
+#import <OpenGLES/EAGLIOSurface.h>
+
+#import "common/debug.h"
 #import "common/platform.h"
-
-#if defined(ANGLE_ENABLE_EAGL)
-
-#    import "libANGLE/renderer/gl/eagl/IOSurfaceSurfaceEAGL.h"
-
-#    import "common/debug.h"
-#    import "libANGLE/AttributeMap.h"
-#    import "libANGLE/renderer/gl/BlitGL.h"
-#    import "libANGLE/renderer/gl/FramebufferGL.h"
-#    import "libANGLE/renderer/gl/FunctionsGL.h"
-#    import "libANGLE/renderer/gl/RendererGL.h"
-#    import "libANGLE/renderer/gl/StateManagerGL.h"
-#    import "libANGLE/renderer/gl/TextureGL.h"
-#    import "libANGLE/renderer/gl/eagl/DisplayEAGL.h"
-
-#    import <OpenGLES/EAGL.h>
-#    import <OpenGLES/EAGLDrawable.h>
-#    import <OpenGLES/EAGLIOSurface.h>
+#import "libANGLE/AttributeMap.h"
+#import "libANGLE/renderer/gl/BlitGL.h"
+#import "libANGLE/renderer/gl/FramebufferGL.h"
+#import "libANGLE/renderer/gl/FunctionsGL.h"
+#import "libANGLE/renderer/gl/RendererGL.h"
+#import "libANGLE/renderer/gl/StateManagerGL.h"
+#import "libANGLE/renderer/gl/TextureGL.h"
+#import "libANGLE/renderer/gl/eagl/DisplayEAGL.h"
 
 namespace rx
 {
@@ -49,6 +46,7 @@ static const IOSurfaceFormatInfo kIOSurfaceFormats[] = {
     {GL_RED,      GL_UNSIGNED_BYTE,  GL_R8,   GL_RED,  GL_UNSIGNED_BYTE },
     {GL_R16UI,    GL_UNSIGNED_SHORT, GL_R16UI, GL_RED_INTEGER,  GL_UNSIGNED_SHORT},
     {GL_RG,       GL_UNSIGNED_BYTE,  GL_RG8,  GL_RG,   GL_UNSIGNED_BYTE },
+    {GL_RGBA,     GL_UNSIGNED_BYTE,  GL_RGBA, GL_RGBA, GL_UNSIGNED_BYTE },
     {GL_RGB,      GL_UNSIGNED_BYTE,  GL_RGBA, GL_BGRA, GL_UNSIGNED_BYTE },
     {GL_BGRA_EXT, GL_UNSIGNED_BYTE,  GL_RGBA, GL_BGRA, GL_UNSIGNED_BYTE },
     {GL_RGBA,     GL_HALF_FLOAT,     GL_RGBA, GL_RGBA, GL_HALF_FLOAT    },
@@ -115,7 +113,7 @@ IOSurfaceSurfaceEAGL::IOSurfaceSurfaceEAGL(const egl::SurfaceState &state,
 
     mAlphaInitialized = !hasEmulatedAlphaChannel();
 
-#    if defined(ANGLE_PLATFORM_IOS_SIMULATOR)
+#if ANGLE_PLATFORM_IOS_FAMILY_SIMULATOR
     ANGLE_UNUSED_VARIABLE(mEAGLContext);
     mBoundTextureID = 0;
     EGLAttrib usageHint =
@@ -123,7 +121,7 @@ IOSurfaceSurfaceEAGL::IOSurfaceSurfaceEAGL(const egl::SurfaceState &state,
                     EGL_IOSURFACE_READ_HINT_ANGLE | EGL_IOSURFACE_WRITE_HINT_ANGLE);
     mUploadFromIOSurface = ((usageHint & EGL_IOSURFACE_READ_HINT_ANGLE) != 0);
     mReadbackToIOSurface = ((usageHint & EGL_IOSURFACE_WRITE_HINT_ANGLE) != 0);
-#    endif
+#endif
 }
 
 IOSurfaceSurfaceEAGL::~IOSurfaceSurfaceEAGL()
@@ -190,7 +188,7 @@ egl::Error IOSurfaceSurfaceEAGL::bindTexImage(const gl::Context *context,
     stateManager->bindTexture(gl::TextureType::_2D, textureID);
     const auto &format = kIOSurfaceFormats[mFormatIndex];
 
-#    if !defined(ANGLE_PLATFORM_IOS_SIMULATOR)
+#if !ANGLE_PLATFORM_IOS_FAMILY_SIMULATOR
     if (![mEAGLContext texImageIOSurface:mIOSurface
                                   target:GL_TEXTURE_2D
                           internalFormat:format.nativeInternalFormat
@@ -207,7 +205,7 @@ egl::Error IOSurfaceSurfaceEAGL::bindTexImage(const gl::Context *context,
     {
         return egl::EglContextLost() << "Failed to initialize IOSurface alpha channel.";
     }
-#    else   // !defined(ANGLE_PLATFORM_IOS_SIMULATOR)
+#else   // !ANGLE_PLATFORM_IOS_FAMILY_SIMULATOR
     const FunctionsGL *functions = GetFunctionsGL(context);
 
     IOSurfaceLock(mIOSurface, getIOSurfaceLockOptions(), nullptr);
@@ -230,7 +228,7 @@ egl::Error IOSurfaceSurfaceEAGL::bindTexImage(const gl::Context *context,
                           format.nativeFormat, format.nativeType, textureData);
 
     mBoundTextureID = textureID;
-#    endif  // !defined(ANGLE_PLATFORM_IOS_SIMULATOR)
+#endif  // !ANGLE_PLATFORM_IOS_FAMILY_SIMULATOR
 
     return egl::NoError();
 }
@@ -238,9 +236,9 @@ egl::Error IOSurfaceSurfaceEAGL::bindTexImage(const gl::Context *context,
 egl::Error IOSurfaceSurfaceEAGL::releaseTexImage(const gl::Context *context, EGLint buffer)
 {
     const FunctionsGL *functions = GetFunctionsGL(context);
-#    if !defined(ANGLE_PLATFORM_IOS_SIMULATOR)
+#if !ANGLE_PLATFORM_IOS_FAMILY_SIMULATOR
     functions->flush();
-#    else   // !defined(ANGLE_PLATFORM_IOS_SIMULATOR)
+#else   // !ANGLE_PLATFORM_IOS_FAMILY_SIMULATOR
     if (mReadbackToIOSurface)
     {
         StateManagerGL *stateManager = GetStateManagerGL(context);
@@ -264,7 +262,7 @@ egl::Error IOSurfaceSurfaceEAGL::releaseTexImage(const gl::Context *context, EGL
     }
 
     IOSurfaceUnlock(mIOSurface, getIOSurfaceLockOptions(), nullptr);
-#    endif  // !defined(ANGLE_PLATFORM_IOS_SIMULATOR)
+#endif  // !ANGLE_PLATFORM_IOS_FAMILY_SIMULATOR
 
     return egl::NoError();
 }
@@ -372,7 +370,7 @@ egl::Error IOSurfaceSurfaceEAGL::attachToFramebuffer(const gl::Context *context,
         mFunctions->genTextures(1, &textureID);
         mStateManager->bindTexture(gl::TextureType::_2D, textureID);
 
-#    if !defined(ANGLE_PLATFORM_IOS_SIMULATOR)
+#if !ANGLE_PLATFORM_IOS_FAMILY_SIMULATOR
         const auto &format = kIOSurfaceFormats[mFormatIndex];
 
         if (![mEAGLContext texImageIOSurface:mIOSurface
@@ -386,9 +384,9 @@ egl::Error IOSurfaceSurfaceEAGL::attachToFramebuffer(const gl::Context *context,
         {
             return egl::EglContextLost() << "[EAGLContext texImageIOSurface] failed";
         }
-#    else   // !defined(ANGLE_PLATFORM_IOS_SIMULATOR)
+#else   // !ANGLE_PLATFORM_IOS_FAMILY_SIMULATOR
         ERR() << "IOSurfaces with OpenGL ES not supported on iOS Simulator";
-#    endif  // !defined(ANGLE_PLATFORM_IOS_SIMULATOR)
+#endif  // !ANGLE_PLATFORM_IOS_FAMILY_SIMULATOR
 
         if (IsError(initializeAlphaChannel(context, textureID)))
         {
@@ -419,7 +417,7 @@ egl::Error IOSurfaceSurfaceEAGL::detachFromFramebuffer(const gl::Context *contex
     return egl::NoError();
 }
 
-#    if defined(ANGLE_PLATFORM_IOS_SIMULATOR)
+#if ANGLE_PLATFORM_IOS_FAMILY_SIMULATOR
 IOSurfaceLockOptions IOSurfaceSurfaceEAGL::getIOSurfaceLockOptions() const
 {
     IOSurfaceLockOptions options = 0;
@@ -429,8 +427,6 @@ IOSurfaceLockOptions IOSurfaceSurfaceEAGL::getIOSurfaceLockOptions() const
     }
     return options;
 }
-#    endif  // defined(ANGLE_PLATFORM_IOS_SIMULATOR)
+#endif  // ANGLE_PLATFORM_IOS_FAMILY_SIMULATOR
 
 }  // namespace rx
-
-#endif  // defined(ANGLE_ENABLE_EAGL)

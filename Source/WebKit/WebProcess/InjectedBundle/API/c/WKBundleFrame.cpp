@@ -40,9 +40,9 @@
 #include "WebPage.h"
 #include <WebCore/Document.h>
 #include <WebCore/FocusController.h>
-#include <WebCore/Frame.h>
 #include <WebCore/FrameLoader.h>
-#include <WebCore/FrameView.h>
+#include <WebCore/LocalFrame.h>
+#include <WebCore/LocalFrameView.h>
 #include <WebCore/Page.h>
 #include <WebCore/ReportingScope.h>
 
@@ -58,7 +58,7 @@ bool WKBundleFrameIsMainFrame(WKBundleFrameRef frameRef)
 
 WKBundleFrameRef WKBundleFrameGetParentFrame(WKBundleFrameRef frameRef)
 {
-    return toAPI(WebKit::toImpl(frameRef)->parentFrame());
+    return toAPI(WebKit::toImpl(frameRef)->parentFrame().get());
 }
 
 WKURLRef WKBundleFrameCopyURL(WKBundleFrameRef frameRef)
@@ -73,7 +73,7 @@ WKURLRef WKBundleFrameCopyProvisionalURL(WKBundleFrameRef frameRef)
 
 WKFrameLoadState WKBundleFrameGetFrameLoadState(WKBundleFrameRef frameRef)
 {
-    WebCore::Frame* coreFrame = WebKit::toImpl(frameRef)->coreFrame();
+    auto* coreFrame = WebKit::toImpl(frameRef)->coreLocalFrame();
     if (!coreFrame)
         return kWKFrameLoadStateFinished;
 
@@ -102,7 +102,7 @@ JSGlobalContextRef WKBundleFrameGetJavaScriptContext(WKBundleFrameRef frameRef)
 
 WKBundleFrameRef WKBundleFrameForJavaScriptContext(JSContextRef context)
 {
-    return toAPI(WebKit::WebFrame::frameForContext(context));
+    return toAPI(WebKit::WebFrame::frameForContext(context).get());
 }
 
 JSGlobalContextRef WKBundleFrameGetJavaScriptContextForWorld(WKBundleFrameRef frameRef, WKBundleScriptWorldRef worldRef)
@@ -147,9 +147,9 @@ WKBundlePageRef WKBundleFrameGetPage(WKBundleFrameRef frameRef)
 
 void WKBundleFrameClearOpener(WKBundleFrameRef frameRef)
 {
-    WebCore::Frame* coreFrame = WebKit::toImpl(frameRef)->coreFrame();
+    auto* coreFrame = WebKit::toImpl(frameRef)->coreLocalFrame();
     if (coreFrame)
-        coreFrame->loader().setOpener(0);
+        coreFrame->loader().setOpener(nullptr);
 }
 
 void WKBundleFrameStopLoading(WKBundleFrameRef frameRef)
@@ -260,7 +260,7 @@ WKDataRef WKBundleFrameCopyWebArchiveFilteringSubframes(WKBundleFrameRef frameRe
 
 bool WKBundleFrameCallShouldCloseOnWebView(WKBundleFrameRef frameRef)
 {
-    WebCore::Frame* coreFrame = WebKit::toImpl(frameRef)->coreFrame();
+    auto* coreFrame = WebKit::toImpl(frameRef)->coreLocalFrame();
     if (!coreFrame)
         return true;
 
@@ -274,7 +274,7 @@ WKBundleHitTestResultRef WKBundleFrameCreateHitTestResult(WKBundleFrameRef frame
 
 WKSecurityOriginRef WKBundleFrameCopySecurityOrigin(WKBundleFrameRef frameRef)
 {
-    WebCore::Frame* coreFrame = WebKit::toImpl(frameRef)->coreFrame();
+    auto* coreFrame = WebKit::toImpl(frameRef)->coreLocalFrame();
     if (!coreFrame)
         return 0;
 
@@ -283,7 +283,7 @@ WKSecurityOriginRef WKBundleFrameCopySecurityOrigin(WKBundleFrameRef frameRef)
 
 void WKBundleFrameFocus(WKBundleFrameRef frameRef)
 {
-    RefPtr coreFrame = WebKit::toImpl(frameRef)->coreFrame();
+    RefPtr coreFrame = WebKit::toImpl(frameRef)->coreLocalFrame();
     if (!coreFrame)
         return;
 
@@ -292,7 +292,7 @@ void WKBundleFrameFocus(WKBundleFrameRef frameRef)
 
 void _WKBundleFrameGenerateTestReport(WKBundleFrameRef frameRef, WKStringRef message, WKStringRef group)
 {
-    RefPtr coreFrame = WebKit::toImpl(frameRef)->coreFrame();
+    RefPtr coreFrame = WebKit::toImpl(frameRef)->coreLocalFrame();
     if (!coreFrame)
         return;
 

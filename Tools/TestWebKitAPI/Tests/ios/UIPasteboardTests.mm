@@ -31,7 +31,7 @@
 #import "InstanceMethodSwizzler.h"
 #import "PlatformUtilities.h"
 #import "TestWKWebView.h"
-#import "UIKitSPI.h"
+#import "UIKitSPIForTesting.h"
 #import <MobileCoreServices/MobileCoreServices.h>
 #import <UIKit/UIPasteboard.h>
 #import <UniformTypeIdentifiers/UniformTypeIdentifiers.h>
@@ -41,7 +41,7 @@
 
 typedef void (^DataLoadCompletionBlock)(NSData *, NSError *);
 
-#if PLATFORM(IOS)
+#if PLATFORM(IOS) || PLATFORM(VISION)
 
 static void checkJSONWithLogging(NSString *jsonString, NSDictionary *expected)
 {
@@ -79,7 +79,7 @@ static _UIDataOwner gLastKnownDataOwner = _UIDataOwnerUndefined;
 
 @end
 
-#endif // PLATFORM(IOS)
+#endif // PLATFORM(IOS) || PLATFORM(VISION)
 
 namespace TestWebKitAPI {
 
@@ -113,6 +113,19 @@ TEST(UIPasteboardTests, CopyPlainTextWritesConcreteTypes)
 
     auto utf8Result = adoptNS([[NSString alloc] initWithData:dataForPasteboardType(kUTTypeUTF8PlainText) encoding:NSUTF8StringEncoding]);
     EXPECT_WK_STREQ("Hello world", [utf8Result UTF8String]);
+}
+
+TEST(UIPasteboardTests, CopyPlainTextRetainsEscapeCharactersInURLRepresentation)
+{
+    auto webView = setUpWebViewForPasteboardTests(@"rich-and-plain-text");
+    [webView stringByEvaluatingJavaScript:@"plain.value = 'hello:<'"];
+    [webView stringByEvaluatingJavaScript:@"selectPlainText()"];
+    [webView stringByEvaluatingJavaScript:@"document.execCommand('copy')"];
+
+    EXPECT_FALSE(UIPasteboard.generalPasteboard.URL);
+
+    auto utf8Result = adoptNS([[NSString alloc] initWithData:dataForPasteboardType(kUTTypeUTF8PlainText) encoding:NSUTF8StringEncoding]);
+    EXPECT_WK_STREQ("hello:<", [utf8Result UTF8String]);
 }
 
 TEST(UIPasteboardTests, CopyRichTextWritesConcreteTypes)
@@ -195,7 +208,7 @@ TEST(UIPasteboardTests, PasteWithCompletionHandler)
     EXPECT_WK_STREQ("https://www.apple.com/", [webView stringByEvaluatingJavaScript:@"textData.textContent"]);
 }
 
-#if PLATFORM(IOS)
+#if PLATFORM(IOS) || PLATFORM(VISION)
 
 TEST(UIPasteboardTests, DataTransferGetDataWhenPastingURL)
 {
@@ -471,9 +484,23 @@ TEST(UIPasteboardTests, PerformAsDataOwnerWithManagedURL)
         [destination waitForNextPresentationUpdate];
         EXPECT_EQ(gLastKnownDataOwner, _UIDataOwnerUser);
     }
+    {
+        auto destination = setUpWebViewForPasteboardTests(@"simple2");
+        [destination _setDataOwnerForPaste:_UIDataOwnerUndefined];
+        [destination paste:nil];
+        [destination waitForNextPresentationUpdate];
+        EXPECT_EQ(gLastKnownDataOwner, _UIDataOwnerUser);
+    }
+    {
+        auto destination = setUpWebViewForPasteboardTests(@"simple");
+        [destination _setDataOwnerForPaste:_UIDataOwnerShared];
+        [destination paste:nil];
+        [destination waitForNextPresentationUpdate];
+        EXPECT_EQ(gLastKnownDataOwner, _UIDataOwnerShared);
+    }
 }
 
-#endif // PLATFORM(IOS)
+#endif // PLATFORM(IOS) || PLATFORM(VISION)
 
 } // namespace TestWebKitAPI
 

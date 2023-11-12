@@ -34,8 +34,11 @@
 #include "MathMLNames.h"
 #include "MathMLTokenElement.h"
 #include "PaintInfo.h"
+#include "RenderBoxInlines.h"
+#include "RenderBoxModelObjectInlines.h"
 #include "RenderElement.h"
 #include "RenderIterator.h"
+#include "RenderStyleInlines.h"
 #include <wtf/IsoMallocInlines.h>
 
 namespace WebCore {
@@ -44,13 +47,13 @@ using namespace MathMLNames;
 
 WTF_MAKE_ISO_ALLOCATED_IMPL(RenderMathMLToken);
 
-RenderMathMLToken::RenderMathMLToken(MathMLTokenElement& element, RenderStyle&& style)
-    : RenderMathMLBlock(element, WTFMove(style))
+RenderMathMLToken::RenderMathMLToken(Type type, MathMLTokenElement& element, RenderStyle&& style)
+    : RenderMathMLBlock(type, element, WTFMove(style))
 {
 }
 
-RenderMathMLToken::RenderMathMLToken(Document& document, RenderStyle&& style)
-    : RenderMathMLBlock(document, WTFMove(style))
+RenderMathMLToken::RenderMathMLToken(Type type, Document& document, RenderStyle&& style)
+    : RenderMathMLBlock(type, document, WTFMove(style))
 {
 }
 
@@ -567,6 +570,11 @@ std::optional<LayoutUnit> RenderMathMLToken::firstLineBaseline() const
 void RenderMathMLToken::layoutBlock(bool relayoutChildren, LayoutUnit pageLogicalHeight)
 {
     ASSERT(needsLayout());
+
+    for (auto& box : childrenOfType<RenderBox>(*this)) {
+        if (box.isOutOfFlowPositioned())
+            box.containingBlock()->insertPositionedObject(box);
+    }
 
     if (!relayoutChildren && simplifiedLayout())
         return;

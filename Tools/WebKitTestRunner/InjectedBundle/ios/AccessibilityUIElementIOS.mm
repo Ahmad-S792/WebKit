@@ -61,7 +61,6 @@ typedef void (*AXPostedNotificationCallback)(id element, NSString* notification,
 - (NSString *)stringForRange:(NSRange)range;
 - (NSAttributedString *)attributedStringForRange:(NSRange)range;
 - (NSAttributedString *)attributedStringForElement;
-- (NSArray *)elementsForRange:(NSRange)range;
 - (NSString *)selectionRangeString;
 - (NSArray *)lineRectsAndText;
 - (CGPoint)accessibilityClickPoint;
@@ -93,11 +92,13 @@ typedef void (*AXPostedNotificationCallback)(id element, NSString* notification,
 - (NSString *)accessibilityARIARelevantStatus;
 - (NSString *)accessibilityInvalidStatus;
 - (UIAccessibilityTraits)_axContainedByFieldsetTrait;
+- (UIAccessibilityTraits)_axTextEntryTrait;
 - (id)_accessibilityFieldsetAncestor;
 - (BOOL)_accessibilityHasTouchEventListener;
 - (NSString *)accessibilityExpandedTextValue;
 - (NSString *)accessibilitySortDirection;
 - (BOOL)accessibilityIsExpanded;
+- (BOOL)accessibilitySupportsARIAExpanded;
 - (BOOL)accessibilityIsIndeterminate;
 - (NSUInteger)accessibilityBlockquoteLevel;
 - (NSArray *)accessibilityFindMatchingObjects:(NSDictionary *)parameters;
@@ -259,12 +260,6 @@ RefPtr<AccessibilityUIElement> AccessibilityUIElement::elementAtPoint(int x, int
         return nil;
     
     return AccessibilityUIElement::create(element);
-}
-
-JSValueRef AccessibilityUIElement::elementsForRange(unsigned location, unsigned length)
-{
-    NSArray *elementsForRange = [m_element elementsForRange:NSMakeRange(location, length)];
-    return makeJSArray(makeVector<RefPtr<AccessibilityUIElement>>(elementsForRange));
 }
 
 unsigned AccessibilityUIElement::indexOfChild(AccessibilityUIElement* element)
@@ -463,6 +458,11 @@ JSValueRef AccessibilityUIElement::uiElementArrayAttributeValue(JSStringRef attr
 }
 
 JSValueRef AccessibilityUIElement::rowHeaders() const
+{
+    return nullptr;
+}
+
+JSValueRef AccessibilityUIElement::selectedCells() const
 {
     return nullptr;
 }
@@ -706,6 +706,11 @@ bool AccessibilityUIElement::isExpanded() const
     return [m_element accessibilityIsExpanded];
 }
 
+bool AccessibilityUIElement::supportsExpanded() const
+{
+    return [m_element accessibilitySupportsARIAExpanded];
+}
+
 bool AccessibilityUIElement::isChecked() const
 {
     return false;
@@ -872,6 +877,12 @@ bool AccessibilityUIElement::hasContainedByFieldsetTrait()
     return (traits & [m_element _axContainedByFieldsetTrait]) == [m_element _axContainedByFieldsetTrait];
 }
 
+bool AccessibilityUIElement::hasTextEntryTrait()
+{
+    UIAccessibilityTraits traits = [m_element accessibilityTraits];
+    return (traits & [m_element _axTextEntryTrait]) == [m_element _axTextEntryTrait];
+}
+
 RefPtr<AccessibilityUIElement> AccessibilityUIElement::fieldsetAncestorElement()
 {
     id ancestorElement = [m_element _accessibilityFieldsetAncestor];
@@ -985,6 +996,11 @@ bool AccessibilityUIElement::setSelectedTextRange(unsigned location, unsigned le
     return true;
 }
 
+JSRetainPtr<JSStringRef> AccessibilityUIElement::textInputMarkedRange() const
+{
+    return WTR::createJSString();
+}
+
 void AccessibilityUIElement::increment()
 {
     [m_element accessibilityIncrement];
@@ -1026,16 +1042,6 @@ void AccessibilityUIElement::clearSelectedChildren() const
 }
 
 JSRetainPtr<JSStringRef> AccessibilityUIElement::accessibilityValue() const
-{
-    return createJSString();
-}
-
-JSRetainPtr<JSStringRef> AccessibilityUIElement::documentEncoding()
-{
-    return createJSString();
-}
-
-JSRetainPtr<JSStringRef> AccessibilityUIElement::documentURI()
 {
     return createJSString();
 }

@@ -31,7 +31,6 @@
 namespace WebCore {
 
 WEBCORE_EXPORT bool operator==(const AudioStreamBasicDescription&, const AudioStreamBasicDescription&);
-inline bool operator!=(const AudioStreamBasicDescription& a, const AudioStreamBasicDescription& b) { return !(a == b); }
 
 class WEBCORE_EXPORT CAAudioStreamDescription final : public AudioStreamDescription {
     WTF_MAKE_FAST_ALLOCATED;
@@ -60,37 +59,17 @@ public:
     uint32_t formatFlags() const;
 
     bool operator==(const CAAudioStreamDescription& other) const { return operator==(static_cast<const AudioStreamDescription&>(other)); }
-    bool operator==(const AudioStreamBasicDescription& other) const;
-    bool operator!=(const AudioStreamBasicDescription& other) const;
-    bool operator==(const AudioStreamDescription& other) const;
-    bool operator!=(const AudioStreamDescription& other) const;
+    bool operator==(const AudioStreamBasicDescription&) const;
+    bool operator==(const AudioStreamDescription&) const;
 
     const AudioStreamBasicDescription& streamDescription() const;
     AudioStreamBasicDescription& streamDescription();
-
-    template<class Encoder> void encode(Encoder&) const;
-    template<class Decoder> static std::optional<CAAudioStreamDescription> decode(Decoder&);
 
 private:
     AudioStreamBasicDescription m_streamDescription;
     mutable PlatformDescription m_platformDescription;
     mutable PCMFormat m_format { None };
 };
-
-template<class Encoder>
-void CAAudioStreamDescription::encode(Encoder& encoder) const
-{
-    encoder.encodeObject(m_streamDescription);
-}
-
-template<class Decoder>
-std::optional<CAAudioStreamDescription> CAAudioStreamDescription::decode(Decoder& decoder)
-{
-    auto asbd = decoder.template decodeObject<AudioStreamBasicDescription>();
-    if (!asbd)
-        return std::nullopt;
-    return CAAudioStreamDescription { *asbd };
-}
 
 inline CAAudioStreamDescription toCAAudioStreamDescription(const AudioStreamDescription& description)
 {

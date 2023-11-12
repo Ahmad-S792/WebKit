@@ -175,8 +175,10 @@ public:
     double minValue();
     double maxValue();
     JSRetainPtr<JSStringRef> valueDescription();
+    unsigned numberOfCharacters() const;
     int insertionPointLineNumber();
     JSRetainPtr<JSStringRef> selectedTextRange();
+    JSRetainPtr<JSStringRef> textInputMarkedRange() const;
     bool isAtomicLiveRegion() const;
     bool isBusy() const;
     bool isEnabled();
@@ -198,6 +200,7 @@ public:
     
     bool isValid() const;
     bool isExpanded() const;
+    bool supportsExpanded() const;
     bool isChecked() const;
     JSRetainPtr<JSStringRef> currentStateValue() const;
     JSRetainPtr<JSStringRef> sortDirection() const;
@@ -214,8 +217,6 @@ public:
     int hierarchicalLevel() const;
     double clickPointX();
     double clickPointY();
-    JSRetainPtr<JSStringRef> documentEncoding();
-    JSRetainPtr<JSStringRef> documentURI();
     JSRetainPtr<JSStringRef> url();
     JSRetainPtr<JSStringRef> classList() const;
     JSRetainPtr<JSStringRef> embeddedImageDescription() const;
@@ -228,6 +229,7 @@ public:
     JSRetainPtr<JSStringRef> attributesOfColumnHeaders();
     JSRetainPtr<JSStringRef> attributesOfRowHeaders();
     JSRetainPtr<JSStringRef> attributesOfColumns();
+    JSValueRef columns();
     JSRetainPtr<JSStringRef> attributesOfRows();
     JSRetainPtr<JSStringRef> attributesOfVisibleCells();
     JSRetainPtr<JSStringRef> attributesOfHeader();
@@ -243,6 +245,7 @@ public:
     JSValueRef rowHeaders() const;
     JSValueRef columnHeaders() const;
     JSRetainPtr<JSStringRef> customContent() const;
+    JSValueRef selectedCells() const;
 
     // Tree/Outline specific attributes
     RefPtr<AccessibilityUIElement> selectedRowAtIndex(unsigned);
@@ -325,18 +328,24 @@ public:
     void scrollToMakeVisible();
     void scrollToGlobalPoint(int x, int y);
     void scrollToMakeVisibleWithSubFocus(int x, int y, int width, int height);
-    
+
     // Text markers.
     RefPtr<AccessibilityTextMarkerRange> lineTextMarkerRangeForTextMarker(AccessibilityTextMarker*);
+    RefPtr<AccessibilityTextMarkerRange> rightLineTextMarkerRangeForTextMarker(AccessibilityTextMarker*);
+    RefPtr<AccessibilityTextMarkerRange> leftLineTextMarkerRangeForTextMarker(AccessibilityTextMarker*);
+    RefPtr<AccessibilityTextMarker> previousLineStartTextMarkerForTextMarker(AccessibilityTextMarker*);
+    RefPtr<AccessibilityTextMarker> nextLineEndTextMarkerForTextMarker(AccessibilityTextMarker*);
     int lineIndexForTextMarker(AccessibilityTextMarker*) const;
     RefPtr<AccessibilityTextMarkerRange> misspellingTextMarkerRange(AccessibilityTextMarkerRange* start, bool forward);
     RefPtr<AccessibilityTextMarkerRange> textMarkerRangeForElement(AccessibilityUIElement*);
-    RefPtr<AccessibilityTextMarkerRange> textMarkerRangeForMarkers(AccessibilityTextMarker* startMarker, AccessibilityTextMarker* endMarker);
+    RefPtr<AccessibilityTextMarkerRange> textMarkerRangeForMarkers(AccessibilityTextMarker*, AccessibilityTextMarker*);
+    RefPtr<AccessibilityTextMarkerRange> textMarkerRangeForUnorderedMarkers(AccessibilityTextMarker*, AccessibilityTextMarker*);
     RefPtr<AccessibilityTextMarkerRange> textMarkerRangeForRange(unsigned location, unsigned length);
     RefPtr<AccessibilityTextMarkerRange> selectedTextMarkerRange();
     void resetSelectedTextMarkerRange();
     bool replaceTextInRange(JSStringRef, int position, int length);
     bool insertText(JSStringRef);
+    RefPtr<AccessibilityTextMarkerRange> textInputMarkedTextMarkerRange() const;
     RefPtr<AccessibilityTextMarker> startTextMarkerForTextMarkerRange(AccessibilityTextMarkerRange*);
     RefPtr<AccessibilityTextMarker> endTextMarkerForTextMarkerRange(AccessibilityTextMarkerRange*);
     RefPtr<AccessibilityTextMarker> endTextMarkerForBounds(int x, int y, int width, int height);
@@ -353,6 +362,7 @@ public:
     bool attributedStringForTextMarkerRangeContainsAttribute(JSStringRef, AccessibilityTextMarkerRange*);
     int indexForTextMarker(AccessibilityTextMarker*);
     bool isTextMarkerValid(AccessibilityTextMarker*);
+    bool isTextMarkerNull(AccessibilityTextMarker*);
     RefPtr<AccessibilityTextMarker> textMarkerForIndex(int);
     RefPtr<AccessibilityTextMarker> startTextMarker();
     RefPtr<AccessibilityTextMarker> endTextMarker();
@@ -388,7 +398,6 @@ public:
     int elementTextPosition();
     int elementTextLength();
     JSRetainPtr<JSStringRef> stringForSelection();
-    JSValueRef elementsForRange(unsigned location, unsigned length);
     void increaseTextSelection();
     void decreaseTextSelection();
     RefPtr<AccessibilityUIElement> linkedElement();
@@ -408,6 +417,7 @@ public:
     bool isInDescriptionListTerm() const;
 
     bool hasContainedByFieldsetTrait();
+    bool hasTextEntryTrait();
     RefPtr<AccessibilityUIElement> fieldsetAncestorElement();
 
     bool isIsolatedObject() const;

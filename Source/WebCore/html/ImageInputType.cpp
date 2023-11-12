@@ -33,6 +33,8 @@
 #include "HTMLParserIdioms.h"
 #include "InputTypeNames.h"
 #include "MouseEvent.h"
+#include "RenderBoxInlines.h"
+#include "RenderElementInlines.h"
 #include "RenderImage.h"
 #include <wtf/NeverDestroyed.h>
 
@@ -109,7 +111,7 @@ void ImageInputType::handleDOMActivateEvent(Event& event)
 RenderPtr<RenderElement> ImageInputType::createInputRenderer(RenderStyle&& style)
 {
     ASSERT(element());
-    return createRenderer<RenderImage>(*element(), WTFMove(style));
+    return createRenderer<RenderImage>(RenderObject::Type::Image, *element(), WTFMove(style));
 }
 
 void ImageInputType::attributeChanged(const QualifiedName& name)
@@ -173,7 +175,7 @@ unsigned ImageInputType::height() const
     ASSERT(element());
     Ref<HTMLInputElement> element(*this->element());
 
-    element->document().updateLayout();
+    element->document().updateLayout({ LayoutOptions::ContentVisibilityForceLayout }, element.ptr());
 
     if (auto* renderer = element->renderer())
         return adjustForAbsoluteZoom(downcast<RenderBox>(*renderer).contentHeight(), *renderer);
@@ -195,7 +197,7 @@ unsigned ImageInputType::width() const
     ASSERT(element());
     Ref<HTMLInputElement> element(*this->element());
 
-    element->document().updateLayout();
+    element->document().updateLayout({ LayoutOptions::ContentVisibilityForceLayout }, element.ptr());
 
     if (auto* renderer = element->renderer())
         return adjustForAbsoluteZoom(downcast<RenderBox>(*renderer).contentWidth(), *renderer);
@@ -215,6 +217,11 @@ unsigned ImageInputType::width() const
 String ImageInputType::resultForDialogSubmit() const
 {
     return makeString(m_clickLocation.x(), ',', m_clickLocation.y());
+}
+
+bool ImageInputType::dirAutoUsesValue() const
+{
+    return false;
 }
 
 } // namespace WebCore

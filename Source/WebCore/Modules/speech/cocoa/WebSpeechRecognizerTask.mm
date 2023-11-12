@@ -101,11 +101,8 @@ NS_ASSUME_NONNULL_BEGIN
         [_request setRequiresOnDeviceRecognition:YES];
     [_request setShouldReportPartialResults:interimResults];
     [_request setTaskHint:SFSpeechRecognitionTaskHintDictation];
-
-#if USE(APPLE_INTERNAL_SDK)
     [_request setDetectMultipleUtterances:YES];
     [_request _setMaximumRecognitionDuration:maximumRecognitionDuration];
-#endif
 
     _task = [_recognizer recognitionTaskWithRequest:_request.get() delegate:self];
     return self;
@@ -122,7 +119,7 @@ NS_ASSUME_NONNULL_BEGIN
             double confidence = [segment confidence];
             maxConfidence = maxConfidence < confidence ? confidence : maxConfidence;
         }
-        alternatives.uncheckedAppend(WebCore::SpeechRecognitionAlternativeData { [transcription formattedString], maxConfidence });
+        alternatives.append(WebCore::SpeechRecognitionAlternativeData { [transcription formattedString], maxConfidence });
         if (alternatives.size() == _maxAlternatives)
             break;
     }
@@ -220,12 +217,14 @@ NS_ASSUME_NONNULL_BEGIN
 - (void)speechRecognitionTask:(SFSpeechRecognitionTask *)task didFinishRecognition:(SFSpeechRecognitionResult *)recognitionResult
 {
     ASSERT(isMainThread());
+
+    if (task.state == SFSpeechRecognitionTaskStateCanceling || (!_doMultipleRecognitions && task.state == SFSpeechRecognitionTaskStateCompleted))
+        return;
+
     [self callbackWithTranscriptions:recognitionResult.transcriptions isFinal:YES];
 
-    if (!_doMultipleRecognitions) {
-        [self sendSpeechEndIfNeeded];
-        [self sendEndIfNeeded];
-    }
+    if (!_doMultipleRecognitions)
+        [self stop];
 }
 
 - (void)speechRecognitionTaskWasCancelled:(SFSpeechRecognitionTask *)task

@@ -23,8 +23,7 @@
  * THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifndef ProcessThrottlerClient_h
-#define ProcessThrottlerClient_h
+#pragma once
 
 #include <wtf/CompletionHandler.h>
 
@@ -42,9 +41,9 @@ public:
     virtual void sendProcessDidResume(ResumeReason) = 0;
     virtual void didChangeThrottleState(ProcessThrottleState) { };
     virtual ASCIILiteral clientName() const = 0;
+    virtual String environmentIdentifier() const { return emptyString(); }
+    virtual void prepareToDropLastAssertion(CompletionHandler<void()>&& completionHandler) { completionHandler(); }
+    virtual void didDropLastAssertion() { }
 };
 
 } // namespace WebKit
-
-#endif // ProcessThrottlerClient_h
-

@@ -196,7 +196,7 @@ def check_flatpak(verbose=True):
                                   " how to install it for your distribution at:\n"
                                   "    * https://flatpak.org/\n", required_version,
                                   sys.argv[0])
-            return ()
+        return ()
 
     def comparable_version(version):
         return tuple(map(int, (version.split("."))))
@@ -698,7 +698,7 @@ class WebkitFlatpak:
         if building:
             Console.message("Building local dependencies from %s ", src_dir)
             if self.run_in_sandbox('meson', 'compile', '-C', sandbox_build_dir, building_local_deps=True, start_sccache=False) != 0:
-                raise RuntimeError('Error while building local dependencies.')
+                raise RuntimeError(f'Error while building local dependencies in {sandbox_build_dir}')
 
         command = ['meson', 'devenv', '-C', sandbox_build_dir, '--dump']
         local_env = self.run_in_sandbox(*command, building_local_deps=True, start_sccache=False, gather_output=True)
@@ -878,6 +878,7 @@ class WebkitFlatpak:
         env_var_prefixes_to_keep = [
             "G",
             "CCACHE",
+            "COG",
             "EGL",
             "GIGACAGE",
             "GTK",
@@ -1272,7 +1273,7 @@ class WebkitFlatpak:
                                        self.flathub_repo, arch))
         packages.append(FlatpakPackage("org.freedesktop.Sdk.Extension.rust-stable", SDK_BRANCH,
                                        self.flathub_repo, arch))
-        packages.append(FlatpakPackage("org.freedesktop.Platform.GL.default", SDK_BRANCH,
+        packages.append(FlatpakPackage("org.freedesktop.Platform.GL.default", f"{SDK_BRANCH}-extra",
                                        self.flathub_repo, arch))
         return packages
 
@@ -1327,7 +1328,7 @@ def is_sandboxed():
 
 
 def run_in_sandbox_if_available(args):
-    if os.environ.get('WEBKIT_JHBUILD', '0') == '1':
+    if os.environ.get('WEBKIT_JHBUILD') == '1' or os.environ.get('WEBKIT_BUILD_USE_SYSTEM_LIBRARIES') == '1':
         return None
 
     os.environ["FLATPAK_USER_DIR"] = os.environ.get("WEBKIT_FLATPAK_USER_DIR", FLATPAK_USER_DIR_PATH)

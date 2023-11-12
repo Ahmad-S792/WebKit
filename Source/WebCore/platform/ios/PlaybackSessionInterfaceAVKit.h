@@ -49,8 +49,7 @@ class WebPlaybackSessionChangeObserver;
 
 class WEBCORE_EXPORT PlaybackSessionInterfaceAVKit
     : public PlaybackSessionModelClient
-    , public RefCounted<PlaybackSessionInterfaceAVKit>
-    , public CanMakeWeakPtr<PlaybackSessionInterfaceAVKit> {
+    , public RefCounted<PlaybackSessionInterfaceAVKit> {
 
 public:
     static Ref<PlaybackSessionInterfaceAVKit> create(PlaybackSessionModel& model)
@@ -78,6 +77,13 @@ public:
     void invalidate();
 
     WebAVPlayerController *playerController() const { return m_playerController.get(); }
+
+#if !RELEASE_LOG_DISABLED
+    const void* logIdentifier() const;
+    const Logger* loggerPtr() const;
+    const char* logClassName() const { return "PlaybackSessionInterfaceAVKit"; };
+    WTFLogChannel& logChannel() const;
+#endif
 
 private:
     PlaybackSessionInterfaceAVKit(PlaybackSessionModel&);

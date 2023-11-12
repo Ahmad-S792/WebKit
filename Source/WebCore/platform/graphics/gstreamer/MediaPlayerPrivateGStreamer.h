@@ -34,6 +34,7 @@
 #include "MainThreadNotifier.h"
 #include "MediaPlayerPrivate.h"
 #include "PlatformLayer.h"
+#include "PlatformMediaResourceLoader.h"
 #include "TrackPrivateBaseGStreamer.h"
 #include <glib.h>
 #include <gst/gst.h>
@@ -44,6 +45,7 @@
 #include <wtf/Forward.h>
 #include <wtf/Lock.h>
 #include <wtf/LoggerHelper.h>
+#include <wtf/OptionSet.h>
 #include <wtf/RunLoop.h>
 #include <wtf/WeakPtr.h>
 #include <wtf/text/AtomStringHash.h>
@@ -51,20 +53,16 @@
 typedef struct _GstMpegtsSection GstMpegtsSection;
 
 #if USE(GSTREAMER_GL)
-#if USE(LIBEPOXY)
 // Include the <epoxy/gl.h> header before <gst/gl/gl.h>.
 #include <epoxy/gl.h>
-#endif // USE(LIBEPOXY)
-
 #define GST_USE_UNSTABLE_API
 #include <gst/gl/gl.h>
 #undef GST_USE_UNSTABLE_API
 #endif
 
-#if USE(TEXTURE_MAPPER_GL)
-#include "TextureMapperGL.h"
+#if USE(TEXTURE_MAPPER)
 #if USE(NICOSIA)
-#include "NicosiaContentLayerTextureMapperImpl.h"
+#include "NicosiaContentLayer.h"
 #else
 #include "TextureMapperPlatformLayerProxyProvider.h"
 #endif
@@ -77,21 +75,16 @@ typedef struct _GstMpegtsSection GstMpegtsSection;
 typedef struct _GstStreamVolume GstStreamVolume;
 typedef struct _GstVideoInfo GstVideoInfo;
 
-#if USE(WPE_VIDEO_PLANE_DISPLAY_DMABUF)
-struct wpe_video_plane_display_dmabuf_source;
-#endif
-
 namespace WebCore {
 
-class BitmapTextureGL;
+class BitmapTexture;
 class GLContext;
 class GraphicsContext;
 class GraphicsContextGL;
 class IntSize;
 class IntRect;
-class VideoTextureCopierGStreamer;
 
-#if USE(TEXTURE_MAPPER_GL)
+#if USE(TEXTURE_MAPPER)
 class TextureMapperPlatformLayerProxy;
 #endif
 
@@ -109,6 +102,8 @@ class VideoTrackPrivateGStreamer;
 class GBMBufferSwapchain;
 #endif
 
+enum class TextureMapperFlags : uint16_t;
+
 void registerWebKitGStreamerElements();
 
 // Use eager initialization for the WeakPtrFactory since we construct WeakPtrs on another thread.
@@ -117,9 +112,9 @@ class MediaPlayerPrivateGStreamer : public MediaPlayerPrivateInterface
 #if !RELEASE_LOG_DISABLED
     , private LoggerHelper
 #endif
-#if USE(TEXTURE_MAPPER_GL)
+#if USE(TEXTURE_MAPPER)
 #if USE(NICOSIA)
-    , public Nicosia::ContentLayerTextureMapperImpl::Client
+    , public Nicosia::ContentLayer::Client
 #else
     , public PlatformLayer
 #endif
@@ -147,11 +142,12 @@ public:
     void play() override;
     void pause() override;
     bool paused() const final;
+    bool ended() const final;
     bool seeking() const override { return m_isSeeking; }
-    void seek(const MediaTime&) override;
+    void seekToTarget(const SeekTarget&) override;
     void setRate(float) override;
     double rate() const final;
-    void setPreservesPitch(bool) final; 
+    void setPreservesPitch(bool) final;
     void setPreload(MediaPlayer::Preload) final;
     FloatSize naturalSize() const final;
     void setVolume(float) final;
@@ -159,7 +155,8 @@ public:
     void setMuted(bool) final;
     MediaPlayer::NetworkState networkState() const final;
     MediaPlayer::ReadyState readyState() const final;
-    void setPageIsVisible(bool visible) final { m_visible = visible; }
+    void setPageIsVisible(bool visible, String&&) final { m_visible = visible; }
+    void setVisibleInViewport(bool isVisible) final;
     void setPresentationSize(const IntSize&) final;
     // Prefer MediaTime based methods over float based.
     float duration() const final { return durationMediaTime().toFloat(); }
@@ -168,9 +165,7 @@ public:
     float currentTime() const final { return currentMediaTime().toFloat(); }
     double currentTimeDouble() const final { return currentMediaTime().toDouble(); }
     MediaTime currentMediaTime() const override;
-    std::unique_ptr<PlatformTimeRanges> buffered() const override;
-    void seek(float time) final { seek(MediaTime::createWithFloat(time)); }
-    void seekDouble(double time) final { seek(MediaTime::createWithDouble(time)); }
+    const PlatformTimeRanges& buffered() const override;
     float maxTimeSeekable() const final { return maxMediaTimeSeekable().toFloat(); }
     MediaTime maxMediaTimeSeekable() const override;
     double minTimeSeekable() const final { return minMediaTimeSeekable().toFloat(); }
@@ -188,12 +183,15 @@ public:
     MediaPlayer::MovieLoadType movieLoadType() const final;
 
     std::optional<VideoPlaybackQualityMetrics> videoPlaybackQualityMetrics() final;
+    unsigned decodedFrameCount() const final;
+    unsigned droppedFrameCount() const final;
     void acceleratedRenderingStateChanged() final;
     bool performTaskAtMediaTime(Function<void()>&&, const MediaTime&) override;
+    void isLoopingChanged() final;
 
-#if USE(TEXTURE_MAPPER_GL)
+#if USE(TEXTURE_MAPPER)
     PlatformLayer* platformLayer() const override;
-#if PLATFORM(WIN_CAIRO)
+#if PLATFORM(WIN)
     // FIXME: Accelerated rendering has not been implemented for WinCairo yet.
     bool supportsAcceleratedRendering() const override { return false; }
 #else
@@ -210,10 +208,6 @@ public:
     void handleProtectionEvent(GstEvent*);
 #endif
 
-#if USE(GSTREAMER_GL)
-    bool copyVideoTextureToPlatformTexture(GraphicsContextGL*, PlatformGLObject, GCGLenum, GCGLint, GCGLenum, GCGLenum, GCGLenum, bool, bool) override;
-    RefPtr<NativeImage> nativeImageForCurrentTime() override;
-#endif
     RefPtr<VideoFrame> videoFrameForCurrentTime() override;
 
     void updateEnabledVideoTrack();
@@ -229,7 +223,7 @@ public:
     void handleStreamCollectionMessage(GstMessage*);
     void handleMessage(GstMessage*);
 
-    void triggerRepaint(GstSample*);
+    void triggerRepaint(GRefPtr<GstSample>&&);
 #if USE(GSTREAMER_GL)
     void flushCurrentBuffer();
 #endif
@@ -250,6 +244,8 @@ public:
     // to avoid deadlocks from threads in the playback pipeline waiting for the main thread.
     AbortableTaskQueue& sinkTaskQueue() { return m_sinkTaskQueue; }
 
+    String codecForStreamId(const String& streamId);
+
 protected:
     enum MainThreadNotification {
         VideoChanged = 1 << 0,
@@ -259,6 +255,16 @@ protected:
         MuteChanged = 1 << 4,
         TextChanged = 1 << 5,
         StreamCollectionChanged = 1 << 7
+    };
+
+    enum class PlaybackRatePausedState {
+        ManuallyPaused, // Initialization or user explicitly paused. This takes preference over RatePaused. You don't
+                        // transition from Manually to Rate Paused unless there is a play while rate == 0.
+        RatePaused, // Pipeline was playing and rate was set to zero.
+        ShouldMoveToPlaying, // Pipeline was paused because of zero rate and it should be playing. This is not a
+                             // definitive state, just an operational transition from RatePaused to Playing to keep the
+                             // pipeline state changes contained in updateStates.
+        Playing, // Pipeline is playing and it should be.
     };
 
     static bool isAvailable();
@@ -281,7 +287,7 @@ protected:
     GstElement* createVideoSinkGL();
 #endif
 
-#if USE(TEXTURE_MAPPER_GL)
+#if USE(TEXTURE_MAPPER)
     void pushTextureToCompositor();
 #if USE(NICOSIA)
     void swapBuffersIfNeeded() final;
@@ -304,7 +310,6 @@ protected:
     void repaint();
     void cancelRepaint(bool destroying = false);
 
-    static void repaintCallback(MediaPlayerPrivateGStreamer*, GstSample*);
     static void repaintCancelledCallback(MediaPlayerPrivateGStreamer*);
 
     void notifyPlayerOfVolumeChange();
@@ -318,25 +323,24 @@ protected:
     template <typename TrackPrivateType> void notifyPlayerOfTrack();
 
     void ensureAudioSourceProvider();
+    void checkPlayingConsistency();
 
-    virtual bool doSeek(const MediaTime& position, float rate, GstSeekFlags);
+    virtual bool doSeek(const SeekTarget& position, float rate);
     void invalidateCachedPosition() const;
+    void ensureSeekFlags();
 
     static void sourceSetupCallback(MediaPlayerPrivateGStreamer*, GstElement*);
-    static void videoChangedCallback(MediaPlayerPrivateGStreamer*);
-    static void audioChangedCallback(MediaPlayerPrivateGStreamer*);
-    static void textChangedCallback(MediaPlayerPrivateGStreamer*);
 
-    void timeChanged();
+    void timeChanged(const MediaTime&); // If MediaTime is valid, indicates that a seek has completed.
     void loadingFailed(MediaPlayer::NetworkState, MediaPlayer::ReadyState = MediaPlayer::ReadyState::HaveNothing, bool forceNotifications = false);
     void loadStateChanged();
 
-#if USE(TEXTURE_MAPPER_GL)
+#if USE(TEXTURE_MAPPER)
     void updateTextureMapperFlags();
 #endif
 
     Ref<MainThreadNotifier<MainThreadNotification>> m_notifier;
-    MediaPlayer* m_player;
+    ThreadSafeWeakPtr<MediaPlayer> m_player;
     String m_referrer;
     mutable std::optional<MediaTime> m_cachedPosition;
     mutable MediaTime m_cachedDuration;
@@ -346,20 +350,33 @@ protected:
     bool m_didErrorOccur { false };
     mutable bool m_isEndReached { false };
     mutable std::optional<bool> m_isLiveStream;
+
+    // m_isPaused represents:
+    // A) In MSE streams, whether playback or pause has last been requested with pause() and play(),
+    //    defaulting to true before playback starts.
+    // B) In live streams, whether at an unspecified point in time after the main thread tick in
+    //    which play() or pause() are called, whether the playback was paused or resumed.
+    // C) In regular non-live streams, it represents whether playback has ended with a EOS with
+    //    looping set to false since the pipeline successfully pre-rolled.
+    //
+    // FIXME m_isPaused should represent something useful and consistent for all the possible cases
+    // (regular playback, live playback, MSE, WebRTC) or be deleted from MediaPlayerPrivateGStreamer.
+    // https://bugs.webkit.org/show_bug.cgi?id=260385
     bool m_isPaused { true };
     float m_playbackRate { 1 };
+    PlaybackRatePausedState m_playbackRatePausedState { PlaybackRatePausedState::ManuallyPaused };
     GstState m_currentState { GST_STATE_NULL };
     GstState m_oldState { GST_STATE_NULL };
     GstState m_requestedState { GST_STATE_VOID_PENDING };
     bool m_shouldResetPipeline { false };
     bool m_isSeeking { false };
     bool m_isSeekPending { false };
-    MediaTime m_seekTime;
+    SeekTarget m_seekTarget;
     GRefPtr<GstElement> m_source { nullptr };
     bool m_areVolumeAndMuteInitialized { false };
 
-#if USE(TEXTURE_MAPPER_GL)
-    TextureMapperGL::Flags m_textureMapperFlags { TextureMapperGL::NoFlag };
+#if USE(TEXTURE_MAPPER)
+    OptionSet<TextureMapperFlags> m_textureMapperFlags;
 #endif
 
     GRefPtr<GstStreamVolume> m_volumeElement;
@@ -380,10 +397,6 @@ protected:
 
     bool m_isBeingDestroyed WTF_GUARDED_BY_LOCK(m_drawLock) { false };
 
-#if USE(GSTREAMER_GL)
-    std::unique_ptr<VideoTextureCopierGStreamer> m_videoTextureCopier;
-#endif
-
     ImageOrientation m_videoSourceOrientation;
 
 #if ENABLE(ENCRYPTED_MEDIA)
@@ -398,6 +411,7 @@ protected:
 #endif
 
     std::optional<GstVideoDecoderPlatform> m_videoDecoderPlatform;
+    GstSeekFlags m_seekFlags;
 
     String errorMessage() const override { return m_errorMessage; }
 
@@ -442,15 +456,16 @@ private:
     void commitLoad();
     void fillTimerFired();
     void didEnd();
+    void setPlaybackFlags(bool isMediaStream);
 
     GstElement* createVideoSink();
     GstElement* createAudioSink();
-    GstElement* audioSink() const;
+    GstElement* audioSink() const { return m_audioSink.get(); }
 
     bool isMediaStreamPlayer() const;
 
     friend class MediaPlayerFactoryGStreamer;
-    static void getSupportedTypes(HashSet<String, ASCIICaseInsensitiveHash>&);
+    static void getSupportedTypes(HashSet<String>&);
     static MediaPlayer::SupportsType supportsType(const MediaEngineSupportParameters&);
 
     void syncOnClock(bool sync);
@@ -460,7 +475,7 @@ private:
 
     virtual void updateStates();
     void finishSeek();
-    virtual void asyncStateChangeDone() { }
+    virtual void didPreroll() { }
 
     void createGSTPlayBin(const URL&);
 
@@ -487,9 +502,12 @@ private:
     void configureDownloadBuffer(GstElement*);
     static void downloadBufferFileCreatedCallback(MediaPlayerPrivateGStreamer*);
 
-    void configureDepayloader(GstElement*);
+    void configureAudioDecoder(GstElement*);
     void configureVideoDecoder(GstElement*);
     void configureElement(GstElement*);
+#if PLATFORM(BROADCOM) || USE(WESTEROS_SINK) || PLATFORM(AMLOGIC) || PLATFORM(REALTEK)
+    void configureElementPlatformQuirks(GstElement*);
+#endif
 
     void setPlaybinURL(const URL& urlString);
 
@@ -513,7 +531,6 @@ private:
     GRefPtr<GstElement> m_textSink;
     GUniquePtr<GstStructure> m_mediaLocations;
     int m_mediaLocationCurrentIndex { 0 };
-    bool m_isPlaybackRatePaused { false };
     MediaTime m_timeOfOverlappingSeek;
     // Last playback rate sent through a GStreamer seek.
     float m_lastPlaybackRate { 1 };
@@ -529,7 +546,7 @@ private:
     Lock m_drawLock;
     RunLoop::Timer m_drawTimer WTF_GUARDED_BY_LOCK(m_drawLock);
     RunLoop::Timer m_readyTimerHandler;
-#if USE(TEXTURE_MAPPER_GL)
+#if USE(TEXTURE_MAPPER)
 #if USE(NICOSIA)
     RefPtr<Nicosia::ContentLayer> m_nicosiaLayer;
 #else
@@ -547,6 +564,7 @@ private:
     RefPtr<MediaStreamPrivate> m_streamPrivate;
 #endif
 
+    bool m_isMuted { false };
     bool m_visible { false };
 
     // playbin3 only:
@@ -562,7 +580,7 @@ private:
     AtomString m_requestedTextStreamId;
 
 #if ENABLE(WEB_AUDIO)
-    std::unique_ptr<AudioSourceProviderGStreamer> m_audioSourceProvider;
+    RefPtr<AudioSourceProviderGStreamer> m_audioSourceProvider;
 #endif
     GRefPtr<GstElement> m_downloadBuffer;
 
@@ -579,7 +597,6 @@ private:
     uint64_t m_networkReadPosition { 0 };
     mutable uint64_t m_readPositionAtLastDidLoadingProgress { 0 };
 
-    GRefPtr<GstElement> m_fpsSink { nullptr };
     uint64_t m_totalVideoFrames { 0 };
     uint64_t m_droppedVideoFrames { 0 };
     uint64_t m_decodedVideoFrames { 0 };
@@ -590,9 +607,7 @@ private:
     std::optional<VideoFrameMetadata> videoFrameMetadata() final;
     uint64_t m_sampleCount { 0 };
     uint64_t m_lastVideoFrameMetadataSampleCount { 0 };
-#if USE(WPE_VIDEO_PLANE_DISPLAY_DMABUF)
-    GUniquePtr<struct wpe_video_plane_display_dmabuf_source> m_wpeVideoPlaneDisplayDmaBuf;
-#endif
+    mutable PlatformTimeRanges m_buffered;
 #if !RELEASE_LOG_DISABLED
     Ref<const Logger> m_logger;
     const void* m_logIdentifier;
@@ -607,6 +622,22 @@ private:
     GRefPtr<GstStreamCollection> m_streamCollection;
 
     AbortableTaskQueue m_sinkTaskQueue;
+
+    bool m_didTryToRecoverPlayingState { false };
+
+    bool m_isVisibleInViewport { true };
+    GstState m_invisiblePlayerState { GST_STATE_VOID_PENDING };
+
+    // Specific to MediaStream playback.
+    MediaTime m_startTime;
+    MediaTime m_pausedTime;
+
+    void setupCodecProbe(GstElement*);
+    HashMap<String, String> m_codecs;
+
+    bool isSeamlessSeekingEnabled() const { return m_seekFlags & (1 << GST_SEEK_FLAG_SEGMENT); }
+
+    RefPtr<PlatformMediaResourceLoader> m_loader;
 };
 
 }

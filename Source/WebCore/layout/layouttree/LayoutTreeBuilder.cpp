@@ -32,7 +32,6 @@
 #include "HTMLTableCellElement.h"
 #include "HTMLTableColElement.h"
 #include "HTMLTableElement.h"
-#include "InlineFormattingState.h"
 #include "LayoutBox.h"
 #include "LayoutBoxGeometry.h"
 #include "LayoutChildIterator.h"
@@ -51,7 +50,7 @@
 #include "RenderImage.h"
 #include "RenderInline.h"
 #include "RenderLineBreak.h"
-#include "RenderStyle.h"
+#include "RenderStyleSetters.h"
 #include "RenderTable.h"
 #include "RenderTableCaption.h"
 #include "RenderTableCell.h"
@@ -87,6 +86,22 @@ static std::optional<LayoutSize> accumulatedOffsetForInFlowPositionedContinuatio
     return block.relativePositionOffset();
 }
 
+template<typename CharacterType>
+static bool canUseSimplifiedTextMeasuringForCharacters(std::span<const CharacterType> characters, const FontCascade& fontCascade, bool whitespaceIsCollapsed)
+{
+    auto& primaryFont = fontCascade.primaryFont();
+    auto* rawCharacters = characters.data();
+    for (unsigned i = 0; i < characters.size(); ++i) {
+        auto character = rawCharacters[i]; // Not using characters[i] to bypass the bounds check.
+        if (!WidthIterator::characterCanUseSimplifiedTextMeasuring(character, whitespaceIsCollapsed))
+            return false;
+        auto glyphData = fontCascade.glyphDataForCharacter(character, false);
+        if (!glyphData.isValid() || glyphData.font != &primaryFont)
+            return false;
+    }
+    return true;
+}
+
 static bool canUseSimplifiedTextMeasuring(StringView content, const FontCascade& fontCascade, bool whitespaceIsCollapsed)
 {
     if (fontCascade.codePath(TextRun(content)) == FontCascade::CodePath::Complex)
@@ -95,15 +110,9 @@ static bool canUseSimplifiedTextMeasuring(StringView content, const FontCascade&
     if (fontCascade.wordSpacing() || fontCascade.letterSpacing())
         return false;
 
-    auto& primaryFont = fontCascade.primaryFont();
-    for (unsigned i = 0; i < content.length(); ++i) {
-        if (!WidthIterator::characterCanUseSimplifiedTextMeasuring(content[i], whitespaceIsCollapsed))
-            return false;
-        auto glyphData = fontCascade.glyphDataForCharacter(content[i], false);
-        if (!glyphData.isValid() || glyphData.font != &primaryFont)
-            return false;
-    }
-    return true;
+    if (content.is8Bit())
+        return canUseSimplifiedTextMeasuringForCharacters(content.span8(), fontCascade, whitespaceIsCollapsed);
+    return canUseSimplifiedTextMeasuringForCharacters(content.span16(), fontCascade, whitespaceIsCollapsed);
 }
 
 std::unique_ptr<Layout::LayoutTree> TreeBuilder::buildLayoutTree(const RenderView& renderView)
@@ -353,9 +362,11 @@ void TreeBuilder::buildSubTree(const RenderElement& parentRenderer, ElementBox& 
 #if ENABLE(TREE_DEBUGGING)
 void showInlineTreeAndRuns(TextStream& stream, const LayoutState& layoutState, const ElementBox& inlineFormattingRoot, size_t depth)
 {
-    auto& inlineFormattingState = layoutState.formattingStateForInlineFormattingContext(inlineFormattingRoot);
-    auto& lines = inlineFormattingState.lines();
-    auto& boxes = inlineFormattingState.boxes();
+    UNUSED_PARAM(layoutState);
+    UNUSED_PARAM(inlineFormattingRoot);
+    // FIXME: Populate inline display content.
+    auto lines = InlineDisplay::Lines { };
+    auto boxes = InlineDisplay::Boxes { };
 
     for (size_t lineIndex = 0; lineIndex < lines.size(); ++lineIndex) {
         auto addSpacing = [&] {
@@ -409,13 +420,13 @@ void showInlineTreeAndRuns(TextStream& stream, const LayoutState& layoutState, c
                 continue;
             addSpacing();
             stream << "    ";
-            if (box.text())
+            if (box.isTextOrSoftLineBreak())
                 stream << "text box";
             else
                 stream << "box box";
             stream << " at (" << box.left() << "," << box.top() << ") size " << box.width() << "x" << box.height();
-            if (box.text())
-                stream << " box(" << box.text()->start() << ", " << box.text()->end() << ")";
+            if (box.isTextOrSoftLineBreak())
+                stream << " box(" << box.text().start() << ", " << box.text().end() << ")";
             stream.nextLine();
         }
 
@@ -545,7 +556,7 @@ void showLayoutTree(const InitialContainingBlock& initialContainingBlock)
 
 void printLayoutTreeForLiveDocuments()
 {
-    for (const auto* document : Document::allDocuments()) {
+    for (auto& document : Document::allDocuments()) {
         if (!document->renderView())
             continue;
         if (document->frame() && document->frame()->isMainFrame())
@@ -554,7 +565,7 @@ void printLayoutTreeForLiveDocuments()
         // FIXME: Need to find a way to output geometry without layout context.
         auto& renderView = *document->renderView();
         auto layoutTree = TreeBuilder::buildLayoutTree(renderView);
-        auto layoutState = LayoutState { *document, layoutTree->root() };
+        auto layoutState = LayoutState { document, layoutTree->root() };
 
         LayoutContext(layoutState).layout(renderView.size());
         showLayoutTree(downcast<InitialContainingBlock>(layoutState.root()), &layoutState);

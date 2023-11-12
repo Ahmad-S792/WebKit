@@ -34,12 +34,11 @@
 #include "Document.h"
 #include "ElementInlines.h"
 #include "EventNames.h"
-#include "Frame.h"
 #include "HTMLImageLoader.h"
 #include "HTMLNames.h"
-#include "HTMLParserIdioms.h"
 #include "ImageBuffer.h"
 #include "JSDOMPromiseDeferred.h"
+#include "LocalFrame.h"
 #include "Logging.h"
 #include "Page.h"
 #include "Performance.h"
@@ -48,11 +47,12 @@
 #include "RenderVideo.h"
 #include "ScriptController.h"
 #include "Settings.h"
+#include "VideoFrameMetadata.h"
 #include <wtf/IsoMallocInlines.h>
 #include <wtf/text/TextStream.h>
 
 #if ENABLE(VIDEO_PRESENTATION_MODE)
-#include "VideoFullscreenModel.h"
+#include "VideoPresentationModel.h"
 #endif
 
 #if ENABLE(PICTURE_IN_PICTURE_API)
@@ -70,7 +70,6 @@ inline HTMLVideoElement::HTMLVideoElement(const QualifiedName& tagName, Document
     : HTMLMediaElement(tagName, document, createdByParser)
 {
     ASSERT(hasTagName(videoTag));
-    setHasCustomStyleResolveCallbacks();
     m_defaultPosterURL = AtomString { document.settings().defaultVideoPosterURL() };
 }
 
@@ -133,7 +132,7 @@ bool HTMLVideoElement::hasPresentationalHintsForAttribute(const QualifiedName& n
     return HTMLMediaElement::hasPresentationalHintsForAttribute(name);
 }
 
-void HTMLVideoElement::parseAttribute(const QualifiedName& name, const AtomString& value)
+void HTMLVideoElement::attributeChanged(const QualifiedName& name, const AtomString& oldValue, const AtomString& newValue, AttributeModificationReason attributeModificationReason)
 {
     if (name == posterAttr) {
         if (shouldDisplayPosterImage()) {
@@ -148,15 +147,11 @@ void HTMLVideoElement::parseAttribute(const QualifiedName& name, const AtomStrin
         }
     }
     else {
-        HTMLMediaElement::parseAttribute(name, value);    
+        HTMLMediaElement::attributeChanged(name, oldValue, newValue, attributeModificationReason);
 
 #if PLATFORM(IOS_FAMILY) && ENABLE(WIRELESS_PLAYBACK_TARGET)
-        if (name == webkitairplayAttr) {
-            bool disabled = false;
-            if (equalLettersIgnoringASCIICase(attributeWithoutSynchronization(HTMLNames::webkitairplayAttr), "deny"_s))
-                disabled = true;
-            mediaSession().setWirelessVideoPlaybackDisabled(disabled);
-        }
+        if (name == webkitairplayAttr)
+            mediaSession().setWirelessVideoPlaybackDisabled(isWirelessPlaybackTargetDisabled());
 #endif
     }
 }
@@ -225,18 +220,17 @@ unsigned HTMLVideoElement::videoHeight() const
     return clampToUnsigned(player()->naturalSize().height());
 }
 
-void HTMLVideoElement::scheduleResizeEvent()
+void HTMLVideoElement::scheduleResizeEvent(const FloatSize& naturalSize)
 {
-    m_lastReportedVideoWidth = videoWidth();
-    m_lastReportedVideoHeight = videoHeight();
+    m_lastReportedNaturalSize = naturalSize;
+    ALWAYS_LOG(LOGIDENTIFIER, naturalSize);
     scheduleEvent(eventNames().resizeEvent);
 }
 
-void HTMLVideoElement::scheduleResizeEventIfSizeChanged()
+void HTMLVideoElement::scheduleResizeEventIfSizeChanged(const FloatSize& naturalSize)
 {
-    if (m_lastReportedVideoWidth == videoWidth() && m_lastReportedVideoHeight == videoHeight())
-        return;
-    scheduleResizeEvent();
+    if (m_lastReportedNaturalSize != naturalSize)
+        scheduleResizeEvent(naturalSize);
 }
 
 bool HTMLVideoElement::isURLAttribute(const Attribute& attribute) const
@@ -246,8 +240,8 @@ bool HTMLVideoElement::isURLAttribute(const Attribute& attribute) const
 
 const AtomString& HTMLVideoElement::imageSourceURL() const
 {
-    const AtomString& url = attributeWithoutSynchronization(posterAttr);
-    if (!stripLeadingAndTrailingHTMLSpaces(url).isEmpty())
+    const auto& url = attributeWithoutSynchronization(posterAttr);
+    if (!StringView(url).containsOnly<isASCIIWhitespace<UChar>>())
         return url;
     return m_defaultPosterURL;
 }
@@ -285,7 +279,7 @@ void HTMLVideoElement::mediaPlayerFirstVideoFrameAvailable()
 
 std::optional<DestinationColorSpace> HTMLVideoElement::colorSpace() const
 {
-    RefPtr<MediaPlayer> player = HTMLMediaElement::player();
+    auto player = this->player();
     if (!player)
         return std::nullopt;
 
@@ -295,12 +289,7 @@ std::optional<DestinationColorSpace> HTMLVideoElement::colorSpace() const
 RefPtr<ImageBuffer> HTMLVideoElement::createBufferForPainting(const FloatSize& size, RenderingMode renderingMode, const DestinationColorSpace& colorSpace, PixelFormat pixelFormat) const
 {
     auto* hostWindow = document().view() && document().view()->root() ? document().view()->root()->hostWindow() : nullptr;
-
-    auto bufferOptions = bufferOptionsForRendingMode(renderingMode);
-    if (document().settings().displayListDrawingEnabled())
-        bufferOptions.add(ImageBufferOptions::UseDisplayList);
-
-    return ImageBuffer::create(size, RenderingPurpose::MediaPainting, 1, colorSpace, pixelFormat, bufferOptions, { hostWindow });
+    return ImageBuffer::create(size, RenderingPurpose::MediaPainting, 1, colorSpace, pixelFormat, bufferOptionsForRendingMode(renderingMode), hostWindow);
 }
 
 void HTMLVideoElement::paintCurrentFrameInContext(GraphicsContext& context, const FloatRect& destRect)
@@ -334,10 +323,11 @@ bool HTMLVideoElement::shouldGetNativeImageForCanvasDrawing() const
 
 RefPtr<NativeImage> HTMLVideoElement::nativeImageForCurrentTime()
 {
-    if (!player())
+    auto player = this->player();
+    if (!player)
         return nullptr;
 
-    return player()->nativeImageForCurrentTime();
+    return player->nativeImageForCurrentTime();
 }
 
 ExceptionOr<void> HTMLVideoElement::webkitEnterFullscreen()
@@ -349,7 +339,7 @@ ExceptionOr<void> HTMLVideoElement::webkitEnterFullscreen()
     // Generate an exception if this isn't called in response to a user gesture, or if the 
     // element does not support fullscreen, or the element is changing fullscreen mode.
     if (!mediaSession().fullscreenPermitted() || !supportsFullscreen(HTMLMediaElementEnums::VideoFullscreenModeStandard) || isChangingVideoFullscreenMode())
-        return Exception { InvalidStateError };
+        return Exception { ExceptionCode::InvalidStateError };
 
     enterFullscreen();
     return { };
@@ -423,7 +413,7 @@ unsigned HTMLVideoElement::webkitDroppedFrameCount() const
 
 URL HTMLVideoElement::posterImageURL() const
 {
-    String url = stripLeadingAndTrailingHTMLSpaces(imageSourceURL());
+    auto url = imageSourceURL().string().trim(isASCIIWhitespace);
     if (url.isEmpty())
         return URL();
     return document().completeURL(url);
@@ -678,6 +668,6 @@ void HTMLVideoElement::mediaPlayerEngineUpdated()
         player()->startVideoFrameMetadataGathering();
 }
 
-}
+} // namespace WebCore
 
-#endif
+#endif // ENABLE(VIDEO)

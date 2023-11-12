@@ -26,7 +26,10 @@
 import {stat} from "fs";
 import path from "path";
 import util from "util";
+import which from "which";
 import {execFile, spawn} from "child_process";
+import { HttpsProxyAgent } from 'https-proxy-agent';
+import LogLevel from "@slack/rtm-api";
 import SlackRTMAPI from "@slack/rtm-api";
 import AsyncTaskQueue from "./AsyncTaskQueue.mjs";
 import {dataLogLn, escapeForSlackText, isASCII, rootDirectoryOfWebKit} from "./Utility.mjs";
@@ -185,8 +188,8 @@ e.g. \`dry-revert 260220 Ensure it is working after refactoring\`
             operation: this.youThereCommand.bind(this),
         });
 
-
-        this._rtm = new SlackRTMAPI.RTMClient(process.env.SLACK_TOKEN);
+        const proxy = new HttpsProxyAgent(process.env.http_proxy);
+        this._rtm = new SlackRTMAPI.RTMClient(process.env.SLACK_TOKEN, { agent: proxy, logLevel: LogLevel.DEBUG });
         this._rtm.on("message", async (event) => {
             if (event.type !== "message")
                 return;
@@ -469,7 +472,9 @@ Type \`help COMMAND\` for help on my individual commands.`,
         let results;
         try {
             const webkitPatchPath = path.resolve("BotWebKit", "Tools", "Scripts", "webkit-patch");
-            results = await execFileAsync(webkitPatchPath, [
+            var pythonPath = which.sync('python3')
+            results = await execFileAsync(pythonPath, [
+                webkitPatchPath,
                 "create-revert",
                 "--force-clean",
                 // In principle, we should pass --non-interactive here, but it
@@ -484,8 +489,10 @@ Type \`help COMMAND\` for help on my individual commands.`,
                 env: {
                     CHANGE_LOG_NAME: "Commit Queue",
                     CHANGE_LOG_EMAIL_ADDRESS: "commit-queue@webkit.org",
-                    webkit_bugzilla_username: process.env.webkitBugzillaUsername,
-                    webkit_bugzilla_password: process.env.webkitBugzillaPassword,
+                    WEBKIT_BUGZILLA_USERNAME: process.env.webkitBugzillaUsername,
+                    WEBKIT_BUGZILLA_PASSWORD: process.env.webkitBugzillaPassword,
+                    http_proxy: process.env.http_proxy,
+                    https_proxy: process.env.http_proxy,
                 },
                 timeout: defaultTimeoutForRevert,
                 maxBuffer: 1024 * 1024 * 50,

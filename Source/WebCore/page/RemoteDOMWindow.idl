@@ -43,8 +43,6 @@
 ] interface RemoteDOMWindow {
     [LegacyUnforgeable, ImplementedAs=self] readonly attribute WindowProxy window;
     [Replaceable] readonly attribute WindowProxy self;
-    [PutForwards=href, LegacyUnforgeable] readonly attribute Location? location; // FIXME: Should not be nullable.
-    [CallWith=IncumbentDocument] undefined close();
     readonly attribute boolean closed;
     [CallWith=IncumbentWindow] undefined focus();
     undefined blur();
@@ -53,5 +51,6 @@
     [LegacyUnforgeable] readonly attribute WindowProxy? top;
     readonly attribute WindowProxy? opener;
     [Replaceable] readonly attribute WindowProxy? parent;
-    [CallWith=CurrentGlobalObject&IncumbentWindow] undefined postMessage(any message, USVString targetOrigin, optional sequence<object> transfer = []);
 };
+
+RemoteDOMWindow includes DOMWindow;

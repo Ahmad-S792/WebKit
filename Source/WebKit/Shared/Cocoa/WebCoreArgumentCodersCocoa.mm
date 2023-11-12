@@ -80,23 +80,25 @@ namespace IPC {
 
 #if ENABLE(APPLE_PAY)
 
-#if HAVE(PASSKIT_INSTALLMENTS)
-
-void ArgumentCoder<WebCore::PaymentInstallmentConfiguration>::encode(Encoder& encoder, const WebCore::PaymentInstallmentConfiguration& configuration)
+template<> Class getClass<PKPayment>()
 {
-    encoder << configuration.platformConfiguration();
+    return PAL::getPKPaymentClass();
 }
 
-std::optional<WebCore::PaymentInstallmentConfiguration> ArgumentCoder<WebCore::PaymentInstallmentConfiguration>::decode(Decoder& decoder)
+template<> Class getClass<PKContact>()
 {
-    auto configuration = IPC::decode<PKPaymentInstallmentConfiguration>(decoder, PAL::getPKPaymentInstallmentConfigurationClass());
-    if (!configuration)
-        return std::nullopt;
-
-    return { WTFMove(*configuration) };
+    return PAL::getPKContactClass();
 }
 
-#endif // HAVE(PASSKIT_INSTALLMENTS)
+template<> Class getClass<PKPaymentMerchantSession>()
+{
+    return PAL::getPKPaymentMerchantSessionClass();
+}
+
+template<> Class getClass<PKPaymentMethod>()
+{
+    return PAL::getPKPaymentMethodClass();
+}
 
 void ArgumentCoder<WebCore::Payment>::encode(Encoder& encoder, const WebCore::Payment& payment)
 {
@@ -105,7 +107,7 @@ void ArgumentCoder<WebCore::Payment>::encode(Encoder& encoder, const WebCore::Pa
 
 std::optional<WebCore::Payment> ArgumentCoder<WebCore::Payment>::decode(Decoder& decoder)
 {
-    auto payment = IPC::decode<PKPayment>(decoder, PAL::getPKPaymentClass());
+    auto payment = decoder.decodeWithAllowedClasses<PKPayment>();
     if (!payment)
         return std::nullopt;
 
@@ -119,7 +121,7 @@ void ArgumentCoder<WebCore::PaymentContact>::encode(Encoder& encoder, const WebC
 
 std::optional<WebCore::PaymentContact> ArgumentCoder<WebCore::PaymentContact>::decode(Decoder& decoder)
 {
-    auto contact = IPC::decode<PKContact>(decoder, PAL::getPKContactClass());
+    auto contact = decoder.decodeWithAllowedClasses<PKContact>();
     if (!contact)
         return std::nullopt;
 
@@ -133,7 +135,7 @@ void ArgumentCoder<WebCore::PaymentMerchantSession>::encode(Encoder& encoder, co
 
 std::optional<WebCore::PaymentMerchantSession> ArgumentCoder<WebCore::PaymentMerchantSession>::decode(Decoder& decoder)
 {
-    auto paymentMerchantSession = IPC::decode<PKPaymentMerchantSession>(decoder, PAL::getPKPaymentMerchantSessionClass());
+    auto paymentMerchantSession = decoder.decodeWithAllowedClasses<PKPaymentMerchantSession>();
     if (!paymentMerchantSession)
         return std::nullopt;
 
@@ -147,7 +149,7 @@ void ArgumentCoder<WebCore::PaymentMethod>::encode(Encoder& encoder, const WebCo
 
 std::optional<WebCore::PaymentMethod> ArgumentCoder<WebCore::PaymentMethod>::decode(Decoder& decoder)
 {
-    auto paymentMethod = IPC::decode<PKPaymentMethod>(decoder, PAL::getPKPaymentMethodClass());
+    auto paymentMethod = decoder.decodeWithAllowedClasses<PKPaymentMethod>();
     if (!paymentMethod)
         return std::nullopt;
 
@@ -189,6 +191,12 @@ void ArgumentCoder<WebCore::ApplePaySessionPaymentRequest>::encode(Encoder& enco
 #endif
 #if ENABLE(APPLE_PAY_MULTI_MERCHANT_PAYMENTS)
     encoder << request.multiTokenContexts();
+#endif
+#if ENABLE(APPLE_PAY_DEFERRED_PAYMENTS)
+    encoder << request.deferredPaymentRequest();
+#endif
+#if ENABLE(APPLE_PAY_LATER_AVAILABILITY)
+    encoder << request.applePayLaterAvailability();
 #endif
 }
 
@@ -327,6 +335,22 @@ bool ArgumentCoder<WebCore::ApplePaySessionPaymentRequest>::decode(Decoder& deco
     request.setMultiTokenContexts(WTFMove(*multiTokenContexts));
 #endif
 
+#if ENABLE(APPLE_PAY_DEFERRED_PAYMENTS)
+    std::optional<std::optional<WebCore::ApplePayDeferredPaymentRequest>> deferredPaymentRequest;
+    decoder >> deferredPaymentRequest;
+    if (!deferredPaymentRequest)
+        return false;
+    request.setDeferredPaymentRequest(WTFMove(*deferredPaymentRequest));
+#endif
+
+#if ENABLE(APPLE_PAY_LATER_AVAILABILITY)
+    std::optional<std::optional<WebCore::ApplePayLaterAvailability>> applePayLaterAvailability;
+    decoder >> applePayLaterAvailability;
+    if (!applePayLaterAvailability)
+        return false;
+    request.setApplePayLaterAvailability(WTFMove(*applePayLaterAvailability));
+#endif
+
     return true;
 }
 
@@ -409,7 +433,7 @@ void ArgumentCoder<WebCore::PaymentSessionError>::encode(Encoder& encoder, const
 
 std::optional<WebCore::PaymentSessionError> ArgumentCoder<WebCore::PaymentSessionError>::decode(Decoder& decoder)
 {
-    auto platformError = IPC::decode<NSError>(decoder);
+    auto platformError = decoder.decode<RetainPtr<NSError>>();
     if (!platformError)
         return std::nullopt;
 
@@ -436,11 +460,10 @@ void ArgumentCoder<WebCore::Font>::encodePlatformData(Encoder& encoder, const We
     const auto& creationData = platformData.creationData();
     encoder << static_cast<bool>(creationData);
     if (creationData) {
-        WebKit::SharedMemory::Handle handle;
+        std::optional<WebKit::SharedMemory::Handle> handle;
         {
             auto sharedMemoryBuffer = WebKit::SharedMemory::copyBuffer(creationData->fontFaceData);
-            if (auto memoryHandle = sharedMemoryBuffer->createHandle(WebKit::SharedMemory::Protection::ReadOnly))
-                handle = WTFMove(*memoryHandle);
+            handle = sharedMemoryBuffer->createHandle(WebKit::SharedMemory::Protection::ReadOnly);
         }
         encoder << creationData->fontFaceData->size();
         encoder << WTFMove(handle);
@@ -453,47 +476,6 @@ void ArgumentCoder<WebCore::Font>::encodePlatformData(Encoder& encoder, const We
         encoder << string;
         encoder << adoptCF(CTFontCopyPostScriptName(ctFont)).get();
     }
-}
-
-static RetainPtr<CTFontDescriptorRef> findFontDescriptor(CFStringRef referenceURL, CFStringRef postScriptName)
-{
-    auto url = adoptCF(CFURLCreateWithString(kCFAllocatorDefault, referenceURL, nullptr));
-    if (!url)
-        return nullptr;
-    auto fontDescriptors = adoptCF(CTFontManagerCreateFontDescriptorsFromURL(url.get()));
-    if (!fontDescriptors || !CFArrayGetCount(fontDescriptors.get()))
-        return nullptr;
-    if (CFArrayGetCount(fontDescriptors.get()) == 1)
-        return static_cast<CTFontDescriptorRef>(CFArrayGetValueAtIndex(fontDescriptors.get(), 0));
-
-    for (CFIndex i = 0; i < CFArrayGetCount(fontDescriptors.get()); ++i) {
-        auto fontDescriptor = static_cast<CTFontDescriptorRef>(CFArrayGetValueAtIndex(fontDescriptors.get(), i));
-        auto currentPostScriptName = adoptCF(CTFontDescriptorCopyAttribute(fontDescriptor, kCTFontNameAttribute));
-        if (CFEqual(currentPostScriptName.get(), postScriptName))
-            return fontDescriptor;
-    }
-    return nullptr;
-}
-
-static RetainPtr<CTFontRef> createCTFont(CFDictionaryRef attributes, float size, CTFontDescriptorOptions options, CFStringRef referenceURL, CFStringRef desiredPostScriptName)
-{
-    auto fontDescriptor = adoptCF(CTFontDescriptorCreateWithAttributes(attributes));
-    if (fontDescriptor) {
-        auto font = adoptCF(CTFontCreateWithFontDescriptorAndOptions(fontDescriptor.get(), size, nullptr, options));
-        auto actualPostScriptName = adoptCF(CTFontCopyPostScriptName(font.get()));
-        if (CFEqual(actualPostScriptName.get(), desiredPostScriptName))
-            return font;
-    }
-
-    // CoreText couldn't round-trip the font.
-    // We can fall back to doing our best to find it ourself.
-    fontDescriptor = findFontDescriptor(referenceURL, desiredPostScriptName);
-    if (!fontDescriptor) {
-        ASSERT_NOT_REACHED();
-        fontDescriptor = adoptCF(CTFontDescriptorCreateLastResort());
-    }
-    ASSERT(fontDescriptor);
-    return adoptCF(CTFontCreateWithFontDescriptorAndOptions(fontDescriptor.get(), size, nullptr, options));
 }
 
 std::optional<WebCore::FontPlatformData> ArgumentCoder<WebCore::Font>::decodePlatformData(Decoder& decoder)
@@ -544,12 +526,14 @@ std::optional<WebCore::FontPlatformData> ArgumentCoder<WebCore::Font>::decodePla
         if (!bufferSize)
             return std::nullopt;
 
-        std::optional<WebKit::SharedMemory::Handle> handle;
-        decoder >> handle;
-        if (!handle)
+        auto handle = decoder.decode<std::optional<WebKit::SharedMemory::Handle>>();
+        if (UNLIKELY(!decoder.isValid()))
             return std::nullopt;
 
-        auto sharedMemoryBuffer = WebKit::SharedMemory::map(*handle, WebKit::SharedMemory::Protection::ReadOnly);
+        if (!*handle)
+            return std::nullopt;
+
+        auto sharedMemoryBuffer = WebKit::SharedMemory::map(WTFMove(**handle), WebKit::SharedMemory::Protection::ReadOnly);
         if (!sharedMemoryBuffer)
             return std::nullopt;
 
@@ -572,8 +556,7 @@ std::optional<WebCore::FontPlatformData> ArgumentCoder<WebCore::Font>::decodePla
         auto fontDescriptor = adoptCF(CTFontDescriptorCreateCopyWithAttributes(baseFontDescriptor, attributes->get()));
         auto ctFont = adoptCF(CTFontCreateWithFontDescriptor(fontDescriptor.get(), *size, nullptr));
 
-        auto creationData = WebCore::FontPlatformData::CreationData { fontFaceData, *itemInCollection };
-        return WebCore::FontPlatformData(ctFont.get(), *size, *syntheticBold, *syntheticOblique, *orientation, *widthVariant, *textRenderingMode, &creationData);
+        return WebCore::FontPlatformData(ctFont.get(), *size, *syntheticBold, *syntheticOblique, *orientation, *widthVariant, *textRenderingMode, fontCustomPlatformData.get());
     }
 
     std::optional<CTFontDescriptorOptions> options;
@@ -591,15 +574,57 @@ std::optional<WebCore::FontPlatformData> ArgumentCoder<WebCore::Font>::decodePla
     if (!postScriptName || !*postScriptName)
         return std::nullopt;
 
-    auto ctFont = createCTFont(attributes->get(), *size, *options, referenceURL->get(), postScriptName->get());
+    auto ctFont = WebCore::createCTFont(attributes->get(), *size, *options, referenceURL->get(), postScriptName->get());
     if (!ctFont)
         return std::nullopt;
 
     return WebCore::FontPlatformData(ctFont.get(), *size, *syntheticBold, *syntheticOblique, *orientation, *widthVariant, *textRenderingMode);
 }
 
+void ArgumentCoder<WebCore::FontPlatformData::Attributes>::encodePlatformData(Encoder& encoder, const WebCore::FontPlatformData::Attributes& data)
+{
+    encoder << data.m_attributes;
+    encoder << data.m_options;
+    encoder << data.m_url;
+    encoder << data.m_psName;
+}
+
+bool ArgumentCoder<WebCore::FontPlatformData::Attributes>::decodePlatformData(Decoder& decoder, WebCore::FontPlatformData::Attributes& data)
+{
+    std::optional<RetainPtr<CFDictionaryRef>> attributes;
+    decoder >> attributes;
+    if (!attributes)
+        return false;
+
+    std::optional<CTFontDescriptorOptions> options;
+    decoder >> options;
+    if (!options)
+        return false;
+
+
+    std::optional<RetainPtr<CFStringRef>> url;
+    decoder >> url;
+    if (!url)
+        return false;
+
+    std::optional<RetainPtr<CFStringRef>> psName;
+    decoder >> psName;
+    if (!psName)
+        return false;
+
+    data.m_attributes = attributes.value();
+    data.m_options = options.value();
+    data.m_url = url.value();
+    data.m_psName = psName.value();
+    return true;
+}
 
 #if ENABLE(DATA_DETECTION)
+
+template<> Class getClass<DDScannerResult>()
+{
+    return PAL::getDDScannerResultClass();
+}
 
 void ArgumentCoder<WebCore::DataDetectorElementInfo>::encode(Encoder& encoder, const WebCore::DataDetectorElementInfo& info)
 {
@@ -609,7 +634,7 @@ void ArgumentCoder<WebCore::DataDetectorElementInfo>::encode(Encoder& encoder, c
 
 std::optional<WebCore::DataDetectorElementInfo> ArgumentCoder<WebCore::DataDetectorElementInfo>::decode(Decoder& decoder)
 {
-    auto result = IPC::decode<DDScannerResult>(decoder, PAL::getDDScannerResultClass());
+    auto result = decoder.decodeWithAllowedClasses<DDScannerResult>();
     if (!result)
         return std::nullopt;
 
@@ -624,6 +649,12 @@ std::optional<WebCore::DataDetectorElementInfo> ArgumentCoder<WebCore::DataDetec
 #endif // ENABLE(DATA_DETECTION)
 
 #if ENABLE(WIRELESS_PLAYBACK_TARGET)
+
+template<> Class getClass<AVOutputContext>()
+{
+    return PAL::getAVOutputContextClass();
+}
+
 void ArgumentCoder<WebCore::MediaPlaybackTargetContext>::encodePlatformData(Encoder& encoder, const WebCore::MediaPlaybackTargetContext& target)
 {
     if (target.type() == WebCore::MediaPlaybackTargetContext::Type::AVOutputContext) {
@@ -644,7 +675,7 @@ bool ArgumentCoder<WebCore::MediaPlaybackTargetContext>::decodePlatformData(Deco
         if (![PAL::getAVOutputContextClass() conformsToProtocol:@protocol(NSSecureCoding)])
             return false;
 
-        auto outputContext = IPC::decode<AVOutputContext>(decoder, PAL::getAVOutputContextClass());
+        auto outputContext = decoder.decodeWithAllowedClasses<AVOutputContext>();
         if (!outputContext)
             return false;
 
@@ -653,15 +684,15 @@ bool ArgumentCoder<WebCore::MediaPlaybackTargetContext>::decodePlatformData(Deco
     }
 
     if (contextType == WebCore::MediaPlaybackTargetContext::Type::SerializedAVOutputContext) {
-        RetainPtr<NSData> serializedOutputContext;
-        if (!IPC::decode(decoder, serializedOutputContext) || !serializedOutputContext)
+        std::optional<RetainPtr<NSData>> serializedOutputContext = decoder.decode<RetainPtr<NSData>>();
+        if (!serializedOutputContext)
             return false;
 
         bool hasActiveRoute;
         if (!decoder.decode(hasActiveRoute))
             return false;
 
-        target = WebCore::MediaPlaybackTargetContext { WTFMove(serializedOutputContext), hasActiveRoute };
+        target = WebCore::MediaPlaybackTargetContext { WTFMove(*serializedOutputContext), hasActiveRoute };
         return true;
     }
 
@@ -678,7 +709,7 @@ void ArgumentCoder<WebCore::TextRecognitionDataDetector>::encodePlatformData(Enc
 
 bool ArgumentCoder<WebCore::TextRecognitionDataDetector>::decodePlatformData(Decoder& decoder, WebCore::TextRecognitionDataDetector& result)
 {
-    auto scannerResult = IPC::decode<DDScannerResult>(decoder, @[ PAL::getDDScannerResultClass() ]);
+    auto scannerResult = decoder.decodeWithAllowedClasses<DDScannerResult>();
     if (!scannerResult)
         return false;
 
@@ -689,6 +720,11 @@ bool ArgumentCoder<WebCore::TextRecognitionDataDetector>::decodePlatformData(Dec
 #endif // ENABLE(IMAGE_ANALYSIS) && ENABLE(DATA_DETECTION)
 
 #if ENABLE(IMAGE_ANALYSIS_ENHANCEMENTS)
+
+template<> Class getClass<VKCImageAnalysis>()
+{
+    return PAL::getVKCImageAnalysisClass();
+}
 
 void ArgumentCoder<RetainPtr<VKCImageAnalysis>>::encode(Encoder& encoder, const RetainPtr<VKCImageAnalysis>& data)
 {
@@ -703,7 +739,7 @@ std::optional<RetainPtr<VKCImageAnalysis>> ArgumentCoder<RetainPtr<VKCImageAnaly
     if (!PAL::isVisionKitCoreFrameworkAvailable())
         return nil;
 
-    return IPC::decode<VKCImageAnalysis>(decoder, @[ PAL::getVKCImageAnalysisClass() ]);
+    return decoder.decodeWithAllowedClasses<VKCImageAnalysis>();
 }
 
 #endif // ENABLE(IMAGE_ANALYSIS_ENHANCEMENTS)

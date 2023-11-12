@@ -41,9 +41,9 @@ class CustomConfigurationTestGroupForm extends TestGroupForm {
         const repetitionType = this.part('repetition-type-selector').selectedRepetitionType;
         console.assert(!!this._hasTask === !taskName);
         if (!this._hasTask)
-            this.dispatchAction('startTesting', testGroupName, this._repetitionCount, repetitionType, commitSets, platform, test, this._notifyOnCompletion, taskName);
+            this.dispatchAction('startTesting', testGroupName, this._repetitionCount, repetitionType, commitSets, null, platform, test, this._notifyOnCompletion, taskName);
         else
-            this.dispatchAction('startTesting', testGroupName, this._repetitionCount, repetitionType, commitSets, platform, test, this._notifyOnCompletion);
+            this.dispatchAction('startTesting', testGroupName, this._repetitionCount, repetitionType, commitSets, null, platform, test, this._notifyOnCompletion);
     }
 
     didConstructShadowTree()
@@ -79,7 +79,7 @@ class CustomConfigurationTestGroupForm extends TestGroupForm {
     {
         if (!platform || !tests.length)
             return;
-        this.content('group-name').value = `${tests.map((test) => test.name()).join(', ')} on ${platform.name()}`;
+        this.content('group-name').value = `${tests.map((test) => test.name()).join(', ')} on ${platform.label()}`;
     }
 
     static cssTemplate()

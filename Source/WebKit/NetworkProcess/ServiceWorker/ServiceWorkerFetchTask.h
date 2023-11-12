@@ -97,6 +97,7 @@ private:
     void didReceiveRedirectResponse(WebCore::ResourceResponse&&);
     void didReceiveResponse(WebCore::ResourceResponse&&, bool needsContinueDidReceiveResponseMessage);
     void didReceiveData(const IPC::SharedBufferReference&, uint64_t encodedDataLength);
+    void didReceiveDataFromPreloader(const WebCore::FragmentedSharedBuffer&, uint64_t encodedDataLength);
     void didReceiveFormData(const IPC::FormDataReference&);
     void didFinish(const WebCore::NetworkLoadMetrics&);
     void didFail(const WebCore::ResourceError&);
@@ -119,8 +120,10 @@ private:
     template<typename Message> bool sendToServiceWorker(Message&&);
     template<typename Message> bool sendToClient(Message&&);
 
+    RefPtr<NetworkResourceLoader> protectedLoader() const;
+
     WeakPtr<WebSWServerConnection> m_swServerConnection;
-    NetworkResourceLoader& m_loader;
+    WeakPtr<NetworkResourceLoader> m_loader;
     WeakPtr<WebSWServerToContextConnection> m_serviceWorkerConnection;
     WebCore::FetchIdentifier m_fetchIdentifier;
     WebCore::SWServerConnectionIdentifier m_serverConnectionIdentifier;

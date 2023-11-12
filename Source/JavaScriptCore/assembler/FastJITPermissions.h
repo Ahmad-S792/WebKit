@@ -25,13 +25,18 @@
 
 #pragma once
 
+#include <stdint.h>
+#include <wtf/Platform.h>
+
 #if OS(DARWIN) && CPU(ARM64)
 
 #include "JSCConfig.h"
 
 #include <wtf/Platform.h>
 
-#if USE(PTHREAD_JIT_PERMISSIONS_API)
+#if USE(INLINE_JIT_PERMISSIONS_API)
+#include <ServiceExtensions/SEMemory_Private.h>
+#elif USE(PTHREAD_JIT_PERMISSIONS_API)
 #include <pthread.h>
 #elif USE(APPLE_INTERNAL_SDK)
 #include <os/thread_self_restrict.h> 
@@ -41,7 +46,9 @@ static ALWAYS_INLINE void threadSelfRestrictRWXToRW()
 {
     ASSERT(g_jscConfig.useFastJITPermissions);
 
-#if USE(PTHREAD_JIT_PERMISSIONS_API) 
+#if USE(INLINE_JIT_PERMISSIONS_API)
+    se_memory_inline_jit_restrict_rwx_to_rw_with_witness();
+#elif USE(PTHREAD_JIT_PERMISSIONS_API)
     pthread_jit_write_protect_np(false);
 #elif USE(APPLE_INTERNAL_SDK)
     os_thread_self_restrict_rwx_to_rw();
@@ -56,7 +63,9 @@ static ALWAYS_INLINE void threadSelfRestrictRWXToRX()
 {
     ASSERT(g_jscConfig.useFastJITPermissions);
 
-#if USE(PTHREAD_JIT_PERMISSIONS_API) 
+#if USE(INLINE_JIT_PERMISSIONS_API)
+    se_memory_inline_jit_restrict_rwx_to_rx_with_witness();
+#elif USE(PTHREAD_JIT_PERMISSIONS_API)
     pthread_jit_write_protect_np(true);
 #elif USE(APPLE_INTERNAL_SDK)
     os_thread_self_restrict_rwx_to_rx();

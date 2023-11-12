@@ -30,7 +30,7 @@ if (ENABLE_COG)
         set(WPE_COG_REPO "https://github.com/Igalia/cog.git")
     endif ()
     if ("${WPE_COG_TAG}" STREQUAL "")
-        set(WPE_COG_TAG "8f82f7e4287ee69a8375ca7e894f0981a32d7ac8")
+        set(WPE_COG_TAG "9e2dc0a086336d7cd025e50461d126992734672d")
     endif ()
     # TODO Use GIT_REMOTE_UPDATE_STRATEGY with 3.18 to allow switching between
     # conflicting branches without having to delete the repo
@@ -51,6 +51,12 @@ if (ENABLE_COG)
         set(COG_MESON_BUILDTYPE debugoptimized)
     endif ()
 
+    if (ENABLE_SANITIZERS)
+        set(COG_MESON_SANITIZE_OPTION "${ENABLE_SANITIZERS}")
+    else ()
+        set(COG_MESON_SANITIZE_OPTION "none")
+    endif ()
+
     ExternalProject_Add(cog
         GIT_REPOSITORY "${WPE_COG_REPO}"
         GIT_TAG "${WPE_COG_TAG}"
@@ -60,8 +66,9 @@ if (ENABLE_COG)
             meson setup <BINARY_DIR> <SOURCE_DIR>
             --buildtype ${COG_MESON_BUILDTYPE}
             --pkg-config-path ${WPE_COG_PKG_CONFIG_PATH}
-            -Dsoup2=${COG_MESON_SOUP2}
+            -Dwpe_api=${WPE_API_VERSION}
             -Dplatforms=${WPE_COG_PLATFORMS}
+            -Db_sanitize=${COG_MESON_SANITIZE_OPTION}
         BUILD_COMMAND
             meson compile -C <BINARY_DIR>
         INSTALL_COMMAND "")

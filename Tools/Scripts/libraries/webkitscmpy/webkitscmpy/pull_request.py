@@ -21,11 +21,11 @@
 # SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 import re
-import six
 
 from .commit import Commit
 from datetime import datetime
 from webkitscmpy import Contributor
+from webkitcorepy import string_utils
 
 
 class PullRequest(object):
@@ -36,20 +36,20 @@ class PullRequest(object):
         def __init__(self, author, timestamp, content):
             if author and isinstance(author, dict) and author.get('name'):
                 self.author = Contributor(author.get('name'), author.get('emails'))
-            elif author and isinstance(author, six.string_types) and '@' in author:
+            elif author and isinstance(author, string_utils.basestring) and '@' in author:
                 self.author = Contributor(author, [author])
             elif author and not isinstance(author, Contributor):
                 raise TypeError("Expected 'author' to be of type {}, got '{}'".format(Contributor, author))
             else:
                 self.author = author
 
-            if isinstance(timestamp, six.string_types) and timestamp.isdigit():
+            if isinstance(timestamp, string_utils.basestring) and timestamp.isdigit():
                 timestamp = int(timestamp)
             if timestamp and not isinstance(timestamp, int):
                 raise TypeError("Expected 'timestamp' to be of type int, got '{}'".format(timestamp))
             self.timestamp = timestamp
 
-            if content and not isinstance(content, six.string_types):
+            if content and not isinstance(content, string_utils.basestring):
                 raise ValueError("Expected 'content' to be a string, got '{}'".format(content))
             self.content = content
 
@@ -63,10 +63,10 @@ class PullRequest(object):
 
     COMMIT_BODY_RES = [
         dict(
-            re=re.compile(r'\A#### (?P<hash>[0-9a-f]+)\n```\n(?P<message>.+)\n```\n?\Z', flags=re.DOTALL),
+            re=re.compile(r'\A#### (?P<hash>[0-9a-f]+)\n```\n(?P<message>.+)\n```\n?(<!--.+Start-->.+<!--.+End-->)?\Z', flags=re.DOTALL),
             escaped=False,
         ), dict(
-            re=re.compile(r'\A#### (?P<hash>[0-9a-f]+)\n<pre>\n(?P<message>.+)\n</pre>\n?\Z', flags=re.DOTALL),
+            re=re.compile(r'\A#### (?P<hash>[0-9a-f]+)\n<pre>\n(?P<message>.+)\n</pre>\n?(<!--.+Start-->.+<!--.+End-->)?\Z', flags=re.DOTALL),
             escaped=True,
         ),
     ]
@@ -82,11 +82,12 @@ class PullRequest(object):
     @classmethod
     def escape_html(cls, message):
         message = ''.join(cls.ESCAPE_TABLE.get(c, c) for c in message)
-        return re.sub(r'(https?://[^\s<>,:;]+?)(?=[\s<>,:;]|(&gt))', r'<a href="\1">\1</a>', message)
+        message = re.sub(r'(https?://[^\s<>,:;]+?)(?=[\s<>,:;]|(&gt))', r'<a href="\1">\1</a>', message)
+        return re.sub(r'rdar://([^\s<>,:;]+?)(?=[\s<>,:;]|(&gt))', r'<a href="https://rdar.apple.com/\1">rdar://\1</a>', message)
 
     @classmethod
     def unescape_html(cls, message):
-        message = re.sub(r'<a href=".+">(https?://[^\s<>,:;]+)</a>', r'\1', message)
+        message = re.sub(r'<a href="https?://.+">([^\s<>,:;/]+://[^\s<>,:;]+)</a>', r'\1', message)
         for c, escaped in cls.ESCAPE_TABLE.items():
             message = message.replace(escaped, c)
         return message

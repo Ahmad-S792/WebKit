@@ -50,7 +50,7 @@
 #include <cairo-win32.h>
 #endif
 
-#if PLATFORM(WPE) || PLATFORM(GTK)
+#if USE(THEME_ADWAITA)
 #include "ThemeAdwaita.h"
 #endif
 
@@ -98,9 +98,9 @@ GraphicsContextCairo* GraphicsContextCairo::platformContext() const
     return const_cast<GraphicsContextCairo*>(this);
 }
 
-void GraphicsContextCairo::save()
+void GraphicsContextCairo::save(GraphicsContextState::Purpose purpose)
 {
-    GraphicsContext::save();
+    GraphicsContext::save(purpose);
 
     m_cairoStateStack.append(CairoState());
     m_cairoState = &m_cairoStateStack.last();
@@ -108,12 +108,12 @@ void GraphicsContextCairo::save()
     cairo_save(m_cr.get());
 }
 
-void GraphicsContextCairo::restore()
+void GraphicsContextCairo::restore(GraphicsContextState::Purpose purpose)
 {
     if (!stackSize())
         return;
 
-    GraphicsContext::restore();
+    GraphicsContext::restore(purpose);
 
     if (m_cairoStateStack.isEmpty())
         return;
@@ -142,7 +142,7 @@ void GraphicsContextCairo::drawRect(const FloatRect& rect, float borderThickness
     Cairo::drawRect(*this, rect, borderThickness, fillColor(), strokeStyle(), strokeColor());
 }
 
-void GraphicsContextCairo::drawNativeImage(NativeImage& nativeImage, const FloatSize&, const FloatRect& destRect, const FloatRect& srcRect, const ImagePaintingOptions& options)
+void GraphicsContextCairo::drawNativeImageInternal(NativeImage& nativeImage, const FloatSize&, const FloatRect& destRect, const FloatRect& srcRect, ImagePaintingOptions options)
 {
     auto& state = this->state();
     Cairo::drawPlatformImage(*this, nativeImage.platformImage().get(), destRect, srcRect, { options, state.imageInterpolationQuality() }, state.alpha(), Cairo::ShadowState(state));
@@ -192,6 +192,11 @@ void GraphicsContextCairo::fillRect(const FloatRect& rect, const Color& color)
     Cairo::fillRect(*this, rect, color, Cairo::ShadowState(state()));
 }
 
+void GraphicsContextCairo::resetClip()
+{
+    ASSERT_NOT_REACHED("resetClip is not supported on Cairo");
+}
+
 void GraphicsContextCairo::clip(const FloatRect& rect)
 {
     Cairo::clip(*this, rect);
@@ -209,13 +214,13 @@ IntRect GraphicsContextCairo::clipBounds() const
 
 void GraphicsContextCairo::clipToImageBuffer(ImageBuffer& buffer, const FloatRect& destRect)
 {
-    if (auto nativeImage = buffer.copyNativeImage(DontCopyBackingStore))
+    if (auto nativeImage = nativeImageForDrawing(buffer))
         Cairo::clipToImageBuffer(*this, nativeImage->platformImage().get(), destRect);
 }
 
 void GraphicsContextCairo::drawFocusRing(const Path& path, float outlineWidth, const Color& color)
 {
-#if PLATFORM(WPE) || PLATFORM(GTK)
+#if USE(THEME_ADWAITA)
     ThemeAdwaita::paintFocus(*this, path, color);
     UNUSED_PARAM(outlineWidth);
     return;
@@ -226,7 +231,7 @@ void GraphicsContextCairo::drawFocusRing(const Path& path, float outlineWidth, c
 
 void GraphicsContextCairo::drawFocusRing(const Vector<FloatRect>& rects, float outlineOffset, float outlineWidth, const Color& color)
 {
-#if PLATFORM(WPE) || PLATFORM(GTK)
+#if USE(THEME_ADWAITA)
     ThemeAdwaita::paintFocus(*this, rects, color);
     UNUSED_PARAM(outlineOffset);
     UNUSED_PARAM(outlineWidth);
@@ -264,11 +269,11 @@ void GraphicsContextCairo::didUpdateState(GraphicsContextState& state)
 
     // FIXME: m_state should not be changed to flip the shadow offset. This can happen when the shadow is applied to the platform context.
     if (state.changes().contains(GraphicsContextState::Change::DropShadow)) {
-        if (state.shadowsIgnoreTransforms()) {
+        auto dropShadow = state.dropShadow();
+        if (dropShadow && state.shadowsIgnoreTransforms()) {
             // Meaning that this graphics context is associated with a CanvasRenderingContext
             // We flip the height since CG and HTML5 Canvas have opposite Y axis
-            auto& shadowOffset = state.dropShadow().offset;
-            m_state.m_dropShadow.offset = { shadowOffset.width(), -shadowOffset.height() };
+            m_state.m_dropShadow = GraphicsDropShadow { { dropShadow->offset.width(), -dropShadow->offset.height() }, dropShadow->radius, dropShadow->color, dropShadow->radiusMode };
         }
     }
 
@@ -368,7 +373,7 @@ void GraphicsContextCairo::fillRectWithRoundedHole(const FloatRect& rect, const 
     Cairo::fillRectWithRoundedHole(*this, rect, roundedHoleRect, Cairo::FillSource(state), Cairo::ShadowState(state));
 }
 
-void GraphicsContextCairo::drawPattern(NativeImage& nativeImage, const FloatRect& destRect, const FloatRect& tileRect, const AffineTransform& patternTransform, const FloatPoint& phase, const FloatSize& spacing, const ImagePaintingOptions& options)
+void GraphicsContextCairo::drawPattern(NativeImage& nativeImage, const FloatRect& destRect, const FloatRect& tileRect, const AffineTransform& patternTransform, const FloatPoint& phase, const FloatSize& spacing, ImagePaintingOptions options)
 {
     if (!patternTransform.isInvertible())
         return;
@@ -379,41 +384,6 @@ void GraphicsContextCairo::drawPattern(NativeImage& nativeImage, const FloatRect
 RenderingMode GraphicsContextCairo::renderingMode() const
 {
     return Cairo::State::isAcceleratedContext(*platformContext()) ? RenderingMode::Accelerated : RenderingMode::Unaccelerated;
-}
-
-void GraphicsContextCairo::drawGlyphs(const Font& font, const GlyphBufferGlyph* glyphs, const GlyphBufferAdvance* advances, unsigned numGlyphs, const FloatPoint& point, FontSmoothingMode fontSmoothing)
-{
-    if (!font.platformData().size())
-        return;
-
-    auto xOffset = point.x();
-    Vector<cairo_glyph_t> cairoGlyphs(numGlyphs);
-    {
-        auto yOffset = point.y();
-        for (size_t i = 0; i < numGlyphs; ++i) {
-            cairoGlyphs[i] = { glyphs[i], xOffset, yOffset };
-            xOffset += advances[i].width();
-            yOffset += advances[i].height();
-        }
-    }
-
-    cairo_scaled_font_t* scaledFont = font.platformData().scaledFont();
-    double syntheticBoldOffset = font.syntheticBoldOffset();
-
-    if (!font.allowsAntialiasing())
-        fontSmoothing = FontSmoothingMode::NoSmoothing;
-
-    auto& state = this->state();
-    Cairo::drawGlyphs(*this, Cairo::FillSource(state), Cairo::StrokeSource(state),
-        Cairo::ShadowState(state), point, scaledFont, syntheticBoldOffset, cairoGlyphs, xOffset,
-        state.textDrawingMode(), state.strokeThickness(), state.dropShadow().offset, state.dropShadow().color,
-        fontSmoothing);
-}
-
-void GraphicsContextCairo::drawDecomposedGlyphs(const Font& font, const DecomposedGlyphs& decomposedGlyphs)
-{
-    auto positionedGlyphs = decomposedGlyphs.positionedGlyphs();
-    return drawGlyphs(font, positionedGlyphs.glyphs.data(), positionedGlyphs.advances.data(), positionedGlyphs.glyphs.size(), positionedGlyphs.localAnchor, positionedGlyphs.smoothingMode);
 }
 
 cairo_t* GraphicsContextCairo::cr() const

@@ -32,7 +32,6 @@
 #include "JSCallbackFunction.h"
 #include "JSClassRef.h"
 #include "JSFunction.h"
-#include "JSGlobalObject.h"
 #include "JSLock.h"
 #include "JSObjectRef.h"
 #include "JSString.h"
@@ -459,6 +458,7 @@ CallData JSCallbackObject<Parent>::getConstructData(JSCell* cell)
         if (jsClass->callAsConstructor) {
             constructData.type = CallData::Type::Native;
             constructData.native.function = getConstructFunction();
+            constructData.native.isBoundFunction = false;
             break;
         }
     }
@@ -478,10 +478,9 @@ EncodedJSValue JSCallbackObject<Parent>::constructImpl(JSGlobalObject* globalObj
     for (JSClassRef jsClass = jsCast<JSCallbackObject<Parent>*>(constructor)->classRef(); jsClass; jsClass = jsClass->parentClass) {
         if (JSObjectCallAsConstructorCallback callAsConstructor = jsClass->callAsConstructor) {
             size_t argumentCount = callFrame->argumentCount();
-            Vector<JSValueRef, 16> arguments;
-            arguments.reserveInitialCapacity(argumentCount);
-            for (size_t i = 0; i < argumentCount; ++i)
-                arguments.uncheckedAppend(toRef(globalObject, callFrame->uncheckedArgument(i)));
+            Vector<JSValueRef, 16> arguments(argumentCount, [&](size_t i) {
+                return toRef(globalObject, callFrame->uncheckedArgument(i));
+            });
             JSValueRef exception = nullptr;
             JSObject* result;
             {
@@ -536,6 +535,7 @@ CallData JSCallbackObject<Parent>::getCallData(JSCell* cell)
         if (jsClass->callAsFunction) {
             callData.type = CallData::Type::Native;
             callData.native.function = getCallFunction();
+            callData.native.isBoundFunction = false;
             break;
         }
     }
@@ -555,10 +555,10 @@ EncodedJSValue JSCallbackObject<Parent>::callImpl(JSGlobalObject* globalObject, 
     for (JSClassRef jsClass = jsCast<JSCallbackObject<Parent>*>(toJS(functionRef))->classRef(); jsClass; jsClass = jsClass->parentClass) {
         if (JSObjectCallAsFunctionCallback callAsFunction = jsClass->callAsFunction) {
             size_t argumentCount = callFrame->argumentCount();
-            Vector<JSValueRef, 16> arguments;
-            arguments.reserveInitialCapacity(argumentCount);
-            for (size_t i = 0; i < argumentCount; ++i)
-                arguments.uncheckedAppend(toRef(globalObject, callFrame->uncheckedArgument(i)));
+            Vector<JSValueRef, 16> arguments(argumentCount, [&](size_t i) {
+                return toRef(globalObject, callFrame->uncheckedArgument(i));
+            });
+
             JSValueRef exception = nullptr;
             JSValue result;
             {

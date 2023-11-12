@@ -61,10 +61,14 @@ public:
     {
         return static_cast<TestPromiseRejectionEvent&>(Base::wrapped());
     }
+    Ref<TestPromiseRejectionEvent> protectedWrapped() const
+    {
+        return wrapped();
+    }
 protected:
     JSTestPromiseRejectionEvent(JSC::Structure*, JSDOMGlobalObject&, Ref<TestPromiseRejectionEvent>&&);
 
-    void finishCreation(JSC::VM&);
+    DECLARE_DEFAULT_FINISH_CREATION;
 };
 
 JSC::JSValue toJS(JSC::JSGlobalObject*, JSDOMGlobalObject*, TestPromiseRejectionEvent&);

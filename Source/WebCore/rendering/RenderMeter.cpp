@@ -23,6 +23,8 @@
 
 #include "HTMLMeterElement.h"
 #include "HTMLNames.h"
+#include "RenderBoxInlines.h"
+#include "RenderBoxModelObjectInlines.h"
 #include "RenderTheme.h"
 #include <wtf/IsoMallocInlines.h>
 
@@ -33,8 +35,9 @@ using namespace HTMLNames;
 WTF_MAKE_ISO_ALLOCATED_IMPL(RenderMeter);
 
 RenderMeter::RenderMeter(HTMLElement& element, RenderStyle&& style)
-    : RenderBlockFlow(element, WTFMove(style))
+    : RenderBlockFlow(Type::Meter, element, WTFMove(style))
 {
+    ASSERT(isRenderMeter());
 }
 
 RenderMeter::~RenderMeter() = default;

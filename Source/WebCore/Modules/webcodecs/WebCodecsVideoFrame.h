@@ -50,6 +50,8 @@ class OffscreenCanvas;
 class SVGImageElement;
 class VideoColorSpace;
 
+template<typename> class ExceptionOr;
+
 class WebCodecsVideoFrame : public RefCounted<WebCodecsVideoFrame>, public ContextDestructionObserver {
 public:
     ~WebCodecsVideoFrame();
@@ -113,7 +115,7 @@ public:
     size_t displayHeight() const { return m_data.displayHeight; }
     std::optional<uint64_t> duration() const { return m_data.duration; }
     int64_t timestamp() const { return m_data.timestamp; }
-    VideoColorSpace* colorSpace() const;
+    VideoColorSpace& colorSpace() const;
 
     struct CopyToOptions {
         std::optional<DOMRectInit> rect;

@@ -26,7 +26,6 @@
 #include "config.h"
 #include "ScreenOrientation.h"
 
-#include "DOMWindow.h"
 #include "Document.h"
 #include "DocumentInlines.h"
 #include "Element.h"
@@ -35,7 +34,9 @@
 #include "FrameDestructionObserverInlines.h"
 #include "FullscreenManager.h"
 #include "JSDOMPromiseDeferred.h"
+#include "LocalDOMWindow.h"
 #include "Page.h"
+#include "VisibilityState.h"
 #include <wtf/IsoMallocInlines.h>
 
 namespace WebCore {
@@ -95,24 +96,24 @@ void ScreenOrientation::lock(LockType lockType, Ref<DeferredPromise>&& promise)
 {
     auto* document = this->document();
     if (!document || !document->isFullyActive()) {
-        promise->reject(Exception { InvalidStateError, "Document is not fully active."_s });
+        promise->reject(Exception { ExceptionCode::InvalidStateError, "Document is not fully active."_s });
         return;
     }
 
     auto* manager = this->manager();
     if (!manager) {
-        promise->reject(Exception { InvalidStateError, "No browsing context"_s });
+        promise->reject(Exception { ExceptionCode::InvalidStateError, "No browsing context"_s });
         return;
     }
 
     // FIXME: Add support for the sandboxed orientation lock browsing context flag.
     if (!document->isSameOriginAsTopDocument()) {
-        promise->reject(Exception { SecurityError, "Only first party documents can lock the screen orientation"_s });
+        promise->reject(Exception { ExceptionCode::SecurityError, "Only first party documents can lock the screen orientation"_s });
         return;
     }
 
     if (document->page() && !document->page()->isVisible()) {
-        promise->reject(Exception { SecurityError, "Only visible documents can lock the screen orientation"_s });
+        promise->reject(Exception { ExceptionCode::SecurityError, "Only visible documents can lock the screen orientation"_s });
         return;
     }
 
@@ -122,17 +123,17 @@ void ScreenOrientation::lock(LockType lockType, Ref<DeferredPromise>&& promise)
 #else
         if (true) {
 #endif
-            promise->reject(Exception { SecurityError, "Locking the screen orientation is only allowed when in fullscreen"_s });
+            promise->reject(Exception { ExceptionCode::SecurityError, "Locking the screen orientation is only allowed when in fullscreen"_s });
             return;
         }
     }
     if (!isSupportedLockType(lockType)) {
-        promise->reject(Exception { NotSupportedError, "Lock type should be one of { \"any\", \"natural\", \"portrait\", \"landscape\" }"_s });
+        promise->reject(Exception { ExceptionCode::NotSupportedError, "Lock type should be one of { \"any\", \"natural\", \"portrait\", \"landscape\" }"_s });
         return;
     }
     if (auto previousPromise = manager->takeLockPromise()) {
         queueTaskKeepingObjectAlive(*this, TaskSource::DOMManipulation, [previousPromise = WTFMove(previousPromise)]() mutable {
-            previousPromise->reject(Exception { AbortError, "A new lock request was started"_s });
+            previousPromise->reject(Exception { ExceptionCode::AbortError, "A new lock request was started"_s });
         });
     }
     manager->setLockPromise(*this, WTFMove(promise));
@@ -158,13 +159,13 @@ ExceptionOr<void> ScreenOrientation::unlock()
 {
     auto* document = this->document();
     if (!document || !document->isFullyActive())
-        return Exception { InvalidStateError, "Document is not fully active."_s };
+        return Exception { ExceptionCode::InvalidStateError, "Document is not fully active."_s };
 
     if (!document->isSameOriginAsTopDocument())
         return { };
 
     if (document->page() && !document->page()->isVisible())
-        return Exception { SecurityError, "Only visible documents can unlock the screen orientation"_s };
+        return Exception { ExceptionCode::SecurityError, "Only visible documents can unlock the screen orientation"_s };
 
     if (auto* manager = this->manager())
         manager->unlock();
@@ -175,27 +176,38 @@ auto ScreenOrientation::type() const -> Type
 {
     auto* manager = this->manager();
     if (!manager)
-        return Type::PortraitPrimary;
+        return naturalScreenOrientationType();
     return manager->currentOrientation();
 }
 
 uint16_t ScreenOrientation::angle() const
 {
     auto* manager = this->manager();
-    if (!manager)
-        return 0;
+    auto orientation = manager ? manager->currentOrientation() : naturalScreenOrientationType();
 
-    // The angle should depend on the device's natural orientation. We currently
-    // consider Portrait as the natural orientation.
-    switch (manager->currentOrientation()) {
-    case Type::PortraitPrimary:
-        return 0;
-    case Type::PortraitSecondary:
-        return 180;
-    case Type::LandscapePrimary:
-        return 90;
-    case Type::LandscapeSecondary:
-        return 270;
+    // https://w3c.github.io/screen-orientation/#dfn-screen-orientation-values-table
+    if (isPortrait(naturalScreenOrientationType())) {
+        switch (orientation) {
+        case Type::PortraitPrimary:
+            return 0;
+        case Type::PortraitSecondary:
+            return 180;
+        case Type::LandscapePrimary:
+            return 90;
+        case Type::LandscapeSecondary:
+            return 270;
+        }
+    } else {
+        switch (orientation) {
+        case Type::PortraitPrimary:
+            return 90;
+        case Type::PortraitSecondary:
+            return 270;
+        case Type::LandscapePrimary:
+            return 0;
+        case Type::LandscapeSecondary:
+            return 180;
+        }
     }
     ASSERT_NOT_REACHED();
     return 0;
@@ -255,8 +267,11 @@ void ScreenOrientation::stop()
         return;
 
     manager->removeObserver(*this);
-    if (manager->lockRequester() == this)
-        manager->takeLockPromise()->reject(Exception { AbortError, "Document is no longer fully active"_s });
+    if (manager->lockRequester() == this) {
+        queueTaskKeepingObjectAlive(*this, TaskSource::DOMManipulation, [promise = manager->takeLockPromise()] {
+            promise->reject(Exception { ExceptionCode::AbortError, "Document is no longer fully active"_s });
+        });
+    }
 }
 
 bool ScreenOrientation::virtualHasPendingActivity() const

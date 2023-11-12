@@ -1,4 +1,4 @@
-# Copyright (C) 2020-2022 Apple Inc. All rights reserved.
+# Copyright (C) 2020-2023 Apple Inc. All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
 # modification, are permitted provided that the following conditions
@@ -25,14 +25,13 @@ import logging
 import os
 import json
 import re
-import six
 import subprocess
 import sys
 import time
 
 from collections import defaultdict
 
-from webkitcorepy import run, decorators, NestedFuzzyDict, string_utils
+from webkitcorepy import run, decorators, NestedFuzzyDict, string_utils, Terminal
 from webkitscmpy.local import Scm
 from webkitscmpy import remote, Commit, Contributor, log
 
@@ -323,8 +322,11 @@ class Git(Scm):
         'webkitscmpy.auto-check': ['true', 'false'],
         'webkitscmpy.auto-create-commit': ['true', 'false'],
         'webkitscmpy.auto-prune': ['only-source', 'true', 'false'],
+        'webkitscmpy.cc-radar': ['true', 'false'],
+        'webkitscmpy.set-upstream-on-push': ['false', 'true'],
     }
     CONFIG_LOCATIONS = ['global', 'repository', 'project']
+    MERGE_BASE_SHARD_SIZE = 512  # Windows has a maximum of ~32K characters in a single command
 
     @classmethod
     @decorators.Memoize()
@@ -386,8 +388,23 @@ class Git(Scm):
 
         return result
 
-    def __init__(self, path, dev_branches=None, prod_branches=None, contributors=None, id=None, cached=sys.version_info > (3, 0)):
-        super(Git, self).__init__(path, dev_branches=dev_branches, prod_branches=prod_branches, contributors=contributors, id=id)
+    def __init__(
+            self, path,
+            dev_branches=None,
+            prod_branches=None,
+            contributors=None,
+            id=None,
+            cached=sys.version_info > (3, 0),
+            classifier=None,
+    ):
+        super(Git, self).__init__(
+            path,
+            dev_branches=dev_branches,
+            prod_branches=prod_branches,
+            contributors=contributors,
+            id=id,
+            classifier=classifier,
+        )
         self._branch = None
         self.cache = self.Cache(self) if self.root_path and cached else None
         self.default_remote = 'origin'
@@ -522,15 +539,17 @@ class Git(Scm):
 
     @decorators.Memoize()
     def source_remotes(self, cached=True, personal=False):
-        candidates = [self.default_remote]
+        security_levels = {}
         config = self.config(cached=cached)
         for candidate in config.keys():
-            if not candidate.startswith('webkitscmpy.remotes'):
+            if not candidate.startswith('webkitscmpy.remotes') or not candidate.endswith('url'):
                 continue
-            candidate = candidate.split('.')[-1]
-            if candidate in candidates:
-                continue
+            candidate = candidate.split('.')[-2]
             if config.get('remote.{}.url'.format(candidate)):
+                security_levels[candidate] = int(config.get('webkitscmpy.remotes.{}.security-level'.format(candidate), '0'))
+        candidates = [self.default_remote] if security_levels.get(self.default_remote, 0) == 0 else []
+        for _, candidate in sorted([(v, k) for k, v in security_levels.items()]):
+            if candidate not in candidates:
                 candidates.append(candidate)
 
         personal_remotes = []
@@ -585,10 +604,83 @@ class Git(Scm):
         if remote is False:
             return sorted(result[None])
         if remote is True:
-            return sorted(set.union(*result.values()))
+            return sorted(set.union(*result.values())) if result else []
         if isinstance(remote, string_utils.basestring):
             return sorted(result.get(remote, []))
         return result
+
+    def _is_on_default_branch(self, hash):
+        branches = self.branches_for(remote=None)
+        remote_keys = [None] + self.source_remotes()
+        default_branch = self.default_branch
+        for key in remote_keys:
+            if default_branch in branches.get(key, []):
+                return run([
+                    self.executable(), 'merge-base', '--is-ancestor', hash,
+                    'remotes/{}/{}'.format(key, default_branch) if key else default_branch,
+                ], cwd=self.root_path, capture_output=True, encoding='utf-8').returncode == 0
+        return default_branch in self.branches_for(hash)
+
+    def branch_point(self, ref='HEAD'):
+        branches = self.branches_for(remote=None)
+        production_branches = [
+            'remotes/{}/{}'.format(remote, branch)
+            for remote in self.source_remotes()
+            for branch in branches[remote] if not self.dev_branches.match(branch)
+        ]
+
+        head = run(
+            [self.executable(), 'rev-parse', ref],
+            cwd=self.root_path,
+            capture_output=True,
+            encoding='utf-8',
+        ).stdout.strip()
+
+        partial_bases = set()
+        for shard in [
+            production_branches[self.MERGE_BASE_SHARD_SIZE * i:self.MERGE_BASE_SHARD_SIZE * (i + 1)]
+            for i in range(1 + len(production_branches) // self.MERGE_BASE_SHARD_SIZE)
+        ]:
+            if not shard:
+                continue
+            result = run(
+                [self.executable(), 'merge-base', head] + shard,
+                cwd=self.root_path,
+                capture_output=True,
+                encoding='utf-8',
+            )
+            if result.returncode:
+                partial_bases = set()
+                break
+            partial_base = result.stdout.strip()
+            if partial_base == head:
+                # If the current commit is ever the merge-base, then the current commit will
+                # be the merge-base when we combine all shards.
+                return self.commit(
+                    hash=head,
+                    include_log=False, include_identifier=False,
+                )
+            partial_bases.add(partial_base)
+
+        merge_base = None
+        if len(partial_bases) == 1:
+            merge_base = list(partial_bases)[0]
+        elif len(partial_bases) > 1:
+            result = run(
+                [self.executable(), 'merge-base', head] + list(partial_bases),
+                cwd=self.root_path,
+                capture_output=True,
+                encoding='utf-8',
+            )
+            if not result.returncode:
+                merge_base = result.stdout.strip()
+        if not merge_base:
+            sys.stderr.write('Failed to find intersection with production branch\n')
+            return None
+        return self.commit(
+            hash=merge_base,
+            include_log=False, include_identifier=False,
+        )
 
     def commit(self, hash=None, revision=None, identifier=None, branch=None, tag=None, include_log=True, include_identifier=True):
         # Only git-svn checkouts can convert revisions to fully qualified commits, unless we happen to have a SVN cache built
@@ -640,7 +732,8 @@ class Git(Scm):
                         ),
                     )
                 branch = parsed_branch
-                hash = self.cache.to_hash(identifier='{}@{}'.format(identifier, parsed_branch), branch=branch) if self.cache else None
+            if branch:
+                hash = self.cache.to_hash(identifier='{}@{}'.format(identifier, branch), branch=branch) if self.cache else None
 
             # If the cache managed to convert the identifier to a hash, we can skip some computation
             if hash:
@@ -658,7 +751,7 @@ class Git(Scm):
                 baseline = branch or 'HEAD'
                 is_default = baseline == default_branch
                 if baseline == 'HEAD':
-                    is_default = default_branch in self.branches_for(baseline)
+                    is_default = self._is_on_default_branch(baseline)
 
                 if is_default and parsed_branch_point:
                     raise self.Exception('Cannot provide a branch point for a commit on the default branch')
@@ -672,7 +765,7 @@ class Git(Scm):
                     )
 
                 if identifier > base_count:
-                    raise self.Exception('Identifier {} cannot be found on the specified branch in the current checkout'.format(identifier))
+                    raise self.Exception('Identifier {} cannot be found on the specified branch in the current checkout. Latest identifier on this branch is {}'.format(identifier, base_count))
                 log = run(
                     [self.executable(), 'log', '{}~{}'.format(branch or 'HEAD', base_count - identifier)] + log_format + ['--'],
                     cwd=self.root_path,
@@ -714,16 +807,18 @@ class Git(Scm):
 
         branch_point = None
         # A commit is often on multiple branches, the canonical branch is the one with the highest priority
+        if self._is_on_default_branch(hash):
+            branch = default_branch
         if branch != default_branch:
             branch = self.prioritize_branches(self.branches_for(hash), self.branch)
 
-        if not identifier and include_identifier:
+        if not identifier and include_identifier and branch:
             cached_identifier = self.cache.to_identifier(hash=hash, branch=branch) if self.cache else None
             if cached_identifier:
                 branch_point, identifier, branch = Commit._parse_identifier(cached_identifier)
 
         # Compute the identifier if the function did not receive one and we were asked to
-        if not identifier and include_identifier:
+        if not identifier and include_identifier and branch:
             if branch == default_branch:
                 identifier = self._commit_count(hash)
             else:
@@ -733,7 +828,7 @@ class Git(Scm):
                 )
 
         # Only compute the branch point we're on something other than the default branch
-        if not branch_point and include_identifier and branch != default_branch:
+        if not branch_point and include_identifier and branch != default_branch and branch:
             branch_point = self._commit_count(hash) - identifier
         if branch_point and parsed_branch_point and branch_point != parsed_branch_point:
             raise ValueError("Provided 'branch_point' does not match branch point of specified branch")
@@ -890,7 +985,7 @@ class Git(Scm):
                 log.kill()
 
     def find(self, argument, include_log=True, include_identifier=True):
-        if not isinstance(argument, six.string_types):
+        if not isinstance(argument, string_utils.basestring):
             raise ValueError("Expected 'argument' to be a string, not '{}'".format(type(argument)))
 
         # Map any candidate default branch to the one used by this repository
@@ -924,7 +1019,7 @@ class Git(Scm):
     def _to_git_ref(self, argument):
         if not argument:
             return None
-        if not isinstance(argument, six.string_types):
+        if not isinstance(argument, string_utils.basestring):
             raise ValueError("Expected 'argument' to be a string, not '{}'".format(type(argument)))
         parsed_commit = Commit.parse(argument, do_assert=False)
         try:
@@ -943,7 +1038,7 @@ class Git(Scm):
             pass
         return argument
 
-    def checkout(self, argument, prune=None):
+    def checkout(self, argument, prune=None, prompt=False):
         self._branch = None
 
         if log.level > logging.WARNING:
@@ -1000,7 +1095,45 @@ class Git(Scm):
                 cwd=self.root_path,
             ).returncode else self.commit()
 
+        match = self.dev_branches.match(argument)
         branch_remote = self.remote_for(argument)
+
+        # Branch is not dev and exists on a remote.
+        if not match and branch_remote:
+            try:
+                remote_path = '{}/{}'.format(branch_remote, argument)
+                local_head = self.commit(branch=argument, include_log=False, include_identifier=False)
+            except self.Exception:
+                log.info(" Branch does not exist in local repository. Continuing checkout...")
+            else:
+                remote_head = self.commit(branch=remote_path, include_log=False, include_identifier=False)
+                local_bp = self.branch_point(ref=local_head.hash)
+                merge_base_with_target_remote = run(
+                    [self.executable(), 'merge-base', local_bp.hash, remote_head.hash],
+                    cwd=self.root_path,
+                    capture_output=True,
+                    encoding='utf-8',
+                ).stdout.strip()
+
+                # Resets branch if local is not tracking force pushed remote.
+                if merge_base_with_target_remote != local_bp.hash:
+                    if local_bp.hash != local_head.hash:
+                        log.info(" You have unsaved changes on the local branch.")
+                        if prompt and Terminal.choose(
+                            "Local changes on {} will not be saved. Would you like to override the local version of this branch with the version from '{}'?".format(argument, path),
+                            default='No'
+                        ) == 'No':
+                            sys.stderr.write("Checkout aborted.\n")
+                            return None
+                    log.info(" Resetting branch {} to remote {}. Checkout will erase all local changes on {}.\n".format(argument, remote_path, argument))
+                    return None if run(
+                        [self.executable(), 'checkout'] + ['-B', argument, remote_path] + log_arg,
+                        cwd=self.root_path,
+                    ).returncode else self.commit()
+                else:
+                    log.info(" Local branch is tracking the remote branch.")
+
+        # Branch exists on a remote.
         if branch_remote:
             result = run([
                 self.executable(), 'branch',
@@ -1010,6 +1143,7 @@ class Git(Scm):
             if result.returncode:
                 sys.stderr.write(result.stderr)
 
+        # Branch is dev or local.
         return None if run(
             [self.executable(), 'checkout', self._to_git_ref(argument)] + log_arg + ['--'],
             cwd=self.root_path,

@@ -38,7 +38,8 @@ if os.path.isdir(os.path.join(scripts, 'webkitpy')):
     sys.path.insert(0, scripts)
     import webkitpy
 
-from reporelaypy import Checkout, Database, HookProcessor, HookReceiver, Redirector
+from reporelaypy import Checkout, HookProcessor, HookReceiver, Redirector
+from webkitflaskpy import Database
 from webkitcorepy import arguments, AutoInstall
 from whichcraft import which
 
@@ -129,7 +130,7 @@ def main(args=None):
     print('Connected to database!')
 
     remotes = {}
-    for pair in args.remotes:
+    for pair in args.remotes or []:
         name, remote = pair.split(':', 1)
         if not remote:
             sys.stderr("Invalid forwarding remote '{}'".format(pair))

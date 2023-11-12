@@ -33,6 +33,7 @@ class ManifestGenerator {
         $platforms = (object)$this->platforms($platform_table, false);
         $dashboard = (object)$this->platforms($platform_table, true);
         $repositories = (object)$this->repositories($repositories_table, $repositories_with_commit);
+        $test_parameters = (object)$this->test_parameters();
         $platform_groups = (object)$this->platform_groups();
 
         $this->manifest = array(
@@ -43,6 +44,7 @@ class ManifestGenerator {
             'platformGroups' => &$platform_groups,
             'dashboard' => &$dashboard,
             'repositories' => &$repositories,
+            'testParameters' => &$test_parameters,
             'builders' => (object)$this->builders(),
             'bugTrackers' => (object)$this->bug_trackers($repositories_table),
             'triggerables'=> (object)$this->triggerables(),
@@ -74,6 +76,7 @@ class ManifestGenerator {
                 'name' => $test_row['test_name'],
                 'url' => $test_row['test_url'],
                 'parentId' => $test_row['test_parent'],
+                'hidden' => Database::is_true($test_row['test_hidden']),
             );
         }
         return $tests;
@@ -122,14 +125,14 @@ class ManifestGenerator {
         $platforms = array();
         if ($platform_table) {
             foreach ($platform_table as $platform_row) {
-                if (Database::is_true($platform_row['platform_hidden']))
-                    continue;
                 $id = $platform_row['platform_id'];
                 if (array_key_exists($id, $platform_metrics)) {
                     $platforms[$id] = array(
                         'name' => $platform_row['platform_name'],
+                        'label' => $platform_row['platform_label'],
                         'metrics' => $platform_metrics[$id]['metrics'],
                         'group' => $platform_row['platform_group'],
+                        'hidden' => Database::is_true($platform_row['platform_hidden']),
                         'lastModified' => $platform_metrics[$id]['last_modified']);
                 }
             }
@@ -161,6 +164,23 @@ class ManifestGenerator {
         }
 
         return $repositories;
+    }
+
+    private function test_parameters() {
+        $test_parameters_table = $this->db->fetch_Table('test_parameters');
+        if (!$test_parameters_table)
+            return array();
+        $test_parameters = array();
+        foreach($test_parameters_table as &$row) {
+            $test_parameters[$row['testparam_id']] = array(
+                'name' => $row['testparam_name'],
+                'disabled' => Database::is_true($row['testparam_disabled']),
+                'type' => $row['testparam_type'],
+                'hasValue' => Database::is_true($row['testparam_has_value']),
+                'hasFile' => Database::is_true($row['testparam_has_file']),
+                'description' => $row['testparam_description']);
+        }
+        return $test_parameters;
     }
 
     private function builders() {
@@ -264,7 +284,12 @@ class ManifestGenerator {
         $repetition_types_by_configuration = $db->fetch_table('triggerable_configuration_repetition_types');
         $repetition_types_by_config = array();
         foreach ($repetition_types_by_configuration as &$row)
-            array_push(array_ensure_item_has_array($repetition_types_by_config, $row['configrepetition_config']), $row['configrepetition_type']);
+            array_ensure_item_has_array($repetition_types_by_config, $row['configrepetition_config'])[] = $row['configrepetition_type'];
+
+        $configuration_test_parameters = $db->fetch_table('triggerable_configuration_test_parameters', 'trigconfigtestparam_parameter');
+        $test_parameters_by_config = array();
+        foreach ($configuration_test_parameters as &$row)
+            array_ensure_item_has_array($test_parameters_by_config, $row['trigconfigtestparam_config'])[] = $row['trigconfigtestparam_parameter'];
 
         $configuration_map = $db->fetch_table('triggerable_configurations');
         if ($configuration_map) {
@@ -274,7 +299,8 @@ class ManifestGenerator {
                     continue;
                 $triggerable = &$id_to_triggerable[$triggerable_id];
                 $repetition_types = $repetition_types_by_config[$row['trigconfig_id']];
-                array_push($triggerable['configurations'], array($row['trigconfig_test'], $row['trigconfig_platform'], $repetition_types));
+                $test_parameters = array_get($test_parameters_by_config, $row['trigconfig_id'], array());
+                $triggerable['configurations'][] = array($row['trigconfig_test'], $row['trigconfig_platform'], $repetition_types, $test_parameters);
             }
         }
 

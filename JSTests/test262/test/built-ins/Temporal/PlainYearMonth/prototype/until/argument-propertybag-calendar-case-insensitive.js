@@ -14,4 +14,4 @@ const calendar = "IsO8601";
 
 const arg = { year: 2019, monthCode: "M06", calendar };
 const result = instance.until(arg);
-TemporalHelpers.assertDuration(result, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, `Calendar created from string "${calendar}"`);
+TemporalHelpers.assertDuration(result, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, "Calendar is case-insensitive");

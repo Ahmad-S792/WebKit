@@ -44,7 +44,7 @@ public:
 
     static std::unique_ptr<ImageBufferRemoteIOSurfaceBackend> create(const Parameters&, ImageBufferBackendHandle);
 
-    ImageBufferRemoteIOSurfaceBackend(const Parameters& parameters, ImageBufferBackendHandle&& handle)
+    ImageBufferRemoteIOSurfaceBackend(const Parameters& parameters, MachSendRight&& handle)
         : ImageBufferBackend(parameters)
         , m_handle(WTFMove(handle))
     {
@@ -54,14 +54,15 @@ public:
     static constexpr bool canMapBackingStore = false;
     static constexpr WebCore::RenderingMode renderingMode = WebCore::RenderingMode::Accelerated;
 
-    WebCore::GraphicsContext& context() const final;
-    ImageBufferBackendHandle createBackendHandle(SharedMemory::Protection = SharedMemory::Protection::ReadWrite) const final;
+    WebCore::GraphicsContext& context() final;
+    std::optional<ImageBufferBackendHandle> createBackendHandle(SharedMemory::Protection = SharedMemory::Protection::ReadWrite) const final;
+    std::optional<ImageBufferBackendHandle> takeBackendHandle(SharedMemory::Protection = SharedMemory::Protection::ReadWrite) final;
 
 private:
-    WebCore::IntSize backendSize() const final;
-    RefPtr<WebCore::NativeImage> copyNativeImage(WebCore::BackingStoreCopy) const final;
+    RefPtr<WebCore::NativeImage> copyNativeImage() final;
+    RefPtr<WebCore::NativeImage> createNativeImageReference() final;
 
-    RefPtr<WebCore::PixelBuffer> getPixelBuffer(const WebCore::PixelBufferFormat& outputFormat, const WebCore::IntRect&, const WebCore::ImageBufferAllocator&) const final;
+    void getPixelBuffer(const WebCore::IntRect&, WebCore::PixelBuffer&) final;
     void putPixelBuffer(const WebCore::PixelBuffer&, const WebCore::IntRect& srcRect, const WebCore::IntPoint& destPoint, WebCore::AlphaPremultiplication destFormat) final;
 
     bool originAtBottomLeftCorner() const final { return isOriginAtBottomLeftCorner; }
@@ -77,7 +78,9 @@ private:
     void clearBackendHandle() final;
     bool hasBackendHandle() const final;
 
-    ImageBufferBackendHandle m_handle;
+    String debugDescription() const final;
+
+    MachSendRight m_handle;
 
     WebCore::VolatilityState m_volatilityState { WebCore::VolatilityState::NonVolatile };
 };

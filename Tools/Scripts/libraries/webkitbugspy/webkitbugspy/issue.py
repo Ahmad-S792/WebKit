@@ -20,11 +20,10 @@
 # OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-import six
-
 from .tracker import Tracker
 from .user import User
 from datetime import datetime
+from webkitcorepy import string_utils
 
 
 class Issue(object):
@@ -35,13 +34,13 @@ class Issue(object):
             else:
                 self.user = user
 
-            if isinstance(timestamp, six.string_types) and timestamp.isdigit():
+            if isinstance(timestamp, string_utils.basestring) and timestamp.isdigit():
                 timestamp = int(timestamp)
             if timestamp and not isinstance(timestamp, int):
                 raise TypeError("Expected 'timestamp' to be of type int, got '{}'".format(timestamp))
             self.timestamp = timestamp
 
-            if content and not isinstance(content, six.string_types):
+            if content and not isinstance(content, string_utils.basestring):
                 raise ValueError("Expected 'content' to be a string, got '{}'".format(content))
             self.content = content
 
@@ -55,6 +54,8 @@ class Issue(object):
     def __init__(self, id, tracker):
         self.id = int(id)
         self.tracker = tracker
+        self._original = None
+        self._duplicates = None
 
         self._link = None
         self._title = None
@@ -121,10 +122,24 @@ class Issue(object):
             return False
         return bool(self.tracker.set(self, opened=True, why=why))
 
-    def close(self, why=None):
+    def close(self, why=None, original=None):
         if not self.opened:
             return False
-        return bool(self.tracker.set(self, opened=False, why=why))
+        if original and (self.tracker.NAME != original.tracker.NAME or getattr(self.tracker, 'url', None) != getattr(original.tracker, 'url', None)):
+            raise ValueError('Cannot dupe {} to {}'.format(self.link, original.link))
+        return bool(self.tracker.set(self, opened=False, why=why, original=original))
+
+    @property
+    def original(self):
+        if self._opened is None:
+            self.tracker.populate(self, 'opened')
+        return self._original
+
+    @property
+    def duplicates(self):
+        if self._duplicates is None:
+            self.tracker.populate(self, 'duplicates')
+        return self._duplicates
 
     @property
     def assignee(self):
@@ -196,6 +211,9 @@ class Issue(object):
             self.tracker.populate(self, 'keywords')
         return self._keywords
 
+    def set_keywords(self, keywords):
+        return self.tracker.set(self, keywords=keywords)
+
     @property
     def classification(self):
         if self._classification is None:
@@ -203,16 +221,37 @@ class Issue(object):
         return self._classification
 
     @property
-    def redacted(self):
-        match_string = ''
+    def _redaction_match(self):
+        result = ''
         for member in ('title', 'project', 'component', 'version', 'classification'):
-            match_string += ';{}:{}'.format(member, getattr(self, member, ''))
-        for key, value in self.tracker._redact.items():
-            if key.search(match_string):
+            result += ';{}:{}'.format(member, getattr(self, member, ''))
+        return '{};keywords:{}'.format(result, ','.join(self.keywords or []))
+
+    @property
+    def redacted(self):
+        match_string = self._redaction_match
+
+        for key, value in self.tracker._redact_exemption.items():
+            if key.search(match_string) and value:
                 return self.tracker.Redaction(
-                    redacted=value,
+                    redacted=False,
+                    exemption=value,
                     reason="is a {}".format(self.tracker.NAME) if key.pattern == '.*' else "matches '{}'".format(key.pattern),
                 )
+
+        match_strings = [match_string]
+        if self.original:
+            match_strings.append(self.original._redaction_match)
+        for dupe in self.duplicates or []:
+            match_strings.append(dupe._redaction_match)
+
+        for m_string in match_strings:
+            for key, value in self.tracker._redact.items():
+                if key.search(m_string):
+                    return self.tracker.Redaction(
+                        redacted=value,
+                        reason="is a {}".format(self.tracker.NAME) if key.pattern == '.*' else "matches '{}'".format(key.pattern),
+                    )
         return self.tracker.Redaction(redacted=False)
 
     def set_component(self, project=None, component=None, version=None):

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2014-2021 Apple Inc.  All rights reserved.
+ * Copyright (C) 2014-2023 Apple Inc.  All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -29,10 +29,11 @@
 #include "FontCascade.h"
 #include "HTMLAnchorElement.h"
 #include "HTMLNames.h"
+#include "InlineIteratorBoxInlines.h"
 #include "InlineIteratorInlineBox.h"
 #include "InlineIteratorTextBox.h"
+#include "RenderBoxModelObjectInlines.h"
 #include "RenderInline.h"
-#include "TextUnderlineOffset.h"
 
 namespace WebCore {
 
@@ -166,7 +167,7 @@ static float computedUnderlineOffset(const UnderlineOffsetArguments& context)
     auto underlineOffset = context.lineStyle.textUnderlineOffset();
     auto& fontMetrics = context.lineStyle.metricsOfPrimaryFont();
 
-    float computedUnderlineOffset = fontMetrics.ascent() + gap;
+    float computedUnderlineOffset;
     switch (context.resolvedUnderlinePosition) {
     case TextUnderlinePosition::Auto:
         computedUnderlineOffset = fontMetrics.ascent() + underlineOffset.lengthOr(gap);
@@ -182,6 +183,7 @@ static float computedUnderlineOffset(const UnderlineOffsetArguments& context)
         break;
     }
     default:
+        computedUnderlineOffset = fontMetrics.ascent() + gap;
         ASSERT_NOT_REACHED();
         break;
     }
@@ -217,7 +219,7 @@ static GlyphOverflow computedVisualOverflowForDecorations(const RenderStyle& lin
     GlyphOverflow overflowResult;
 
     if (decorationStyle == TextDecorationStyle::Wavy) {
-        wavyStrokeParameters = WebCore::wavyStrokeParameters(lineStyle.computedFontPixelSize());
+        wavyStrokeParameters = WebCore::wavyStrokeParameters(lineStyle.computedFontSize());
         wavyOffset = wavyOffsetFromDecoration();
         overflowResult.left = strokeThickness;
         overflowResult.right = strokeThickness;

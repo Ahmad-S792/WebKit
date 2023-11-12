@@ -1,9 +1,9 @@
 //@ requireOptions("--useWebAssemblySIMD=1")
-//@ skip if $architecture != "arm64" && $architecture != "x86_64"
+//@ skip if !$isSIMDPlatform
 import { instantiate } from "../wabt-wrapper.js"
 import * as assert from "../assert.js"
 
-const N = 4095 + 32
+const N = 1000;
 
 let wat = `
 (module

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2012 Apple Inc. All rights reserved.
+ * Copyright (C) 2012-2023 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -26,7 +26,7 @@
 #import "config.h"
 #import "PDFPluginTextAnnotation.h"
 
-#if ENABLE(PDFKIT_PLUGIN)
+#if ENABLE(LEGACY_PDFKIT_PLUGIN)
 
 #import "PDFAnnotationTextWidgetDetails.h"
 #import "PDFLayerControllerSPI.h"
@@ -81,9 +81,9 @@ PDFPluginTextAnnotation::~PDFPluginTextAnnotation()
 Ref<Element> PDFPluginTextAnnotation::createAnnotationElement()
 {
     Document& document = parent()->document();
-    ALLOW_DEPRECATED_DECLARATIONS_BEGIN
+ALLOW_DEPRECATED_DECLARATIONS_BEGIN
     PDFAnnotationTextWidget *textAnnotation = this->textAnnotation();
-    ALLOW_DEPRECATED_DECLARATIONS_END
+ALLOW_DEPRECATED_DECLARATIONS_END
     bool isMultiline = textAnnotation.isMultiline;
 
     auto element = document.createElement(isMultiline ? textareaTag : inputTag, false);
@@ -153,4 +153,4 @@ bool PDFPluginTextAnnotation::handleEvent(Event& event)
 
 } // namespace WebKit
 
-#endif // ENABLE(PDFKIT_PLUGIN)
+#endif // ENABLE(LEGACY_PDFKIT_PLUGIN)

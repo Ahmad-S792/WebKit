@@ -1,6 +1,6 @@
 /*
  * Copyright (C) 2014 Igalia S.L.
- * Copyright (C) 2016-2022 Apple Inc. All rights reserved.
+ * Copyright (C) 2016-2023 Apple Inc. All rights reserved.
  *
  *  This library is free software; you can redistribute it and/or
  *  modify it under the terms of the GNU Lesser General Public
@@ -48,8 +48,8 @@ public:
     void promptForGetUserMedia();
 
     enum class UserMediaDisplayCapturePromptType { Window, Screen, UserChoose };
-    virtual void promptForGetDisplayMedia(UserMediaDisplayCapturePromptType = UserMediaDisplayCapturePromptType::UserChoose);
-    virtual bool canPromptForGetDisplayMedia();
+    virtual void promptForGetDisplayMedia(UserMediaDisplayCapturePromptType);
+    virtual bool canRequestDisplayCapturePermission();
 
     void doDefaultAction();
     enum class UserMediaAccessDenialReason { NoConstraints, UserMediaDisabled, NoCaptureDevices, InvalidConstraint, HardwareError, PermissionDenied, OtherFailure };
@@ -82,6 +82,8 @@ public:
     WebCore::SecurityOrigin& userMediaDocumentSecurityOrigin() { return m_userMediaDocumentSecurityOrigin.get(); }
     const WebCore::SecurityOrigin& topLevelDocumentSecurityOrigin() const { return m_topLevelDocumentSecurityOrigin.get(); }
     const WebCore::SecurityOrigin& userMediaDocumentSecurityOrigin() const { return m_userMediaDocumentSecurityOrigin.get(); }
+    Ref<WebCore::SecurityOrigin> protectedTopLevelDocumentSecurityOrigin() const { return m_topLevelDocumentSecurityOrigin.get(); }
+    Ref<WebCore::SecurityOrigin> protectedUserMediaDocumentSecurityOrigin() const { return m_userMediaDocumentSecurityOrigin.get(); }
 
     const WebCore::MediaStreamRequest& userRequest() const { return m_request; }
 

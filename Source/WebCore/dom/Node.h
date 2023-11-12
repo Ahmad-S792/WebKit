@@ -31,6 +31,7 @@
 #include "StyleValidity.h"
 #include "TaskSource.h"
 #include "TreeScope.h"
+#include <compare>
 #include <wtf/CompactPointerTuple.h>
 #include <wtf/CompactUniquePtrTuple.h>
 #include <wtf/FixedVector.h>
@@ -129,15 +130,20 @@ public:
     virtual NodeType nodeType() const = 0;
     virtual size_t approximateMemoryCost() const { return sizeof(*this); }
     ContainerNode* parentNode() const;
+    inline RefPtr<ContainerNode> protectedParentNode() const; // Defined in ContainerNode.h.
     static ptrdiff_t parentNodeMemoryOffset() { return OBJECT_OFFSETOF(Node, m_parentNode); }
     inline Element* parentElement() const;
-    Node* previousSibling() const { return m_previous; }
+    Node* previousSibling() const { return m_previous.get(); }
+    RefPtr<Node> protectedPreviousSibling() const { return m_previous.get(); }
     static ptrdiff_t previousSiblingMemoryOffset() { return OBJECT_OFFSETOF(Node, m_previous); }
-    Node* nextSibling() const { return m_next; }
+    Node* nextSibling() const { return m_next.get(); }
+    RefPtr<Node> protectedNextSibling() const { return m_next.get(); }
     static ptrdiff_t nextSiblingMemoryOffset() { return OBJECT_OFFSETOF(Node, m_next); }
     WEBCORE_EXPORT RefPtr<NodeList> childNodes();
     Node* firstChild() const;
+    RefPtr<Node> protectedFirstChild() const { return firstChild(); }
     Node* lastChild() const;
+    RefPtr<Node> protectedLastChild() const { return lastChild(); }
     inline bool hasAttributes() const;
     inline NamedNodeMap* attributes() const;
     Node* pseudoAwareNextSibling() const;
@@ -148,8 +154,9 @@ public:
     WEBCORE_EXPORT const URL& baseURI() const;
     
     void getSubresourceURLs(ListHashSet<URL>&) const;
+    void getCandidateSubresourceURLs(ListHashSet<URL>&) const;
 
-    WEBCORE_EXPORT ExceptionOr<void> insertBefore(Node& newChild, Node* refChild);
+    WEBCORE_EXPORT ExceptionOr<void> insertBefore(Node& newChild, RefPtr<Node>&& refChild);
     WEBCORE_EXPORT ExceptionOr<void> replaceChild(Node& newChild, Node& oldChild);
     WEBCORE_EXPORT ExceptionOr<void> removeChild(Node& child);
     WEBCORE_EXPORT ExceptionOr<void> appendChild(Node& newChild);
@@ -214,6 +221,8 @@ public:
 
 #if ENABLE(VIDEO)
     virtual bool isWebVTTElement() const { return false; }
+    virtual bool isWebVTTRubyElement() const { return false; }
+    virtual bool isWebVTTRubyTextElement() const { return false; }
 #endif
     bool isStyledElement() const { return hasNodeFlag(NodeFlag::IsHTMLElement) || hasNodeFlag(NodeFlag::IsSVGElement) || hasNodeFlag(NodeFlag::IsMathMLElement); }
     virtual bool isAttributeNode() const { return false; }
@@ -249,6 +258,9 @@ public:
     HTMLSlotElement* manuallyAssignedSlot() const;
     void setManuallyAssignedSlot(HTMLSlotElement*);
 
+    bool hasEverPaintedImages() const;
+    void setHasEverPaintedImages(bool);
+
     bool isUncustomizedCustomElement() const { return customElementState() == CustomElementState::Uncustomized; }
     bool isCustomElementUpgradeCandidate() const { return customElementState() == CustomElementState::Undefined; }
     bool isDefinedCustomElement() const { return customElementState() == CustomElementState::Custom; }
@@ -261,11 +273,12 @@ public:
     Node* nonBoundaryShadowTreeRootNode();
 
     // Node's parent or shadow tree host.
-    ContainerNode* parentOrShadowHostNode() const; // Defined in ShadowRoot.h
+    inline ContainerNode* parentOrShadowHostNode() const; // Defined in ShadowRoot.h
+    inline RefPtr<ContainerNode> protectedParentOrShadowHostNode() const; // Defined in ShadowRoot.h
     ContainerNode* parentInComposedTree() const;
     Element* parentElementInComposedTree() const;
     Element* parentOrShadowHostElement() const;
-    void setParentNode(ContainerNode*);
+    inline void setParentNode(ContainerNode*); // Defined in ContainerNode.h.
     Node& rootNode() const;
     WEBCORE_EXPORT Node& traverseToRootNode() const;
     Node& shadowIncludingRoot() const;
@@ -349,11 +362,8 @@ public:
 
     WEBCORE_EXPORT void inspect();
 
-    enum UserSelectAllTreatment {
-        UserSelectAllDoesNotAffectEditability,
-        UserSelectAllIsAlwaysNonEditable
-    };
-    bool hasEditableStyle(UserSelectAllTreatment treatment = UserSelectAllIsAlwaysNonEditable) const
+    enum class UserSelectAllTreatment : bool { NotEditable, Editable };
+    bool hasEditableStyle(UserSelectAllTreatment treatment = UserSelectAllTreatment::NotEditable) const
     {
         return computeEditability(treatment, ShouldUpdateStyle::DoNotUpdate) != Editability::ReadOnly;
     }
@@ -361,7 +371,7 @@ public:
     // FIXME: Replace every use of this function by helpers in Editing.h
     bool hasRichlyEditableStyle() const
     {
-        return computeEditability(UserSelectAllIsAlwaysNonEditable, ShouldUpdateStyle::DoNotUpdate) == Editability::CanEditRichly;
+        return computeEditability(UserSelectAllTreatment::NotEditable, ShouldUpdateStyle::DoNotUpdate) == Editability::CanEditRichly;
     }
 
     enum class Editability { ReadOnly, CanEditPlainText, CanEditRichly };
@@ -380,6 +390,7 @@ public:
 
     // Returns the document associated with this node. A document node returns itself.
     Document& document() const { return treeScope().documentScope(); }
+    inline Ref<Document> protectedDocument() const; // Defined in DocumentInlines.h.
 
     TreeScope& treeScope() const
     {
@@ -388,6 +399,8 @@ public:
     }
     void setTreeScopeRecursively(TreeScope&);
     static ptrdiff_t treeScopeMemoryOffset() { return OBJECT_OFFSETOF(Node, m_treeScope); }
+
+    TreeScope& treeScopeForSVGReferences() const;
 
     // Returns true if this node is associated with a document and is in its associated document's
     // node tree, false otherwise (https://dom.spec.whatwg.org/#connected).
@@ -519,6 +532,15 @@ public:
     bool m_adoptionIsRequired { true };
 #endif
 
+    void relaxAdoptionRequirement()
+    {
+#if ASSERT_ENABLED
+        ASSERT_WITH_SECURITY_IMPLICATION(!m_deletionHasBegun);
+        ASSERT(m_adoptionIsRequired);
+        m_adoptionIsRequired = false;
+#endif
+    }
+
     HashMap<Ref<MutationObserver>, MutationRecordDeliveryOptions> registeredMutationObservers(MutationObserverOptionType, const QualifiedName* attributeName);
     void registerMutationObserver(MutationObserver&, MutationObserverOptions, const MemoryCompactLookupOnlyRobinHoodHashSet<AtomString>& attributeFilter);
     void unregisterMutationObserver(MutationObserverRegistration&);
@@ -630,20 +652,20 @@ protected:
     void setIsParsingChildrenFinished() { setNodeFlag(NodeFlag::IsParsingChildrenFinished); }
     void clearIsParsingChildrenFinished() { clearNodeFlag(NodeFlag::IsParsingChildrenFinished); }
 
-    constexpr static auto DefaultNodeFlags = OptionSet<NodeFlag>(NodeFlag::IsParsingChildrenFinished);
-    constexpr static auto CreateOther = DefaultNodeFlags;
-    constexpr static auto CreateCharacterData = DefaultNodeFlags | NodeFlag::IsCharacterData;
-    constexpr static auto CreateText = CreateCharacterData | NodeFlag::IsText;
-    constexpr static auto CreateContainer = DefaultNodeFlags | NodeFlag::IsContainerNode;
-    constexpr static auto CreateElement = CreateContainer | NodeFlag::IsElement;
-    constexpr static auto CreatePseudoElement = CreateElement | NodeFlag::IsConnected;
-    constexpr static auto CreateDocumentFragment = CreateContainer | NodeFlag::IsDocumentFragment;
-    constexpr static auto CreateShadowRoot = CreateDocumentFragment | NodeFlag::IsShadowRoot | NodeFlag::IsInShadowTree;
-    constexpr static auto CreateHTMLElement = CreateElement | NodeFlag::IsHTMLElement;
-    constexpr static auto CreateSVGElement = CreateElement | NodeFlag::IsSVGElement | NodeFlag::HasCustomStyleResolveCallbacks;
-    constexpr static auto CreateMathMLElement = CreateElement | NodeFlag::IsMathMLElement;
-    constexpr static auto CreateDocument = CreateContainer | NodeFlag::IsDocumentNode | NodeFlag::IsConnected;
-    constexpr static auto CreateEditingText = CreateText | NodeFlag::IsEditingText;
+    static constexpr auto DefaultNodeFlags = OptionSet<NodeFlag>(NodeFlag::IsParsingChildrenFinished);
+    static constexpr auto CreateOther = DefaultNodeFlags;
+    static constexpr auto CreateCharacterData = DefaultNodeFlags | NodeFlag::IsCharacterData;
+    static constexpr auto CreateText = CreateCharacterData | NodeFlag::IsText;
+    static constexpr auto CreateContainer = DefaultNodeFlags | NodeFlag::IsContainerNode;
+    static constexpr auto CreateElement = CreateContainer | NodeFlag::IsElement;
+    static constexpr auto CreatePseudoElement = CreateElement | NodeFlag::IsConnected | NodeFlag::HasCustomStyleResolveCallbacks;
+    static constexpr auto CreateDocumentFragment = CreateContainer | NodeFlag::IsDocumentFragment;
+    static constexpr auto CreateShadowRoot = CreateDocumentFragment | NodeFlag::IsShadowRoot | NodeFlag::IsInShadowTree;
+    static constexpr auto CreateHTMLElement = CreateElement | NodeFlag::IsHTMLElement;
+    static constexpr auto CreateSVGElement = CreateElement | NodeFlag::IsSVGElement | NodeFlag::HasCustomStyleResolveCallbacks;
+    static constexpr auto CreateMathMLElement = CreateElement | NodeFlag::IsMathMLElement;
+    static constexpr auto CreateDocument = CreateContainer | NodeFlag::IsDocumentNode | NodeFlag::IsConnected;
+    static constexpr auto CreateEditingText = CreateText | NodeFlag::IsEditingText;
     using ConstructionType = OptionSet<NodeFlag>;
     Node(Document&, ConstructionType);
 
@@ -667,7 +689,6 @@ protected:
         DescendantsAffectedByForwardPositionalRules             = 1 << 10,
         ChildrenAffectedByBackwardPositionalRules               = 1 << 11,
         DescendantsAffectedByBackwardPositionalRules            = 1 << 12,
-        ChildrenAffectedByPropertyBasedBackwardPositionalRules  = 1 << 13,
     };
 
     struct StyleBitfields {
@@ -696,13 +717,12 @@ protected:
     ALWAYS_INLINE void clearStyleFlags(OptionSet<NodeStyleFlag>);
 
     virtual void addSubresourceAttributeURLs(ListHashSet<URL>&) const { }
+    virtual void addCandidateSubresourceURLs(ListHashSet<URL>&) const { }
 
     bool hasRareData() const { return !!m_rareDataWithBitfields.pointer(); }
     NodeRareData* rareData() const { return m_rareDataWithBitfields.pointer(); }
     NodeRareData& ensureRareData();
     void clearRareData();
-
-    void setHasCustomStyleResolveCallbacks() { setNodeFlag(NodeFlag::HasCustomStyleResolveCallbacks); }
 
     void setTreeScope(TreeScope& scope) { m_treeScope = &scope; }
 
@@ -741,48 +761,27 @@ private:
     mutable uint32_t m_refCountAndParentBit { s_refCountIncrement };
     mutable OptionSet<NodeFlag> m_nodeFlags;
 
-    ContainerNode* m_parentNode { nullptr };
-    TreeScope* m_treeScope { nullptr };
-    Node* m_previous { nullptr };
-    Node* m_next { nullptr };
+    CheckedPtr<ContainerNode> m_parentNode;
+    CheckedPtr<TreeScope> m_treeScope;
+    CheckedPtr<Node> m_previous;
+    CheckedPtr<Node> m_next;
     CompactPointerTuple<RenderObject*, uint16_t> m_rendererWithStyleFlags;
     CompactUniquePtrTuple<NodeRareData, uint16_t> m_rareDataWithBitfields;
 };
 
 bool connectedInSameTreeScope(const Node*, const Node*);
 
-// Designed to be used the same way as C++20 std::partial_ordering class.
-// FIXME: Consider putting this in a separate header.
-// FIXME: Once we can require C++20, replace with std::partial_ordering.
-class PartialOrdering {
-public:
-    static const PartialOrdering less;
-    static const PartialOrdering equivalent;
-    static const PartialOrdering greater;
-    static const PartialOrdering unordered;
-
-    friend constexpr bool is_eq(PartialOrdering);
-    friend constexpr bool is_lt(PartialOrdering);
-    friend constexpr bool is_gt(PartialOrdering);
-
-private:
-    enum class Type : uint8_t { Less, Equivalent, Greater, Unordered };
-    constexpr PartialOrdering(Type type) : m_type { type } { }
-    Type m_type;
-};
-constexpr bool is_eq(PartialOrdering);
-constexpr bool is_lt(PartialOrdering);
-constexpr bool is_gt(PartialOrdering);
-constexpr bool is_neq(PartialOrdering);
-constexpr bool is_lteq(PartialOrdering);
-constexpr bool is_gteq(PartialOrdering);
+// FIXME: We should remove these but std::is_eq() / std::is_neq() are not available in
+// some of our SDKs yet (rdar://87314077).
+constexpr bool is_eq(std::partial_ordering cmp) { return cmp == 0; }
+constexpr bool is_neq(std::partial_ordering cmp) { return cmp != 0; }
 
 enum TreeType { Tree, ShadowIncludingTree, ComposedTree };
 template<TreeType = Tree> ContainerNode* parent(const Node&);
 template<TreeType = Tree> Node* commonInclusiveAncestor(const Node&, const Node&);
-template<TreeType = Tree> PartialOrdering treeOrder(const Node&, const Node&);
+template<TreeType = Tree> std::partial_ordering treeOrder(const Node&, const Node&);
 
-WEBCORE_EXPORT PartialOrdering treeOrderForTesting(TreeType, const Node&, const Node&);
+WEBCORE_EXPORT std::partial_ordering treeOrderForTesting(TreeType, const Node&, const Node&);
 
 #if ASSERT_ENABLED
 
@@ -845,17 +844,10 @@ inline void addSubresourceURL(ListHashSet<URL>& urls, const URL& url)
         urls.add(url);
 }
 
-inline void Node::setParentNode(ContainerNode* parent)
-{
-    ASSERT(isMainThread());
-    m_parentNode = parent;
-    m_refCountAndParentBit = (m_refCountAndParentBit & s_refCountMask) | !!parent;
-}
-
 inline ContainerNode* Node::parentNode() const
 {
     ASSERT(isMainThreadOrGCThread());
-    return m_parentNode;
+    return m_parentNode.get();
 }
 
 inline ContainerNode* Node::parentNodeGuaranteedHostFree() const
@@ -902,39 +894,20 @@ inline void Node::setTreeScopeRecursively(TreeScope& newTreeScope)
         moveTreeToNewScope(*this, *m_treeScope, newTreeScope);
 }
 
-inline constexpr PartialOrdering PartialOrdering::less(Type::Less);
-inline constexpr PartialOrdering PartialOrdering::equivalent(Type::Equivalent);
-inline constexpr PartialOrdering PartialOrdering::greater(Type::Greater);
-inline constexpr PartialOrdering PartialOrdering::unordered(Type::Unordered);
-
-constexpr bool is_eq(PartialOrdering ordering)
+inline void EventTarget::ref()
 {
-    return ordering.m_type == PartialOrdering::Type::Equivalent;
+    if (LIKELY(isNode()))
+        downcast<Node>(*this).ref();
+    else
+        refEventTarget();
 }
 
-constexpr bool is_lt(PartialOrdering ordering)
+inline void EventTarget::deref()
 {
-    return ordering.m_type == PartialOrdering::Type::Less;
-}
-
-constexpr bool is_gt(PartialOrdering ordering)
-{
-    return ordering.m_type == PartialOrdering::Type::Greater;
-}
-
-constexpr bool is_neq(PartialOrdering ordering)
-{
-    return is_lt(ordering) || is_gt(ordering);
-}
-
-constexpr bool is_lteq(PartialOrdering ordering)
-{
-    return is_lt(ordering) || is_eq(ordering);
-}
-
-constexpr bool is_gteq(PartialOrdering ordering)
-{
-    return is_gt(ordering) || is_eq(ordering);
+    if (LIKELY(isNode()))
+        downcast<Node>(*this).deref();
+    else
+        derefEventTarget();
 }
 
 WEBCORE_EXPORT WTF::TextStream& operator<<(WTF::TextStream&, const Node&);

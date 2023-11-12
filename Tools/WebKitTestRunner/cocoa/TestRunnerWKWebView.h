@@ -63,15 +63,18 @@
 
 @property (nonatomic, assign) UIEdgeInsets overrideSafeAreaInsets;
 
+@property (nonatomic, readonly) NSUInteger keyboardWillHideCount;
 @property (nonatomic, readonly) UIView *contentView;
 @property (nonatomic, readonly, getter=isShowingKeyboard) BOOL showingKeyboard;
 @property (nonatomic, readonly, getter=isDismissingMenu) BOOL dismissingMenu;
 @property (nonatomic, readonly, getter=isShowingPopover) BOOL showingPopover;
+@property (nonatomic, readonly, getter=isShowingFormValidationBubble) BOOL showingFormValidationBubble;
 @property (nonatomic, assign) BOOL usesSafariLikeRotation;
 @property (nonatomic, readonly, getter=isInteractingWithFormControl) BOOL interactingWithFormControl;
 @property (nonatomic) _WKFocusStartsInputSessionPolicy focusStartsInputSessionPolicy;
 
 @property (nonatomic, assign) UIInterfaceOrientationMask supportedInterfaceOrientations;
+@property (nonatomic) BOOL suppressInputAccessoryView;
 
 #endif
 
@@ -79,6 +82,7 @@
 @property (nonatomic, copy) void (^didShowContextMenuCallback)(void);
 @property (nonatomic, copy) void (^didDismissContextMenuCallback)(void);
 @property (nonatomic, readonly, getter=isShowingMenu) BOOL showingMenu;
+@property (nonatomic, readonly, getter=isZoomingOrScrolling) BOOL zoomingOrScrolling;
 @property (nonatomic, copy) void (^didShowMenuCallback)(void);
 @property (nonatomic, copy) void (^didHideMenuCallback)(void);
 @property (nonatomic, readonly, getter=isShowingContactPicker) BOOL showingContactPicker;

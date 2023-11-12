@@ -28,9 +28,11 @@
 
 #if ENABLE(GPU_PROCESS)
 
+#include "ArgumentCodersCocoa.h"
 #include "GPUProcessCreationParameters.h"
 #include "GPUProcessMessages.h"
 #include "MediaPermissionUtilities.h"
+#include "WebProcessProxy.h"
 
 #if HAVE(POWERLOG_TASK_MODE_QUERY)
 #include <pal/spi/mac/PowerLogSPI.h>
@@ -44,7 +46,12 @@ namespace WebKit {
 void GPUProcessProxy::platformInitializeGPUProcessParameters(GPUProcessCreationParameters& parameters)
 {
     parameters.mobileGestaltExtensionHandle = createMobileGestaltSandboxExtensionIfNeeded();
+    parameters.gpuToolsExtensionHandles = createGPUToolsSandboxExtensionHandlesIfNeeded();
     parameters.applicationVisibleName = applicationVisibleName();
+#if PLATFORM(MAC)
+    if (auto launchServicesExtensionHandle = SandboxExtension::createHandleForMachLookup("com.apple.coreservices.launchservicesd"_s, std::nullopt))
+        parameters.launchServicesExtensionHandle = WTFMove(*launchServicesExtensionHandle);
+#endif
 }
 
 #if HAVE(POWERLOG_TASK_MODE_QUERY)
@@ -70,9 +77,17 @@ void GPUProcessProxy::enablePowerLogging()
     auto handle = SandboxExtension::createHandleForMachLookup("com.apple.powerlog.plxpclogger.xpc"_s, std::nullopt);
     if (!handle)
         return;
-    send(Messages::GPUProcess::EnablePowerLogging(*handle), 0);
+    send(Messages::GPUProcess::EnablePowerLogging(WTFMove(*handle)), 0);
 }
 #endif // HAVE(POWERLOG_TASK_MODE_QUERY)
+
+Vector<SandboxExtension::Handle> GPUProcessProxy::createGPUToolsSandboxExtensionHandlesIfNeeded()
+{
+    if (!WebProcessProxy::shouldEnableRemoteInspector())
+        return { };
+
+    return SandboxExtension::createHandlesForMachLookup({ "com.apple.gputools.service"_s, }, std::nullopt);
+}
 
 }
 

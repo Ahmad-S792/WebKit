@@ -41,12 +41,28 @@
 #import <WebKit/WKBundlePage.h>
 #import <WebKit/WKBundlePagePrivate.h>
 
+#import <pal/spi/mac/HIServicesSPI.h>
+
 #if ENABLE(ACCESSIBILITY_ISOLATED_TREE)
 #import <pal/spi/cocoa/AccessibilitySupportSPI.h>
-#import <pal/spi/mac/HIServicesSPI.h>
 #endif
 
 namespace WTR {
+
+RefPtr<AccessibilityUIElement> AccessibilityController::focusedElement()
+{
+    auto page = InjectedBundle::singleton().page()->page();
+    if (!WKAccessibilityRootObject(page))
+        return nullptr;
+
+    RetainPtr<PlatformUIElement> focus;
+    executeOnAXThreadAndWait([&focus] () {
+        focus = static_cast<PlatformUIElement>(WKAccessibilityFocusedUIElement());
+    });
+    if (focus)
+        return AccessibilityUIElement::create(focus.get());
+    return nullptr;
+}
 
 bool AccessibilityController::addNotificationListener(JSValueRef functionCallback)
 {
@@ -133,12 +149,20 @@ JSRetainPtr<JSStringRef> AccessibilityController::platformName()
 #if ENABLE(ACCESSIBILITY_ISOLATED_TREE)
 void AccessibilityController::updateIsolatedTreeMode()
 {
-    // Override to set identifier to VoiceOver so that requests are handled in isolated mode.
+    // Override the client identifier to be kAXClientTypeWebKitTesting which is treated the same as the VoiceOver identifier, and thus requests are handled in isolated tree mode.
     _AXSetClientIdentificationOverride(m_accessibilityIsolatedTreeMode ? (AXClientType)kAXClientTypeWebKitTesting : kAXClientTypeNoActiveRequestFound);
     _AXSSetIsolatedTreeMode(m_accessibilityIsolatedTreeMode ? AXSIsolatedTreeModeSecondaryThread : AXSIsolatedTreeModeOff);
-    m_useMockAXThread = WKAccessibilityCanUseSecondaryAXThread(InjectedBundle::singleton().page()->page());
 }
 #endif
+
+void AccessibilityController::overrideClient(JSStringRef clientType)
+{
+    NSString *clientString = [NSString stringWithJSStringRef:clientType];
+    if ([clientString caseInsensitiveCompare:@"voiceover"] == NSOrderedSame)
+        _AXSetClientIdentificationOverride(kAXClientTypeVoiceOver);
+    else
+        _AXSetClientIdentificationOverride(kAXClientTypeNoActiveRequestFound);
+}
 
 // AXThread implementation
 

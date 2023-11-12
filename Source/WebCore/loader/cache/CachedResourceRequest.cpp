@@ -28,6 +28,7 @@
 
 #include "CachePolicy.h"
 #include "CachedResourceLoader.h"
+#include "CachedResourceRequestInitiatorTypes.h"
 #include "ContentExtensionsBackend.h"
 #include "CrossOriginAccessControl.h"
 #include "Document.h"
@@ -35,10 +36,14 @@
 #include "FrameLoader.h"
 #include "HTTPHeaderValues.h"
 #include "ImageDecoder.h"
+#include "LocalFrame.h"
+#include "MIMETypeRegistry.h"
 #include "MemoryCache.h"
+#include "OriginAccessPatterns.h"
 #include "SecurityPolicy.h"
 #include "ServiceWorkerRegistrationData.h"
 #include <wtf/NeverDestroyed.h>
+#include <wtf/text/StringBuilder.h>
 
 namespace WebCore {
 
@@ -100,7 +105,7 @@ void upgradeInsecureResourceRequestIfNeeded(ResourceRequest& request, Document& 
     URL url = request.url();
 
     ASSERT(document.contentSecurityPolicy());
-    document.contentSecurityPolicy()->upgradeInsecureRequestIfNeeded(url, ContentSecurityPolicy::InsecureRequestType::Load);
+    document.checkedContentSecurityPolicy()->upgradeInsecureRequestIfNeeded(url, ContentSecurityPolicy::InsecureRequestType::Load);
 
     if (url == request.url())
         return;
@@ -123,37 +128,44 @@ void CachedResourceRequest::setDomainForCachePartition(const String& domain)
     m_resourceRequest.setDomainForCachePartition(domain);
 }
 
-static constexpr ASCIILiteral acceptHeaderValueForWebPImageResource()
+static inline void appendAdditionalSupportedImageMIMETypes(StringBuilder& acceptHeader)
 {
-#if HAVE(WEBP) || USE(WEBP)
-    return "image/webp,"_s;
-#else
-    return ""_s;
-#endif
+    for (const auto& additionalSupportedImageMIMEType : MIMETypeRegistry::additionalSupportedImageMIMETypes()) {
+        acceptHeader.append(additionalSupportedImageMIMEType);
+        acceptHeader.append(',');
+    }
 }
 
-static constexpr ASCIILiteral acceptHeaderValueForAVIFImageResource()
+static inline void appendVideoImageResource(StringBuilder& acceptHeader)
 {
-#if HAVE(AVIF) || USE(AVIF)
-    return "image/avif,"_s;
-#else
-    return ""_s;
-#endif
-}
-
-static constexpr ASCIILiteral acceptHeaderValueForVideoImageResource(bool supportsVideoImage)
-{
-    if (supportsVideoImage)
-        return "video/*;q=0.8,"_s;
-    return ""_s;
+    if (ImageDecoder::supportsMediaType(ImageDecoder::MediaType::Video))
+        acceptHeader.append("video/*;q=0.8,"_s);
 }
 
 static String acceptHeaderValueForImageResource()
 {
-    return String(acceptHeaderValueForWebPImageResource())
-        + acceptHeaderValueForAVIFImageResource()
-        + acceptHeaderValueForVideoImageResource(ImageDecoder::supportsMediaType(ImageDecoder::MediaType::Video))
-        + "image/png,image/svg+xml,image/*;q=0.8,*/*;q=0.5"_s;
+    static MainThreadNeverDestroyed<String> staticPrefix = [] {
+        StringBuilder builder;
+#if HAVE(WEBP) || USE(WEBP)
+        builder.append("image/webp,"_s);
+#endif
+#if HAVE(AVIF) || USE(AVIF)
+        builder.append("image/avif,"_s);
+#endif
+#if HAVE(JPEGXL) || USE(JPEGXL)
+        builder.append("image/jxl,"_s);
+#endif
+#if HAVE(HEIC)
+        builder.append("image/heic,image/heic-sequence,"_s);
+#endif
+        return builder.toString();
+    }();
+    StringBuilder builder;
+    builder.append(staticPrefix.get());
+    appendAdditionalSupportedImageMIMETypes(builder);
+    appendVideoImageResource(builder);
+    builder.append("image/png,image/svg+xml,image/*;q=0.8,*/*;q=0.5"_s);
+    return builder.toString();
 }
 
 String CachedResourceRequest::acceptHeaderValueFromType(CachedResource::Type type)
@@ -270,15 +282,19 @@ void CachedResourceRequest::updateReferrerAndOriginHeaders(FrameLoader& frameLoa
     String outgoingReferrer = frameLoader.outgoingReferrer();
     if (m_resourceRequest.hasHTTPReferrer())
         outgoingReferrer = m_resourceRequest.httpReferrer();
-    updateRequestReferrer(m_resourceRequest, m_options.referrerPolicy, outgoingReferrer);
+    updateRequestReferrer(m_resourceRequest, m_options.referrerPolicy, outgoingReferrer, OriginAccessPatternsForWebProcess::singleton());
 
     if (!m_resourceRequest.httpOrigin().isEmpty())
         return;
+
+    auto* document = frameLoader.frame().document();
+    auto actualOrigin = (document && m_options.destination == FetchOptionsDestination::EmptyString && m_initiatorType == cachedResourceRequestInitiatorTypes().fetch) ? Ref { document->securityOrigin() } : SecurityOrigin::createFromString(outgoingReferrer);
     String outgoingOrigin;
     if (m_options.mode == FetchOptions::Mode::Cors)
-        outgoingOrigin = SecurityOrigin::createFromString(outgoingReferrer)->toString();
+        outgoingOrigin = actualOrigin->toString();
     else
-        outgoingOrigin = SecurityPolicy::generateOriginHeader(m_options.referrerPolicy, m_resourceRequest.url(), SecurityOrigin::createFromString(outgoingReferrer));
+        outgoingOrigin = SecurityPolicy::generateOriginHeader(m_options.referrerPolicy, m_resourceRequest.url(), actualOrigin, OriginAccessPatternsForWebProcess::singleton());
+
     FrameLoader::addHTTPOriginIfNeeded(m_resourceRequest, outgoingOrigin);
 }
 
@@ -300,7 +316,7 @@ bool isRequestCrossOrigin(SecurityOrigin* origin, const URL& requestURL, const R
     if (requestURL.protocolIsData() && options.sameOriginDataURLFlag == SameOriginDataURLFlag::Set)
         return false;
 
-    return !origin->canRequest(requestURL);
+    return !origin->canRequest(requestURL, OriginAccessPatternsForWebProcess::singleton());
 }
 
 void CachedResourceRequest::setDestinationIfNotSet(FetchOptions::Destination destination)

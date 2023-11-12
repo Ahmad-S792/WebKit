@@ -48,7 +48,7 @@ Ref<Array> Array::createStringArray(const Vector<WTF::String>& strings)
     return create(WTFMove(elements));
 }
 
-Ref<Array> Array::createStringArray(const Span<const WTF::String> strings)
+Ref<Array> Array::createStringArray(const std::span<const WTF::String> strings)
 {
     return create(WTF::map(strings, [] (auto string) -> RefPtr<Object> {
         return API::String::create(string);
@@ -65,7 +65,7 @@ Vector<WTF::String> Array::toStringVector()
 
     patternsVector.reserveInitialCapacity(size);
     for (auto entry : elementsOfType<API::String>())
-        patternsVector.uncheckedAppend(entry->string());
+        patternsVector.append(entry->string());
     return patternsVector;
 }
 

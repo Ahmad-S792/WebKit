@@ -89,7 +89,6 @@ namespace JSC {
     macro(starNamespace) \
     macro(keys) \
     macro(values) \
-    macro(get) \
     macro(set) \
     macro(clear) \
     macro(context) \
@@ -119,13 +118,11 @@ namespace JSC {
     macro(syncIterator) \
     macro(nextMethod) \
     macro(asyncGeneratorQueueItemNext) \
-    macro(dateTimeFormat) \
     macro(this) \
     macro(importMapStatus) \
     macro(importInRealm) \
     macro(evalInRealm) \
     macro(moveFunctionToRealm) \
-    macro(thisTimeValue) \
     macro(newTargetLocal) \
     macro(derivedConstructor) \
     macro(isTypedArrayView) \
@@ -167,6 +164,7 @@ namespace JSC {
     macro(regExpProtoSourceGetter) \
     macro(regExpProtoStickyGetter) \
     macro(regExpProtoUnicodeGetter) \
+    macro(regExpProtoUnicodeSetsGetter) \
     macro(regExpPrototypeSymbolMatch) \
     macro(regExpPrototypeSymbolReplace) \
     macro(regExpSearchFast) \
@@ -181,8 +179,8 @@ namespace JSC {
     macro(stringIndexOfInternal) \
     macro(stringSplitFast) \
     macro(stringSubstring) \
-    macro(makeBoundFunction) \
-    macro(hasOwnLengthProperty) \
+    macro(handleNegativeProxyHasTrapResult) \
+    macro(handlePositiveProxySetTrapResult) \
     macro(handleProxyGetTrapResult) \
     macro(importModule) \
     macro(copyDataProperties) \
@@ -200,6 +198,7 @@ namespace JSC {
     macro(sentinelString) \
     macro(createRemoteFunction) \
     macro(isRemoteFunction) \
+    macro(arrayFromFast) \
     macro(arraySort) \
     macro(jsonParse) \
     macro(jsonStringify) \

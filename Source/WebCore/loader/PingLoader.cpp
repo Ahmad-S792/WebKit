@@ -39,18 +39,18 @@
 #include "ContentRuleListResults.h"
 #include "ContentSecurityPolicy.h"
 #include "Document.h"
-#include "Frame.h"
 #include "FrameLoader.h"
-#include "FrameLoaderClient.h"
 #include "HTTPHeaderValues.h"
 #include "InspectorInstrumentation.h"
 #include "LoaderStrategy.h"
+#include "LocalFrame.h"
+#include "LocalFrameLoaderClient.h"
 #include "NetworkLoadMetrics.h"
+#include "OriginAccessPatterns.h"
 #include "Page.h"
 #include "PlatformStrategies.h"
 #include "ProgressTracker.h"
 #include "ResourceError.h"
-#include "ResourceHandle.h"
 #include "ResourceLoadInfo.h"
 #include "ResourceRequest.h"
 #include "ResourceResponse.h"
@@ -65,7 +65,7 @@ namespace WebCore {
 #if ENABLE(CONTENT_EXTENSIONS)
 
 // Returns true if we should block the load.
-static bool processContentRuleListsForLoad(const Frame& frame, ResourceRequest& request, OptionSet<ContentExtensions::ResourceType> resourceType)
+static bool processContentRuleListsForLoad(const LocalFrame& frame, ResourceRequest& request, OptionSet<ContentExtensions::ResourceType> resourceType)
 {
     auto* documentLoader = frame.loader().documentLoader();
     if (!documentLoader)
@@ -81,12 +81,12 @@ static bool processContentRuleListsForLoad(const Frame& frame, ResourceRequest& 
 
 #endif
 
-void PingLoader::loadImage(Frame& frame, const URL& url)
+void PingLoader::loadImage(LocalFrame& frame, const URL& url)
 {
     ASSERT(frame.document());
     auto& document = *frame.document();
 
-    if (!document.securityOrigin().canDisplay(url)) {
+    if (!document.securityOrigin().canDisplay(url, OriginAccessPatternsForWebProcess::singleton())) {
         FrameLoader::reportLocalLoadFailed(&frame, url.string());
         return;
     }
@@ -102,13 +102,13 @@ void PingLoader::loadImage(Frame& frame, const URL& url)
         return;
 #endif
 
-    document.contentSecurityPolicy()->upgradeInsecureRequestIfNeeded(request, ContentSecurityPolicy::InsecureRequestType::Load);
+    document.checkedContentSecurityPolicy()->upgradeInsecureRequestIfNeeded(request, ContentSecurityPolicy::InsecureRequestType::Load);
 
     request.setHTTPHeaderField(HTTPHeaderName::CacheControl, HTTPHeaderValues::maxAge0());
 
     HTTPHeaderMap originalRequestHeader = request.httpHeaderFields();
 
-    String referrer = SecurityPolicy::generateReferrerHeader(document.referrerPolicy(), request.url(), frame.loader().outgoingReferrer());
+    String referrer = SecurityPolicy::generateReferrerHeader(document.referrerPolicy(), request.url(), frame.loader().outgoingReferrer(), OriginAccessPatternsForWebProcess::singleton());
     if (!referrer.isEmpty())
         request.setHTTPReferrer(referrer);
     frame.loader().updateRequestAndAddExtraFields(request, IsMainResource::No);
@@ -117,7 +117,7 @@ void PingLoader::loadImage(Frame& frame, const URL& url)
 }
 
 // http://www.whatwg.org/specs/web-apps/current-work/multipage/links.html#hyperlink-auditing
-void PingLoader::sendPing(Frame& frame, const URL& pingURL, const URL& destinationURL)
+void PingLoader::sendPing(LocalFrame& frame, const URL& pingURL, const URL& destinationURL)
 {
     ASSERT(frame.document());
 
@@ -132,8 +132,8 @@ void PingLoader::sendPing(Frame& frame, const URL& pingURL, const URL& destinati
         return;
 #endif
 
-    auto& document = *frame.document();
-    document.contentSecurityPolicy()->upgradeInsecureRequestIfNeeded(request, ContentSecurityPolicy::InsecureRequestType::Load);
+    Ref document = *frame.document();
+    document->checkedContentSecurityPolicy()->upgradeInsecureRequestIfNeeded(request, ContentSecurityPolicy::InsecureRequestType::Load);
 
     request.setHTTPMethod("POST"_s);
     request.setHTTPContentType("text/ping"_s);
@@ -142,21 +142,21 @@ void PingLoader::sendPing(Frame& frame, const URL& pingURL, const URL& destinati
 
     HTTPHeaderMap originalRequestHeader = request.httpHeaderFields();
 
-    auto& sourceOrigin = document.securityOrigin();
-    FrameLoader::addHTTPOriginIfNeeded(request, SecurityPolicy::generateOriginHeader(document.referrerPolicy(), request.url(), sourceOrigin));
+    auto& sourceOrigin = document->securityOrigin();
+    FrameLoader::addHTTPOriginIfNeeded(request, SecurityPolicy::generateOriginHeader(document->referrerPolicy(), request.url(), sourceOrigin, OriginAccessPatternsForWebProcess::singleton()));
 
     frame.loader().updateRequestAndAddExtraFields(request, IsMainResource::No);
 
     // https://html.spec.whatwg.org/multipage/links.html#hyperlink-auditing
-    if (document.securityOrigin().isSameOriginAs(SecurityOrigin::create(pingURL).get())
-        || !document.url().protocolIs("https"_s))
-        request.setHTTPHeaderField(HTTPHeaderName::PingFrom, document.url().string());
+    if (document->securityOrigin().isSameOriginAs(SecurityOrigin::create(pingURL).get())
+        || !document->url().protocolIs("https"_s))
+        request.setHTTPHeaderField(HTTPHeaderName::PingFrom, document->url().string());
     request.setHTTPHeaderField(HTTPHeaderName::PingTo, destinationURL.string());
 
     startPingLoad(frame, request, WTFMove(originalRequestHeader), ShouldFollowRedirects::Yes, ContentSecurityPolicyImposition::DoPolicyCheck, ReferrerPolicy::NoReferrer);
 }
 
-void PingLoader::sendViolationReport(Frame& frame, const URL& reportURL, Ref<FormData>&& report, ViolationReportType reportType)
+void PingLoader::sendViolationReport(LocalFrame& frame, const URL& reportURL, Ref<FormData>&& report, ViolationReportType reportType)
 {
     ASSERT(frame.document());
 
@@ -171,8 +171,8 @@ void PingLoader::sendViolationReport(Frame& frame, const URL& reportURL, Ref<For
         return;
 #endif
 
-    auto& document = *frame.document();
-    document.contentSecurityPolicy()->upgradeInsecureRequestIfNeeded(request, ContentSecurityPolicy::InsecureRequestType::Load);
+    Ref document = *frame.document();
+    document->checkedContentSecurityPolicy()->upgradeInsecureRequestIfNeeded(request, ContentSecurityPolicy::InsecureRequestType::Load);
 
     request.setHTTPMethod("POST"_s);
     request.setHTTPBody(WTFMove(report));
@@ -191,7 +191,7 @@ void PingLoader::sendViolationReport(Frame& frame, const URL& reportURL, Ref<For
     }
 
     bool removeCookies = true;
-    if (document.securityOrigin().isSameSchemeHostPort(SecurityOrigin::create(reportURL).get()))
+    if (document->securityOrigin().isSameSchemeHostPort(SecurityOrigin::create(reportURL).get()))
         removeCookies = false;
     if (removeCookies)
         request.setAllowCookies(false);
@@ -201,14 +201,14 @@ void PingLoader::sendViolationReport(Frame& frame, const URL& reportURL, Ref<For
     if (reportType == ViolationReportType::ContentSecurityPolicy)
         frame.loader().updateRequestAndAddExtraFields(request, IsMainResource::No);
 
-    String referrer = SecurityPolicy::generateReferrerHeader(document.referrerPolicy(), reportURL, frame.loader().outgoingReferrer());
+    String referrer = SecurityPolicy::generateReferrerHeader(document->referrerPolicy(), reportURL, frame.loader().outgoingReferrer(), OriginAccessPatternsForWebProcess::singleton());
     if (!referrer.isEmpty())
         request.setHTTPReferrer(referrer);
 
     startPingLoad(frame, request, WTFMove(originalRequestHeader), ShouldFollowRedirects::No, ContentSecurityPolicyImposition::SkipPolicyCheck, ReferrerPolicy::EmptyString, reportType);
 }
 
-void PingLoader::startPingLoad(Frame& frame, ResourceRequest& request, HTTPHeaderMap&& originalRequestHeaders, ShouldFollowRedirects shouldFollowRedirects, ContentSecurityPolicyImposition policyCheck, ReferrerPolicy referrerPolicy, std::optional<ViolationReportType> violationReportType)
+void PingLoader::startPingLoad(LocalFrame& frame, ResourceRequest& request, HTTPHeaderMap&& originalRequestHeaders, ShouldFollowRedirects shouldFollowRedirects, ContentSecurityPolicyImposition policyCheck, ReferrerPolicy referrerPolicy, std::optional<ViolationReportType> violationReportType)
 {
     auto identifier = ResourceLoaderIdentifier::generate();
     // FIXME: Why activeDocumentLoader? I would have expected documentLoader().

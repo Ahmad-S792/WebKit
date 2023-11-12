@@ -30,11 +30,14 @@
 #import "config.h"
 #import "_WKWebExtensionControllerConfigurationInternal.h"
 
+#import "APIPageConfiguration.h"
+#import "WKWebViewConfigurationPrivate.h"
 #import "WebExtensionControllerConfiguration.h"
 #import <WebCore/WebCoreObjCExtras.h>
 
-static constexpr NSString *persistentCodingKey = @"persistent";
-static constexpr NSString *identifierCodingKey = @"identifier";
+static NSString * const persistentCodingKey = @"persistent";
+static NSString * const identifierCodingKey = @"identifier";
+static NSString * const webViewConfigurationCodingKey = @"webViewConfiguration";
 
 @implementation _WKWebExtensionControllerConfiguration
 
@@ -57,22 +60,25 @@ static constexpr NSString *identifierCodingKey = @"identifier";
 
 + (instancetype)configurationWithIdentifier:(NSUUID *)identifier
 {
-    NSParameterAssert(identifier);
+    NSParameterAssert([identifier isKindOfClass:NSUUID.class]);
 
-    return WebKit::WebExtensionControllerConfiguration::create(identifier)->wrapper();
+    auto uuid = WTF::UUID::fromNSUUID(identifier);
+    RELEASE_ASSERT(uuid);
+    return WebKit::WebExtensionControllerConfiguration::create(*uuid)->wrapper();
 }
 
 - (void)encodeWithCoder:(NSCoder *)coder
 {
-    NSParameterAssert(coder);
+    NSParameterAssert([coder isKindOfClass:NSCoder.class]);
 
     [coder encodeObject:self.identifier forKey:identifierCodingKey];
     [coder encodeBool:self.persistent forKey:persistentCodingKey];
+    [coder encodeObject:self.webViewConfiguration forKey:webViewConfigurationCodingKey];
 }
 
 - (instancetype)initWithCoder:(NSCoder *)coder
 {
-    NSParameterAssert(coder);
+    NSParameterAssert([coder isKindOfClass:NSCoder.class]);
 
     if (!(self = [super init]))
         return nil;
@@ -82,10 +88,13 @@ static constexpr NSString *identifierCodingKey = @"identifier";
     NSUUID *identifier = [coder decodeObjectOfClass:NSUUID.class forKey:identifierCodingKey];
     BOOL persistent = [coder decodeBoolForKey:persistentCodingKey];
 
-    if (identifier)
-        API::Object::constructInWrapper<WebKit::WebExtensionControllerConfiguration>(self, identifier);
+    auto uuid = WTF::UUID::fromNSUUID(identifier);
+    if (uuid)
+        API::Object::constructInWrapper<WebKit::WebExtensionControllerConfiguration>(self, *uuid);
     else
         API::Object::constructInWrapper<WebKit::WebExtensionControllerConfiguration>(self, persistent ? IsPersistent::Yes : IsPersistent::No);
+
+    self.webViewConfiguration = [coder decodeObjectOfClass:WKWebViewConfiguration.class forKey:webViewConfigurationCodingKey];
 
     return self;
 }
@@ -130,6 +139,16 @@ static constexpr NSString *identifierCodingKey = @"identifier";
 - (BOOL)isPersistent
 {
     return _webExtensionControllerConfiguration->storageIsPersistent();
+}
+
+- (WKWebViewConfiguration *)webViewConfiguration
+{
+    return _webExtensionControllerConfiguration->webViewConfiguration();
+}
+
+- (void)setWebViewConfiguration:(WKWebViewConfiguration *)configuration
+{
+    _webExtensionControllerConfiguration->setWebViewConfiguration(configuration);
 }
 
 #pragma mark WKObject protocol implementation
@@ -183,6 +202,15 @@ static constexpr NSString *identifierCodingKey = @"identifier";
 - (BOOL)isPersistent
 {
     return NO;
+}
+
+- (WKWebViewConfiguration *)webViewConfiguration
+{
+    return nil;
+}
+
+- (void)setWebViewConfiguration:(WKWebViewConfiguration *)webViewConfiguration
+{
 }
 
 #endif // ENABLE(WK_WEB_EXTENSIONS)

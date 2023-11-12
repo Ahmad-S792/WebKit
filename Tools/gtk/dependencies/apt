@@ -11,7 +11,7 @@ PACKAGES+=(
     libffi-dev
     libgirepository1.0-dev
     libgl1-mesa-dev
-    libgl1-mesa-glx
+    $(aptIfExists libgl1-mesa-glx)
     libgtk-3-dev
     libgudev-1.0-dev
     libhyphen-dev
@@ -23,7 +23,6 @@ PACKAGES+=(
     libpulse-dev
     librsvg2-dev
     libsecret-1-dev
-    libsoup2.4-dev
     libsrtp2-dev
     libtheora-dev
     libupower-glib-dev
@@ -55,12 +54,10 @@ PACKAGES+=(
     gobject-introspection
     icon-naming-utils
     libcups2-dev
-    libdrm-dev
     libevdev-dev
     libgbm-dev
     libgnutls28-dev
     libgpg-error-dev
-    libinput-dev
     libjson-glib-dev
     libmtdev-dev
     libp11-kit-dev

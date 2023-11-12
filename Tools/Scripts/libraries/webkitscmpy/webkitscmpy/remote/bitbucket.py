@@ -21,13 +21,13 @@
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 import re
-import requests
-import six
 import sys
 
-from webkitcorepy import decorators
+from webkitcorepy import decorators, string_utils, CallByNeed
 from webkitscmpy import Commit, Contributor, PullRequest
 from webkitscmpy.remote.scm import Scm
+
+requests = CallByNeed(lambda: __import__('requests'))
 
 
 class BitBucket(Scm):
@@ -40,14 +40,18 @@ class BitBucket(Scm):
         def PullRequest(self, data):
             if not data:
                 return None
+            author = self.repository.contributors.create(
+                data['author']['user']['displayName'],
+                data['author']['user'].get('emailAddress', None),
+                bitbucket=data['author']['user'].get('name', None),
+            )
+
             result = PullRequest(
                 number=data['id'],
                 title=data.get('title'),
                 body=data.get('description'),
-                author=self.repository.contributors.create(
-                    data['author']['user']['displayName'],
-                    data['author']['user'].get('emailAddress', None),
-                ), head=data['fromRef']['displayId'],
+                author=author,
+                head=data['fromRef']['displayId'],
                 hash=data['fromRef'].get('latestCommit', None),
                 base=data['toRef']['displayId'],
                 opened=True if data.get('open') else (False if data.get('closed') else None),
@@ -64,6 +68,7 @@ class BitBucket(Scm):
                 reviewer = self.repository.contributors.create(
                     rdata['user']['displayName'],
                     rdata['user'].get('emailAddress', None),
+                    bitbucket=rdata['user'].get('name', None),
                 )
                 result._reviewers.append(reviewer)
                 if rdata.get('approved', False) and (not needs_status or reviewer.status == Contributor.REVIEWER):
@@ -231,7 +236,10 @@ class BitBucket(Scm):
                 pull_request.body, pull_request.commits = pull_request.parse_body(data.get('description'))
             user = data.get('author', {}).get('user', {})
             if user.get('displayName') and user.get('emailAddress'):
-                pull_request.author = self.repository.contributors.create(user['displayName'], user['emailAddress'])
+                pull_request.author = self.repository.contributors.create(
+                    user['displayName'], user['emailAddress'],
+                    bitbucket=user.get('name', None),
+                )
             pull_request.head = data.get('fromRef', {}).get('displayId', pull_request.base)
             pull_request.base = data.get('toRef', {}).get('displayId', pull_request.base)
             pull_request.generator = self
@@ -265,8 +273,12 @@ class BitBucket(Scm):
                 if not comment or not user or not comment.get('text'):
                     continue
 
+                author = self.repository.contributors.create(
+                    user['displayName'], user['emailAddress'],
+                    bitbucket=user.get('name', None),
+                )
                 yield PullRequest.Comment(
-                    author=self.repository.contributors.create(user['displayName'], user['emailAddress']),
+                    author=author,
                     timestamp=comment.get('updatedDate', comment.get('createdDate')) // 1000,
                     content=comment.get('text'),
                 )
@@ -313,7 +325,7 @@ class BitBucket(Scm):
     def is_webserver(cls, url):
         return True if cls.URL_RE.match(url) else False
 
-    def __init__(self, url, dev_branches=None, prod_branches=None, contributors=None, id=None):
+    def __init__(self, url, dev_branches=None, prod_branches=None, contributors=None, id=None, classifier=None):
         match = self.URL_RE.match(url)
         if not match:
             raise self.Exception("'{}' is not a valid BitBucket project".format(url))
@@ -326,6 +338,7 @@ class BitBucket(Scm):
             dev_branches=dev_branches, prod_branches=prod_branches,
             contributors=contributors,
             id=id or self.name.lower(),
+            classifier=classifier,
         )
 
         self.pull_requests = self.PRGenerator(self)
@@ -345,6 +358,13 @@ class BitBucket(Scm):
     @property
     def is_git(self):
         return True
+
+    def checkout_url(self, ssh=False, http=False):
+        if ssh and http:
+            raise ValueError('Cannot specify request both a ssh and http URL')
+        if http:
+            return 'https://{}/scm/{}/{}.git'.format(self.domain, self.project, self.name)
+        return 'git@{}/{}/{}.git'.format(self.domain, self.project, self.name)
 
     def request(self, path=None, params=None, headers=None, api=None, ignore_errors=False):
         headers = {key: value for key, value in headers.items()} if headers else dict()
@@ -540,6 +560,11 @@ class BitBucket(Scm):
                 break
             order += 1
 
+        author = self.contributors.create(
+            commit_data.get('committer', {}).get('displayName', None),
+            commit_data.get('committer', {}).get('emailAddress', None),
+            bitbucket=commit_data.get('committer', {}).get('name', None),
+        )
         return Commit(
             repository_id=self.id,
             hash=commit_data['id'],
@@ -549,14 +574,12 @@ class BitBucket(Scm):
             branch=branch,
             timestamp=timestamp,
             order=order,
-            author=self.contributors.create(
-                commit_data.get('committer', {}).get('displayName', None),
-                commit_data.get('committer', {}).get('emailAddress', None),
-            ), message=commit_data['message'] if include_log else None,
+            author=author,
+            message=commit_data['message'] if include_log else None,
         )
 
     def find(self, argument, include_log=True, include_identifier=True):
-        if not isinstance(argument, six.string_types):
+        if not isinstance(argument, string_utils.basestring):
             raise ValueError("Expected 'argument' to be a string, not '{}'".format(type(argument)))
 
         if argument in self.DEFAULT_BRANCHES:
@@ -583,7 +606,7 @@ class BitBucket(Scm):
 
     def files_changed(self, argument=None):
         if not argument:
-            return self.modified()
+            raise ValueError('No argument provided')
         if not Commit.HASH_RE.match(argument):
             commit = self.find(argument, include_log=False, include_identifier=False)
             if not commit:

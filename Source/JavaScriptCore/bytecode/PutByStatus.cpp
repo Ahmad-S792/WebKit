@@ -32,12 +32,16 @@
 #include "ComplexGetStatus.h"
 #include "GetterSetterAccessCase.h"
 #include "ICStatusUtils.h"
-#include "PolymorphicAccess.h"
+#include "InlineCacheCompiler.h"
+#include "InlineCallFrame.h"
+#include "ProxyObjectAccessCase.h"
 #include "StructureInlines.h"
 #include "StructureStubInfo.h"
 #include <wtf/ListDump.h>
 
 namespace JSC {
+
+DEFINE_ALLOCATOR_WITH_HEAP_IDENTIFIER(PutByStatus);
 
 bool PutByStatus::appendVariant(const PutByVariant& variant)
 {
@@ -119,6 +123,9 @@ PutByStatus::PutByStatus(StubInfoSummary summary, StructureStubInfo& stubInfo)
     case StubInfoSummary::NoInformation:
         m_state = NoInformation;
         return;
+    case StubInfoSummary::Megamorphic:
+        m_state = Megamorphic;
+        return;
     case StubInfoSummary::Simple:
     case StubInfoSummary::MakesCalls:
         RELEASE_ASSERT_NOT_REACHED();
@@ -144,8 +151,7 @@ PutByStatus PutByStatus::computeFor(CodeBlock* profiledBlock, ICStatusMap& map, 
         return PutByStatus(LikelyTakesSlowPath);
     
     StructureStubInfo* stubInfo = map.get(CodeOrigin(bytecodeIndex)).stubInfo;
-    PutByStatus result = computeForStubInfo(
-        locker, profiledBlock, stubInfo, callExitSiteData);
+    PutByStatus result = computeForStubInfo(locker, profiledBlock, stubInfo, callExitSiteData, CodeOrigin(bytecodeIndex));
     if (!result)
         return computeFromLLInt(profiledBlock, bytecodeIndex);
     
@@ -160,12 +166,10 @@ PutByStatus PutByStatus::computeFor(CodeBlock* profiledBlock, ICStatusMap& map, 
 
 PutByStatus PutByStatus::computeForStubInfo(const ConcurrentJSLocker& locker, CodeBlock* baselineBlock, StructureStubInfo* stubInfo, CodeOrigin codeOrigin)
 {
-    return computeForStubInfo(
-        locker, baselineBlock, stubInfo,
-        CallLinkStatus::computeExitSiteData(baselineBlock, codeOrigin.bytecodeIndex()));
+    return computeForStubInfo(locker, baselineBlock, stubInfo, CallLinkStatus::computeExitSiteData(baselineBlock, codeOrigin.bytecodeIndex()), codeOrigin);
 }
 
-PutByStatus PutByStatus::computeForStubInfo(const ConcurrentJSLocker& locker, CodeBlock* profiledBlock, StructureStubInfo* stubInfo, CallLinkStatus::ExitSiteData callExitSiteData)
+PutByStatus PutByStatus::computeForStubInfo(const ConcurrentJSLocker& locker, CodeBlock* profiledBlock, StructureStubInfo* stubInfo, CallLinkStatus::ExitSiteData callExitSiteData, CodeOrigin codeOrigin)
 {
     StubInfoSummary summary = StructureStubInfo::summary(profiledBlock->vm(), stubInfo);
     if (!isInlineable(summary))
@@ -192,10 +196,33 @@ PutByStatus PutByStatus::computeForStubInfo(const ConcurrentJSLocker& locker, Co
 
         PutByStatus result;
         result.m_state = Simple;
-        
+
+        if (list->size() == 1) {
+            const AccessCase& access = list->at(0);
+            switch (access.type()) {
+            case AccessCase::StoreMegamorphic:
+            case AccessCase::IndexedMegamorphicStore: {
+                // Emitting StoreMegamorphic means that we give up polymorphic IC optimization. So this needs very careful handling.
+                // It is possible that one function can be inlined from the other function, and then it gets limited # of structures.
+                // In this case, continue using IC is better than falling back to megamorphic case. But if the function gets compiled before,
+                // and even optimizing JIT saw the megamorphism, then this is likely that this function continues having megamorphic behavior,
+                // and inlined megamorphic code is faster. Currently, we use StoreMegamorphic only when the exact same form of CodeOrigin gets
+                // this megamorphic GetById before (same level of inlining etc.). This is very conservative but effective since IC is very fast
+                // when it worked well (but costly if it doesn't work and get megamorphic). Once this cost-benefit tradeoff gets changed (via
+                // handler IC), we can revisit this condition.
+                // FIXME: Add this thing.
+                if (isSameStyledCodeOrigin(stubInfo->codeOrigin, codeOrigin) && !stubInfo->tookSlowPath)
+                    return PutByStatus(Megamorphic);
+                break;
+            }
+            default:
+                break;
+            }
+        }
+
         for (unsigned i = 0; i < list->size(); ++i) {
             const AccessCase& access = list->at(i);
-            if (access.viaProxy())
+            if (access.viaGlobalProxy())
                 return PutByStatus(JSC::slowVersion(summary), *stubInfo);
             if (access.usesPolyProto())
                 return PutByStatus(JSC::slowVersion(summary), *stubInfo);
@@ -224,7 +251,29 @@ PutByStatus PutByStatus::computeForStubInfo(const ConcurrentJSLocker& locker, Co
                     return PutByStatus(JSC::slowVersion(summary), *stubInfo);
                 break;
             }
-                
+
+            case AccessCase::CustomAccessorSetter: {
+                auto conditionSet = access.conditionSet();
+                if (!conditionSet.isStillValid())
+                    continue;
+
+                Structure* currStructure = access.hasAlternateBase() ? access.alternateBase()->structure() : access.structure();
+                // For now, we only support cases which JSGlobalObject is the same to the currently profiledBlock.
+                if (currStructure->globalObject() != profiledBlock->globalObject())
+                    return PutByStatus(JSC::slowVersion(summary), *stubInfo);
+
+                auto customAccessorSetter = access.as<GetterSetterAccessCase>().customAccessor();
+                std::unique_ptr<DOMAttributeAnnotation> domAttribute;
+                if (access.as<GetterSetterAccessCase>().domAttribute())
+                    domAttribute = WTF::makeUnique<DOMAttributeAnnotation>(*access.as<GetterSetterAccessCase>().domAttribute());
+                result.m_state = CustomAccessor;
+
+                auto variant = PutByVariant::customSetter(access.identifier(), access.structure(), WTFMove(conditionSet), customAccessorSetter, WTFMove(domAttribute));
+                if (!result.appendVariant(variant))
+                    return PutByStatus(JSC::slowVersion(summary), *stubInfo);
+                break;
+            }
+
             case AccessCase::Setter: {
                 Structure* structure = access.structure();
                 
@@ -233,29 +282,39 @@ PutByStatus PutByStatus::computeForStubInfo(const ConcurrentJSLocker& locker, Co
                 switch (complexGetStatus.kind()) {
                 case ComplexGetStatus::ShouldSkip:
                     continue;
-                    
+
                 case ComplexGetStatus::TakesSlowPath:
                     return PutByStatus(JSC::slowVersion(summary), *stubInfo);
-                    
+
                 case ComplexGetStatus::Inlineable: {
-                    std::unique_ptr<CallLinkStatus> callLinkStatus =
-                        makeUnique<CallLinkStatus>();
+                    auto callLinkStatus = makeUnique<CallLinkStatus>();
                     if (CallLinkInfo* callLinkInfo = access.as<GetterSetterAccessCase>().callLinkInfo()) {
                         *callLinkStatus = CallLinkStatus::computeFor(
                             locker, profiledBlock, *callLinkInfo, callExitSiteData);
                     }
-                    
+
                     auto variant = PutByVariant::setter(access.identifier(), structure, complexGetStatus.offset(), complexGetStatus.conditionSet(), WTFMove(callLinkStatus));
                     if (!result.appendVariant(variant))
                         return PutByStatus(JSC::slowVersion(summary), *stubInfo);
+                    break;
                 }
                 }
                 break;
             }
-                
+
             case AccessCase::CustomValueSetter:
-            case AccessCase::CustomAccessorSetter:
                 return PutByStatus(MakesCalls);
+
+            case AccessCase::ProxyObjectStore: {
+                auto& accessCase = access.as<ProxyObjectAccessCase>();
+                auto callLinkStatus = makeUnique<CallLinkStatus>();
+                if (CallLinkInfo* callLinkInfo = accessCase.callLinkInfo())
+                    *callLinkStatus = CallLinkStatus::computeFor(locker, profiledBlock, *callLinkInfo, callExitSiteData);
+                auto variant = PutByVariant::proxy(accessCase.identifier(), access.structure(), WTFMove(callLinkStatus));
+                if (!result.appendVariant(variant))
+                    return PutByStatus(JSC::slowVersion(summary), *stubInfo);
+                break;
+            }
 
             default:
                 return PutByStatus(JSC::slowVersion(summary), *stubInfo);
@@ -282,9 +341,7 @@ PutByStatus PutByStatus::computeFor(CodeBlock* baselineBlock, ICStatusMap& basel
         
         auto bless = [&] (const PutByStatus& result) -> PutByStatus {
             if (!context->isInlined(codeOrigin)) {
-                PutByStatus baselineResult = computeFor(
-                    baselineBlock, baselineMap, bytecodeIndex, didExit,
-                    callExitSiteData);
+                PutByStatus baselineResult = computeFor(baselineBlock, baselineMap, bytecodeIndex, didExit, callExitSiteData);
                 baselineResult.merge(result);
                 return baselineResult;
             }
@@ -297,8 +354,7 @@ PutByStatus PutByStatus::computeFor(CodeBlock* baselineBlock, ICStatusMap& basel
             PutByStatus result;
             {
                 ConcurrentJSLocker locker(context->optimizedCodeBlock->m_lock);
-                result = computeForStubInfo(
-                    locker, context->optimizedCodeBlock, status.stubInfo, callExitSiteData);
+                result = computeForStubInfo(locker, context->optimizedCodeBlock, status.stubInfo, callExitSiteData, codeOrigin);
             }
             if (result.isSet())
                 return bless(result);
@@ -381,6 +437,10 @@ PutByStatus PutByStatus::computeFor(JSGlobalObject* globalObject, const Structur
         // we don't want to be adding properties to strings.
         if (!structure->typeInfo().isObject())
             return PutByStatus(LikelyTakesSlowPath);
+
+        // If the structure is for prototype, we should do a slow path which can invalidate MegamorphicCache.
+        if (structure->mayBePrototype())
+            return PutByStatus(LikelyTakesSlowPath);
     
         ObjectPropertyConditionSet conditionSet;
         if (!isDirect) {
@@ -392,8 +452,7 @@ PutByStatus PutByStatus::computeFor(JSGlobalObject* globalObject, const Structur
         }
     
         // We only optimize if there is already a structure that the transition is cached to.
-        Structure* transition =
-            Structure::addPropertyTransitionToExistingStructureConcurrently(structure, uid, 0, offset);
+        Structure* transition = Structure::addPropertyTransitionToExistingStructureConcurrently(structure, uid, 0, offset);
         if (!transition)
             return PutByStatus(LikelyTakesSlowPath);
         ASSERT(isValidOffset(offset));
@@ -417,6 +476,8 @@ bool PutByStatus::makesCalls() const
         return false;
     case MakesCalls:
     case ObservedSlowPathAndMakesCalls:
+    case Megamorphic:
+    case CustomAccessor:
         return true;
     case Simple: {
         for (unsigned i = m_variants.size(); i--;) {
@@ -486,9 +547,20 @@ void PutByStatus::merge(const PutByStatus& other)
     case NoInformation:
         *this = other;
         return;
+
+    case Megamorphic:
+        if (m_state != other.m_state) {
+            if (other.m_state == Simple) {
+                *this = other;
+                return;
+            }
+            return mergeSlow();
+        }
+        return;
         
     case Simple:
-        if (other.m_state != Simple)
+    case CustomAccessor:
+        if (other.m_state != m_state)
             return mergeSlow();
         
         for (const PutByVariant& other : other.m_variants) {
@@ -521,28 +593,34 @@ void PutByStatus::filter(const StructureSet& set)
 
 void PutByStatus::dump(PrintStream& out) const
 {
+    out.print("(");
     switch (m_state) {
     case NoInformation:
-        out.print("(NoInformation)");
+        out.print("NoInformation");
         return;
     case Simple:
-        out.print("(", listDump(m_variants), ")");
-        return;
+        out.print("Simple");
+        break;
+    case CustomAccessor:
+        out.print("CustomAccessor");
+        break;
+    case Megamorphic:
+        out.print("Megamorphic");
+        break;
     case LikelyTakesSlowPath:
         out.print("LikelyTakesSlowPath");
-        return;
+        break;
     case ObservedTakesSlowPath:
         out.print("ObservedTakesSlowPath");
-        return;
+        break;
     case MakesCalls:
         out.print("MakesCalls");
-        return;
+        break;
     case ObservedSlowPathAndMakesCalls:
         out.print("ObservedSlowPathAndMakesCalls");
-        return;
+        break;
     }
-    
-    RELEASE_ASSERT_NOT_REACHED();
+    out.print(", ", listDump(m_variants), ")");
 }
 
 } // namespace JSC

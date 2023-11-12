@@ -31,16 +31,29 @@
 #include "KeyframeEffectStack.h"
 #include "NamedNodeMap.h"
 #include "NodeRareData.h"
+#include "PopoverData.h"
 #include "PseudoElement.h"
 #include "RenderElement.h"
 #include "ResizeObserver.h"
-#include "ResizeObserverSize.h"
 #include "ShadowRoot.h"
 #include "SpaceSplitString.h"
 #include "StylePropertyMap.h"
 #include "StylePropertyMapReadOnly.h"
+#include <wtf/Markable.h>
 
 namespace WebCore {
+
+struct LayoutUnitMarkableTraits {
+    static bool isEmptyValue(LayoutUnit value)
+    {
+        return value == LayoutUnit(-1);
+    }
+
+    static LayoutUnit emptyValue()
+    {
+        return LayoutUnit(-1);
+    }
+};
 
 class ElementRareData : public NodeRareData {
 public:
@@ -76,19 +89,22 @@ public:
     void setFormAssociatedCustomElement(std::unique_ptr<FormAssociatedCustomElement>&& element) { m_formAssociatedCustomElement = WTFMove(element); }
 
     NamedNodeMap* attributeMap() const { return m_attributeMap.get(); }
-    void setAttributeMap(std::unique_ptr<NamedNodeMap> attributeMap) { m_attributeMap = WTFMove(attributeMap); }
+    void setAttributeMap(std::unique_ptr<NamedNodeMap>&& attributeMap) { m_attributeMap = WTFMove(attributeMap); }
 
     RenderStyle* computedStyle() const { return m_computedStyle.get(); }
-    void setComputedStyle(std::unique_ptr<RenderStyle> computedStyle) { m_computedStyle = WTFMove(computedStyle); }
+    void setComputedStyle(std::unique_ptr<RenderStyle>&& computedStyle) { m_computedStyle = WTFMove(computedStyle); }
+
+    RenderStyle* displayContentsStyle() const { return m_displayContentsStyle.get(); }
+    void setDisplayContentsStyle(std::unique_ptr<RenderStyle> style) { m_displayContentsStyle = WTFMove(style); }
 
     const AtomString& effectiveLang() const { return m_effectiveLang; }
     void setEffectiveLang(const AtomString& lang) { m_effectiveLang = lang; }
 
     DOMTokenList* classList() const { return m_classList.get(); }
-    void setClassList(std::unique_ptr<DOMTokenList> classList) { m_classList = WTFMove(classList); }
+    void setClassList(std::unique_ptr<DOMTokenList>&& classList) { m_classList = WTFMove(classList); }
 
     DatasetDOMStringMap* dataset() const { return m_dataset.get(); }
-    void setDataset(std::unique_ptr<DatasetDOMStringMap> dataset) { m_dataset = WTFMove(dataset); }
+    void setDataset(std::unique_ptr<DatasetDOMStringMap>&& dataset) { m_dataset = WTFMove(dataset); }
 
     IntPoint savedLayerScrollPosition() const { return m_savedLayerScrollPosition; }
     void setSavedLayerScrollPosition(IntPoint position) { m_savedLayerScrollPosition = position; }
@@ -97,7 +113,7 @@ public:
     ElementAnimationRareData& ensureAnimationRareData(PseudoId);
 
     DOMTokenList* partList() const { return m_partList.get(); }
-    void setPartList(std::unique_ptr<DOMTokenList> partList) { m_partList = WTFMove(partList); }
+    void setPartList(std::unique_ptr<DOMTokenList>&& partList) { m_partList = WTFMove(partList); }
 
     const SpaceSplitString& partNames() const { return m_partNames; }
     void setPartNames(SpaceSplitString&& partNames) { m_partNames = WTFMove(partNames); }
@@ -108,9 +124,12 @@ public:
     ResizeObserverData* resizeObserverData() { return m_resizeObserverData.get(); }
     void setResizeObserverData(std::unique_ptr<ResizeObserverData>&& data) { m_resizeObserverData = WTFMove(data); }
 
-    ResizeObserverSize* lastRememberedSize() const { return m_lastRememberedSize.get(); }
-    void setLastRememberedSize(RefPtr<ResizeObserverSize>&& size) { m_lastRememberedSize = WTFMove(size); }
-    void clearLastRememberedSize() { m_lastRememberedSize = nullptr; }
+    std::optional<LayoutUnit> lastRememberedLogicalWidth() const { return m_lastRememberedLogicalWidth; }
+    std::optional<LayoutUnit> lastRememberedLogicalHeight() const { return m_lastRememberedLogicalHeight; }
+    void setLastRememberedLogicalWidth(LayoutUnit width) { m_lastRememberedLogicalWidth = width; }
+    void setLastRememberedLogicalHeight(LayoutUnit height) { m_lastRememberedLogicalHeight = height; }
+    void clearLastRememberedLogicalWidth() { m_lastRememberedLogicalWidth.reset(); }
+    void clearLastRememberedLogicalHeight() { m_lastRememberedLogicalHeight.reset(); }
 
     const AtomString& nonce() const { return m_nonce; }
     void setNonce(const AtomString& value) { m_nonce = value; }
@@ -123,14 +142,24 @@ public:
 
     ExplicitlySetAttrElementsMap& explicitlySetAttrElementsMap() { return m_explicitlySetAttrElementsMap; }
 
+    PopoverData* popoverData() { return m_popoverData.get(); }
+    void setPopoverData(std::unique_ptr<PopoverData>&& popoverData) { m_popoverData = WTFMove(popoverData); }
+
+    const std::optional<OptionSet<ContentRelevancy>>& contentRelevancy() const { return m_contentRelevancy; }
+    void setContentRelevancy(OptionSet<ContentRelevancy>& contentRelevancy) { m_contentRelevancy = contentRelevancy; }
+
 #if DUMP_NODE_STATISTICS
     OptionSet<UseType> useTypes() const
     {
         auto result = NodeRareData::useTypes();
+        if (m_unusualTabIndex)
+            result.add(UseType::TabIndex);
         if (!m_savedLayerScrollPosition.isZero())
             result.add(UseType::ScrollingPosition);
         if (m_computedStyle)
             result.add(UseType::ComputedStyle);
+        if (m_displayContentsStyle)
+            result.add(UseType::DisplayContentsStyle);
         if (!m_effectiveLang.isEmpty())
             result.add(UseType::EffectiveLang);
         if (m_dataset)
@@ -149,7 +178,7 @@ public:
             result.add(UseType::AttributeMap);
         if (m_intersectionObserverData)
             result.add(UseType::InteractionObserver);
-        if (m_resizeObserverData || m_lastRememberedSize)
+        if (m_resizeObserverData || m_lastRememberedLogicalWidth || m_lastRememberedLogicalHeight)
             result.add(UseType::ResizeObserver);
         if (!m_animationRareData.isEmpty())
             result.add(UseType::Animations);
@@ -167,13 +196,23 @@ public:
             result.add(UseType::Nonce);
         if (!m_explicitlySetAttrElementsMap.isEmpty())
             result.add(UseType::ExplicitlySetAttrElementsMap);
+        if (m_popoverData)
+            result.add(UseType::Popover);
+        if (m_childIndex)
+            result.add(UseType::ChildIndex);
         return result;
     }
 #endif
 
 private:
+    unsigned short m_childIndex { 0 }; // Keep on top for better bit packing with NodeRareData.
+    int m_unusualTabIndex { 0 }; // Keep on top for better bit packing with NodeRareData.
+
+    std::optional<OptionSet<ContentRelevancy>> m_contentRelevancy;
+
     IntPoint m_savedLayerScrollPosition;
     std::unique_ptr<RenderStyle> m_computedStyle;
+    std::unique_ptr<RenderStyle> m_displayContentsStyle;
 
     AtomString m_effectiveLang;
     std::unique_ptr<DatasetDOMStringMap> m_dataset;
@@ -187,7 +226,9 @@ private:
     std::unique_ptr<IntersectionObserverData> m_intersectionObserverData;
 
     std::unique_ptr<ResizeObserverData> m_resizeObserverData;
-    RefPtr<ResizeObserverSize> m_lastRememberedSize;
+
+    Markable<LayoutUnit, LayoutUnitMarkableTraits> m_lastRememberedLogicalWidth;
+    Markable<LayoutUnit, LayoutUnitMarkableTraits> m_lastRememberedLogicalHeight;
 
     Vector<std::unique_ptr<ElementAnimationRareData>> m_animationRareData;
 
@@ -204,7 +245,7 @@ private:
 
     ExplicitlySetAttrElementsMap m_explicitlySetAttrElementsMap;
 
-    void releasePseudoElement(PseudoElement*);
+    std::unique_ptr<PopoverData> m_popoverData;
 };
 
 inline ElementRareData::ElementRareData()
@@ -282,6 +323,14 @@ inline ShadowRoot* Node::shadowRoot() const
 inline ShadowRoot* Element::shadowRoot() const
 {
     return hasRareData() ? elementRareData()->shadowRoot() : nullptr;
+}
+
+inline void Element::removeShadowRoot()
+{
+    RefPtr shadowRoot = this->shadowRoot();
+    if (LIKELY(!shadowRoot))
+        return;
+    removeShadowRootSlow(*shadowRoot);
 }
 
 } // namespace WebCore

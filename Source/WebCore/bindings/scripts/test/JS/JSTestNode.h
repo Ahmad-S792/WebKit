@@ -60,10 +60,14 @@ public:
     {
         return static_cast<TestNode&>(Base::wrapped());
     }
+    Ref<TestNode> protectedWrapped() const
+    {
+        return wrapped();
+    }
 protected:
     JSTestNode(JSC::Structure*, JSDOMGlobalObject&, Ref<TestNode>&&);
 
-    void finishCreation(JSC::VM&);
+    DECLARE_DEFAULT_FINISH_CREATION;
 };
 
 WEBCORE_EXPORT JSC::JSValue toJS(JSC::JSGlobalObject*, JSDOMGlobalObject*, TestNode&);

@@ -48,6 +48,10 @@ namespace IPC {
 class SharedBufferReference;
 }
 
+namespace WebCore {
+class RegistrableDomain;
+}
+
 namespace WebKit {
 
 class SandboxInitializationParameters;
@@ -71,14 +75,12 @@ public:
     void removeMessageReceiver(IPC::ReceiverName);
     void removeMessageReceiver(IPC::MessageReceiver&);
     
-    template <typename T>
-    void addMessageReceiver(IPC::ReceiverName messageReceiverName, ObjectIdentifier<T> destinationID, IPC::MessageReceiver& receiver)
+    void addMessageReceiver(IPC::ReceiverName messageReceiverName, const ObjectIdentifierGenericBase& destinationID, IPC::MessageReceiver& receiver)
     {
         addMessageReceiver(messageReceiverName, destinationID.toUInt64(), receiver);
     }
     
-    template <typename T>
-    void removeMessageReceiver(IPC::ReceiverName messageReceiverName, ObjectIdentifier<T> destinationID)
+    void removeMessageReceiver(IPC::ReceiverName messageReceiverName, const ObjectIdentifierGenericBase& destinationID)
     {
         removeMessageReceiver(messageReceiverName, destinationID.toUInt64());
     }
@@ -147,6 +149,8 @@ protected:
     virtual void preferenceDidUpdate(const String& domain, const String& key, const std::optional<String>& encodedValue);
     virtual void handlePreferenceChange(const String& domain, const String& key, id value);
     virtual void dispatchSimulatedNotificationsForPreferenceChange(const String& key) { }
+
+    virtual void accessibilitySettingsDidChange() { }
 #endif
     void applyProcessCreationParameters(const AuxiliaryProcessCreationParameters&);
 
@@ -163,7 +167,14 @@ protected:
     // IPC::Connection::Client.
     void didClose(IPC::Connection&) override;
 
+    bool allowsFirstPartyForCookies(const URL&, Function<bool()>&&);
+    bool allowsFirstPartyForCookies(const WebCore::RegistrableDomain&, HashSet<WebCore::RegistrableDomain>&);
+
 private:
+#if ENABLE(CFPREFS_DIRECT_MODE)
+    void handleAXPreferenceChange(const String& domain, const String& key, id value);
+#endif
+
     virtual bool shouldOverrideQuarantine() { return true; }
 
     // IPC::MessageSender

@@ -28,13 +28,14 @@
 #include "DatabaseUtilities.h"
 #include <WebCore/PrivateClickMeasurement.h>
 #include <wtf/ThreadSafeRefCounted.h>
+#include <wtf/WeakPtr.h>
 
 namespace WebKit::PCM {
 
 struct DebugInfo;
 
 // This is created, used, and destroyed on the Store's queue.
-class Database : public DatabaseUtilities {
+class Database : public DatabaseUtilities, public CanMakeWeakPtr<Database> {
     WTF_MAKE_FAST_ALLOCATED;
 public:
     Database(const String& storageDirectory);
@@ -80,7 +81,7 @@ private:
     bool needsUpdatedSchema() final { return false; };
     bool createUniqueIndices() final;
     const MemoryCompactLookupOnlyRobinHoodHashMap<String, TableAndIndexPair>& expectedTableAndIndexQueries() final;
-    Span<const ASCIILiteral> sortedTables() final;
+    std::span<const ASCIILiteral> sortedTables() final;
 
     using Statement = std::unique_ptr<WebCore::SQLiteStatement>;
     mutable Statement m_setUnattributedPrivateClickMeasurementAsExpiredStatement;

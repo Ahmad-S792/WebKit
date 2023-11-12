@@ -27,6 +27,7 @@
 #include "WebBackForwardListProxy.h"
 
 #include "Logging.h"
+#include "MessageSenderInlines.h"
 #include "SessionState.h"
 #include "SessionStateConversion.h"
 #include "WebCoreArgumentCoders.h"
@@ -35,9 +36,10 @@
 #include "WebProcess.h"
 #include "WebProcessProxyMessages.h"
 #include <WebCore/BackForwardCache.h>
-#include <WebCore/Frame.h>
 #include <WebCore/HistoryController.h>
 #include <WebCore/HistoryItem.h>
+#include <WebCore/LocalFrame.h>
+#include <WebCore/Page.h>
 #include <wtf/HashMap.h>
 #include <wtf/NeverDestroyed.h>
 #include <wtf/ProcessID.h>
@@ -64,11 +66,6 @@ void WebBackForwardListProxy::addItemFromUIProcess(const BackForwardItemIdentifi
     clearCachedListCounts();
 }
 
-static void WK2NotifyHistoryItemChanged(HistoryItem& item)
-{
-    WebProcess::singleton().parentProcessConnection()->send(Messages::WebProcessProxy::UpdateBackForwardItem(toBackForwardListItemState(item)), 0);
-}
-
 HistoryItem* WebBackForwardListProxy::itemForID(const BackForwardItemIdentifier& itemID)
 {
     return idToHistoryItemMap().get(itemID);
@@ -87,8 +84,6 @@ void WebBackForwardListProxy::removeItem(const BackForwardItemIdentifier& itemID
 WebBackForwardListProxy::WebBackForwardListProxy(WebPage& page)
     : m_page(&page)
 {
-    // FIXME: This means that if we mix legacy WebKit and modern WebKit in the same process, we won't get both notifications.
-    WebCore::notifyHistoryItemChanged = WK2NotifyHistoryItemChanged;
 }
 
 void WebBackForwardListProxy::addItem(Ref<HistoryItem>&& item)
@@ -152,7 +147,7 @@ const WebBackForwardListCounts& WebBackForwardListProxy::cacheListCountsIfNecess
         WebBackForwardListCounts backForwardListCounts;
         if (m_page) {
             auto sendResult = WebProcess::singleton().parentProcessConnection()->sendSync(Messages::WebPageProxy::BackForwardListCounts(), m_page->identifier());
-            if (sendResult)
+            if (sendResult.succeeded())
                 std::tie(backForwardListCounts) = sendResult.takeReply();
         }
         m_cachedBackForwardListCounts = backForwardListCounts;

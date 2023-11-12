@@ -51,7 +51,6 @@ static NSString * const LoadsAllSiteIconsKey = @"LoadsAllSiteIcons";
 static NSString * const UsesGameControllerFrameworkKey = @"UsesGameControllerFramework";
 static NSString * const IncrementalRenderingSuppressedPreferenceKey = @"IncrementalRenderingSuppressed";
 static NSString * const AcceleratedDrawingEnabledPreferenceKey = @"AcceleratedDrawingEnabled";
-static NSString * const DisplayListDrawingEnabledPreferenceKey = @"DisplayListDrawingEnabled";
 static NSString * const ResourceLoadStatisticsEnabledPreferenceKey = @"ResourceLoadStatisticsEnabled";
 
 static NSString * const NonFastScrollableRegionOverlayVisiblePreferenceKey = @"NonFastScrollableRegionOverlayVisible";
@@ -66,13 +65,15 @@ static NSString * const AnimatedImageAsyncDecodingEnabledPreferenceKey = @"Anima
 static NSString * const AppleColorFilterEnabledPreferenceKey = @"AppleColorFilterEnabled";
 static NSString * const PunchOutWhiteBackgroundsInDarkModePreferenceKey = @"PunchOutWhiteBackgroundsInDarkMode";
 static NSString * const UseSystemAppearancePreferenceKey = @"UseSystemAppearance";
+static NSString * const DataDetectorsEnabledPreferenceKey = @"DataDetectorsEnabled";
+static NSString * const UseMockCaptureDevicesPreferenceKey = @"UseMockCaptureDevices";
+static NSString * const AttachmentElementEnabledPreferenceKey = @"AttachmentElementEnabled";
 
 // This default name intentionally overlaps with the key that WebKit2 checks when creating a view.
 static NSString * const UseRemoteLayerTreeDrawingAreaPreferenceKey = @"WebKit2UseRemoteLayerTreeDrawingArea";
 
 static NSString * const PerWindowWebProcessesDisabledKey = @"PerWindowWebProcessesDisabled";
 static NSString * const NetworkCacheSpeculativeRevalidationDisabledKey = @"NetworkCacheSpeculativeRevalidationDisabled";
-static NSString * const ProcessSwapOnWindowOpenWithOpenerKey = @"ProcessSwapOnWindowOpenWithOpener";
 
 typedef NS_ENUM(NSInteger, DebugOverylayMenuItemTag) {
     NonFastScrollableRegionOverlayTag = 100,
@@ -80,6 +81,12 @@ typedef NS_ENUM(NSInteger, DebugOverylayMenuItemTag) {
     InteractionRegionOverlayTag,
     ExperimentalFeatureTag,
     InternalDebugFeatureTag,
+};
+
+typedef NS_ENUM(NSInteger, AttachmentElementEnabledMenuItemTag) {
+    AttachmentElementDisabledTag = 100,
+    AttachmentElementEnabledTag,
+    AttachmentElementWideLayoutEnabledTag,
 };
 
 @implementation SettingsController
@@ -98,7 +105,7 @@ typedef NS_ENUM(NSInteger, DebugOverylayMenuItemTag) {
         WebViewFillsWindowKey,
         ResourceLoadStatisticsEnabledPreferenceKey,
     ];
-    
+
     NSUserDefaults *userDefaults = [NSUserDefaults standardUserDefaults];
     for (NSString *prefName in onByDefaultPrefs) {
         if (![userDefaults objectForKey:prefName])
@@ -156,7 +163,7 @@ static NSMenu *addSubmenuToMenu(NSMenu *menu, NSString *title)
     __auto_type addSubmenu = ^(NSString *title) {
         return addSubmenuToMenu(menu, title);
     };
-    
+
     addItem(@"Use WebKit2 By Default", @selector(toggleUseWebKit2ByDefault:));
     addItem(@"Create Editor By Default", @selector(toggleCreateEditorByDefault:));
     addItem(@"Set Default URL to Current URL", @selector(setDefaultURLToCurrentURL:));
@@ -174,13 +181,19 @@ static NSMenu *addSubmenuToMenu(NSMenu *menu, NSString *title)
     addItem(@"Enable Legacy Line Layout Visual Coverage", @selector(toggleLegacyLineLayoutVisualCoverageEnabled:));
     addItem(@"Suppress Incremental Rendering in New Windows", @selector(toggleIncrementalRenderingSuppressed:));
     addItem(@"Enable Accelerated Drawing", @selector(toggleAcceleratedDrawingEnabled:));
-    addItem(@"Enable Display List Drawing", @selector(toggleDisplayListDrawingEnabled:));
     addItem(@"Enable Resource Load Statistics", @selector(toggleResourceLoadStatisticsEnabled:));
     addItem(@"Enable Large Image Async Decoding", @selector(toggleLargeImageAsyncDecodingEnabled:));
     addItem(@"Enable Animated Image Async Decoding", @selector(toggleAnimatedImageAsyncDecodingEnabled:));
     addItem(@"Enable color-filter", @selector(toggleAppleColorFilterEnabled:));
     addItem(@"Punch Out White Backgrounds in Dark Mode", @selector(togglePunchOutWhiteBackgroundsInDarkMode:));
     addItem(@"Use System Appearance", @selector(toggleUseSystemAppearance:));
+    addItem(@"Enable Data Detectors", @selector(toggleDataDetectorsEnabled:));
+    addItem(@"Use Mock Capture Devices", @selector(toggleUseMockCaptureDevices:));
+
+    NSMenu *attachmentElementMenu = addSubmenu(@"Enable Attachment Element");
+    addItemToMenu(attachmentElementMenu, @"Disabled", @selector(changeAttachmentElementEnabled:), NO, AttachmentElementDisabledTag);
+    addItemToMenu(attachmentElementMenu, @"Enable with default layout", @selector(changeAttachmentElementEnabled:), NO, AttachmentElementEnabledTag);
+    addItemToMenu(attachmentElementMenu, @"Enable with wide layout", @selector(changeAttachmentElementEnabled:), NO, AttachmentElementWideLayoutEnabledTag);
 
     addSeparator();
     addItem(@"WebKit2-only Settings", nil);
@@ -192,7 +205,6 @@ static NSMenu *addSubmenuToMenu(NSMenu *menu, NSString *title)
     addItem(@"Load All Site Icons Per-Page", @selector(toggleLoadsAllSiteIcons:));
     addItem(@"Use GameController.framework on macOS (Restart required)", @selector(toggleUsesGameControllerFramework:));
     addItem(@"Disable network cache speculative revalidation", @selector(toggleNetworkCacheSpeculativeRevalidationDisabled:));
-    addItem(@"Enable Process Swap on window.open() with an opener", @selector(toggleProcessSwapOnWindowOpenWithOpener:));
     indent = NO;
 
     NSMenu *debugOverlaysMenu = addSubmenu(@"Debug Overlays");
@@ -224,17 +236,27 @@ static NSMenu *addSubmenuToMenu(NSMenu *menu, NSString *title)
 {
     return @[
         @{
-            @"label" : @"Safari 13.1",
+            @"label" : @"Safari 16.4",
             @"identifier" : @"safari",
-            @"userAgent" : @"Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_2) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/13.0.4 Safari/605.1.15"
+            @"userAgent" : @"Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.4 Safari/605.1.15"
         },
         @{
             @"label" : @"-",
         },
         @{
-            @"label" : @"Safari—iOS 13.4—iPhone",
+            @"label" : @"Safari—iOS 16.4—iPhone",
             @"identifier" : @"iphone-safari",
-            @"userAgent" : @"Mozilla/5.0 (iPhone; CPU iPhone OS 13_4 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/13.1 Mobile/15E148 Safari/604.1"
+            @"userAgent" : @"Mozilla/5.0 (iPhone; CPU iPhone OS 16_4 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.4 Mobile/15E148 Safari/604.1"
+        },
+        @{
+            @"label" : @"Safari—iPadOS 16.4—iPad mini",
+            @"identifier" : @"ipad-mini-safari",
+            @"userAgent" : @"Mozilla/5.0 (iPad; CPU iPhone OS 16_4 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.4 Mobile/15E148 Safari/604.1"
+        },
+        @{
+            @"label" : @"Safari—iPadOS 16.4—iPad",
+            @"identifier" : @"ipad-safari",
+            @"userAgent" : @"Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_6) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.4 Safari/605.1.15"
         },
         @{
             @"label" : @"-",
@@ -242,12 +264,12 @@ static NSMenu *addSubmenuToMenu(NSMenu *menu, NSString *title)
         @{
             @"label" : @"Firefox—macOS",
             @"identifier" : @"firefox",
-            @"userAgent" : @"Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:70.0) Gecko/20100101 Firefox/70.0"
+            @"userAgent" : @"Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:109.0) Gecko/20100101 Firefox/109.0"
         },
         @{
             @"label" : @"Firefox—Windows",
             @"identifier" : @"windows-firefox",
-            @"userAgent" : @"Mozilla/5.0 (Windows NT 6.1; WOW64; rv:54.0) Gecko/20100101 Firefox/71.0"
+            @"userAgent" : @"Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:109.0) Gecko/20100101 Firefox/109.0"
         },
         @{
             @"label" : @"-",
@@ -255,17 +277,30 @@ static NSMenu *addSubmenuToMenu(NSMenu *menu, NSString *title)
         @{
             @"label" : @"Chrome—macOS",
             @"identifier" : @"chrome",
-            @"userAgent" : @"Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_2) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/78.0.3904.108 Safari/537.36"
+            @"userAgent" : @"Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/110.0.0.0 Safari/537.36"
         },
         @{
             @"label" : @"Chrome—Windows",
             @"identifier" : @"windows-chrome",
-            @"userAgent" : @"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/79.0.3945.88 Safari/537.36"
+            @"userAgent" : @"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/110.0.0.0 Safari/537.36"
         },
         @{
             @"label" : @"Chrome—Android",
             @"identifier" : @"android-chrome",
-            @"userAgent" : @"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/79.0.3945.88 Safari/537.36"
+            @"userAgent" : @"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/110.0.0.0 Safari/537.36"
+        },
+        @{
+            @"label" : @"-",
+        },
+        @{
+            @"label" : @"Edge—macOS",
+            @"identifier" : @"edge",
+            @"userAgent" : @"Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/110.0.0.0 Safari/537.36 Edg/110.0.1587.41"
+        },
+        @{
+            @"label" : @"Edge—Windows",
+            @"identifier" : @"windows-edge",
+            @"userAgent" : @"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/110.0.0.0 Safari/537.36 Edg/110.0.1587.41"
         },
     ];
 }
@@ -292,7 +327,7 @@ static NSMenu *addSubmenuToMenu(NSMenu *menu, NSString *title)
 
     for (NSDictionary *userAgentData in SettingsController.userAgentData) {
         NSString *name = userAgentData[@"label"];
-        
+
         if ([name isEqualToString:@"-"]) {
             addSeparator();
             continue;
@@ -326,8 +361,6 @@ static NSMenu *addSubmenuToMenu(NSMenu *menu, NSString *title)
         [menuItem setState:[self incrementalRenderingSuppressed] ? NSControlStateValueOn : NSControlStateValueOff];
     else if (action == @selector(toggleAcceleratedDrawingEnabled:))
         [menuItem setState:[self acceleratedDrawingEnabled] ? NSControlStateValueOn : NSControlStateValueOff];
-    else if (action == @selector(toggleDisplayListDrawingEnabled:))
-        [menuItem setState:[self displayListDrawingEnabled] ? NSControlStateValueOn : NSControlStateValueOff];
     else if (action == @selector(toggleResourceLoadStatisticsEnabled:))
         [menuItem setState:[self resourceLoadStatisticsEnabled] ? NSControlStateValueOn : NSControlStateValueOff];
     else if (action == @selector(toggleLargeImageAsyncDecodingEnabled:))
@@ -340,6 +373,10 @@ static NSMenu *addSubmenuToMenu(NSMenu *menu, NSString *title)
         [menuItem setState:[self punchOutWhiteBackgroundsInDarkMode] ? NSControlStateValueOn : NSControlStateValueOff];
     else if (action == @selector(toggleUseSystemAppearance:))
         [menuItem setState:[self useSystemAppearance] ? NSControlStateValueOn : NSControlStateValueOff];
+    else if (action == @selector(toggleDataDetectorsEnabled:))
+        [menuItem setState:[self dataDetectorsEnabled] ? NSControlStateValueOn : NSControlStateValueOff];
+    else if (action == @selector(toggleUseMockCaptureDevices:))
+        [menuItem setState:[self useMockCaptureDevices] ? NSControlStateValueOn : NSControlStateValueOff];
     else if (action == @selector(toggleReserveSpaceForBanners:))
         [menuItem setState:[self isSpaceReservedForBanners] ? NSControlStateValueOn : NSControlStateValueOff];
     else if (action == @selector(toggleShowTiledScrollingIndicator:))
@@ -352,8 +389,6 @@ static NSMenu *addSubmenuToMenu(NSMenu *menu, NSString *title)
         [menuItem setState:[self usesGameControllerFramework] ? NSControlStateValueOn : NSControlStateValueOff];
     else if (action == @selector(toggleNetworkCacheSpeculativeRevalidationDisabled:))
         [menuItem setState:[self networkCacheSpeculativeRevalidationDisabled] ? NSControlStateValueOn : NSControlStateValueOff];
-    else if (action == @selector(toggleProcessSwapOnWindowOpenWithOpener:))
-        [menuItem setState:[self processSwapOnWindowOpenWithOpenerEnabled] ? NSControlStateValueOn : NSControlStateValueOff];
     else if (action == @selector(toggleUseUISideCompositing:))
         [menuItem setState:[self useUISideCompositing] ? NSControlStateValueOn : NSControlStateValueOff];
     else if (action == @selector(togglePerWindowWebProcessesDisabled:))
@@ -369,7 +404,8 @@ static NSMenu *addSubmenuToMenu(NSMenu *menu, NSString *title)
             [menuItem setState:isCurrentUA ? NSControlStateValueOn : NSControlStateValueOff];
         } else
             [menuItem setState:NSControlStateValueOff];
-    }
+    } else if (action == @selector(changeAttachmentElementEnabled:))
+        [menuItem setState:[self attachmentElementEnabled:menuItem] ? NSControlStateValueOn : NSControlStateValueOff];
 
     WKPreferences *defaultPreferences = [[NSApplication sharedApplication] browserAppDelegate].defaultPreferences;
     if (menuItem.tag == ExperimentalFeatureTag) {
@@ -439,7 +475,15 @@ static NSMenu *addSubmenuToMenu(NSMenu *menu, NSString *title)
 
 - (BOOL)useUISideCompositing
 {
-    return [[NSUserDefaults standardUserDefaults] boolForKey:UseRemoteLayerTreeDrawingAreaPreferenceKey];
+#if __MAC_OS_X_VERSION_MIN_REQUIRED >= 140000
+    bool useRemoteLayerTree = true;
+#else
+    bool useRemoteLayerTree = false;
+#endif
+    id useRemoteLayerTreeBoolean = [[NSUserDefaults standardUserDefaults] objectForKey:@"WebKit2UseRemoteLayerTreeDrawingArea"];
+    if (useRemoteLayerTreeBoolean)
+        useRemoteLayerTree = [useRemoteLayerTreeBoolean boolValue];
+    return useRemoteLayerTree;
 }
 
 - (void)togglePerWindowWebProcessesDisabled:(id)sender
@@ -503,16 +547,6 @@ static NSMenu *addSubmenuToMenu(NSMenu *menu, NSString *title)
     return [[NSUserDefaults standardUserDefaults] boolForKey:AcceleratedDrawingEnabledPreferenceKey];
 }
 
-- (void)toggleDisplayListDrawingEnabled:(id)sender
-{
-    [self _toggleBooleanDefault:DisplayListDrawingEnabledPreferenceKey];
-}
-
-- (BOOL)displayListDrawingEnabled
-{
-    return [[NSUserDefaults standardUserDefaults] boolForKey:DisplayListDrawingEnabledPreferenceKey];
-}
-
 - (void)toggleReserveSpaceForBanners:(id)sender
 {
     [self _toggleBooleanDefault:ReserveSpaceForBannersPreferenceKey];
@@ -556,16 +590,6 @@ static NSMenu *addSubmenuToMenu(NSMenu *menu, NSString *title)
 - (void)toggleNetworkCacheSpeculativeRevalidationDisabled:(id)sender
 {
     [self _toggleBooleanDefault:NetworkCacheSpeculativeRevalidationDisabledKey];
-}
-
-- (BOOL)processSwapOnWindowOpenWithOpenerEnabled
-{
-    return [[NSUserDefaults standardUserDefaults] boolForKey:ProcessSwapOnWindowOpenWithOpenerKey];
-}
-
-- (void)toggleProcessSwapOnWindowOpenWithOpener:(id)sender
-{
-    [self _toggleBooleanDefault:ProcessSwapOnWindowOpenWithOpenerKey];
 }
 
 - (BOOL)isSpaceReservedForBanners
@@ -651,6 +675,26 @@ static NSMenu *addSubmenuToMenu(NSMenu *menu, NSString *title)
 - (BOOL)useSystemAppearance
 {
     return [[NSUserDefaults standardUserDefaults] boolForKey:UseSystemAppearancePreferenceKey];
+}
+
+- (void)toggleDataDetectorsEnabled:(id)sender
+{
+    [self _toggleBooleanDefault:DataDetectorsEnabledPreferenceKey];
+}
+
+- (BOOL)dataDetectorsEnabled
+{
+    return [[NSUserDefaults standardUserDefaults] boolForKey:DataDetectorsEnabledPreferenceKey];
+}
+
+- (void)toggleUseMockCaptureDevices:(id)sender
+{
+    [self _toggleBooleanDefault:UseMockCaptureDevicesPreferenceKey];
+}
+
+- (BOOL)useMockCaptureDevices
+{
+    return [[NSUserDefaults standardUserDefaults] boolForKey:UseMockCaptureDevicesPreferenceKey];
 }
 
 - (BOOL)nonFastScrollableRegionOverlayVisible
@@ -765,8 +809,41 @@ static NSMenu *addSubmenuToMenu(NSMenu *menu, NSString *title)
     NSString *uaIdentifier = userAgentDict[@"identifier"];
     if (uaIdentifier)
         [[NSUserDefaults standardUserDefaults] setObject:uaIdentifier forKey:CustomUserAgentPreferenceKey];
-        
+
     [[NSNotificationCenter defaultCenter] postNotificationName:kUserAgentChangedNotificationName object:self];
+}
+
+- (AttachmentElementEnabledState)attachmentElementEnabled
+{
+    return (AttachmentElementEnabledState)[[NSUserDefaults standardUserDefaults] integerForKey:AttachmentElementEnabledPreferenceKey];
+}
+
+- (NSInteger)preferenceValueForAttachmentElementEnabledTag:(NSUInteger)tag
+{
+    switch (tag) {
+    case AttachmentElementDisabledTag:
+        return AttachmentElementEnabledStateDisabled;
+
+    case AttachmentElementEnabledTag:
+        return AttachmentElementEnabledStateEnabled;
+
+    case AttachmentElementWideLayoutEnabledTag:
+        return AttachmentElementEnabledStateWideLayoutEnabled;
+    }
+    return AttachmentElementEnabledStateDisabled;
+}
+
+- (BOOL)attachmentElementEnabled:(NSMenuItem *)menuItem
+{
+    NSInteger value = [[NSUserDefaults standardUserDefaults] integerForKey:AttachmentElementEnabledPreferenceKey];
+    return [self preferenceValueForAttachmentElementEnabledTag:[menuItem tag]] == value ? YES : NO;
+}
+
+- (void)changeAttachmentElementEnabled:(id)sender
+{
+    NSInteger value = [self preferenceValueForAttachmentElementEnabledTag:[sender tag]];
+    [[NSUserDefaults standardUserDefaults] setInteger:value forKey:AttachmentElementEnabledPreferenceKey];
+    [[[NSApplication sharedApplication] browserAppDelegate] didChangeSettings];
 }
 
 - (NSString *)defaultURL

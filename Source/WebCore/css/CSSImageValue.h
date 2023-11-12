@@ -42,6 +42,7 @@ class BuilderState;
 
 class CSSImageValue final : public CSSValue {
 public:
+    static Ref<CSSImageValue> create();
     static Ref<CSSImageValue> create(ResolvedURL, LoadedFromOpaqueSource, AtomString = { });
     static Ref<CSSImageValue> create(URL, LoadedFromOpaqueSource, AtomString = { });
     ~CSSImageValue();
@@ -60,6 +61,8 @@ public:
     Ref<DeprecatedCSSOMValue> createDeprecatedCSSOMWrapper(CSSStyleDeclaration&) const;
 
     bool customTraverseSubresources(const Function<bool(const CachedResource&)>&) const;
+    void customSetReplacementURLForSubresources(const HashMap<String, String>&);
+    void customClearReplacementURLForSubresources();
 
     bool equals(const CSSImageValue&) const;
 
@@ -67,7 +70,10 @@ public:
 
     RefPtr<StyleImage> createStyleImage(Style::BuilderState&) const;
 
+    bool isLoadedFromOpaqueSource() const { return m_loadedFromOpaqueSource == LoadedFromOpaqueSource::Yes; }
+
 private:
+    CSSImageValue();
     CSSImageValue(ResolvedURL&&, LoadedFromOpaqueSource, AtomString&&);
 
     ResolvedURL m_location;
@@ -75,6 +81,8 @@ private:
     AtomString m_initiatorType;
     LoadedFromOpaqueSource m_loadedFromOpaqueSource { LoadedFromOpaqueSource::No };
     RefPtr<CSSImageValue> m_unresolvedValue;
+    bool m_isInvalid { false };
+    String m_replacementURLString;
 };
 
 } // namespace WebCore

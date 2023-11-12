@@ -27,6 +27,7 @@
 #include "WebIDBConnectionToServer.h"
 
 #include "DataReference.h"
+#include "MessageSenderInlines.h"
 #include "NetworkConnectionToWebProcessMessages.h"
 #include "NetworkProcessConnection.h"
 #include "NetworkStorageManagerMessages.h"
@@ -327,7 +328,7 @@ void WebIDBConnectionToServer::didGetAllDatabaseNamesAndVersions(const IDBResour
 
 void WebIDBConnectionToServer::connectionToServerLost()
 {
-    m_connectionToServer->connectionToServerLost(IDBError { WebCore::UnknownError, "An internal error was encountered in the Indexed Database server"_s });
+    m_connectionToServer->connectionToServerLost(IDBError { ExceptionCode::UnknownError, "An internal error was encountered in the Indexed Database server"_s });
 }
 
 } // namespace WebKit

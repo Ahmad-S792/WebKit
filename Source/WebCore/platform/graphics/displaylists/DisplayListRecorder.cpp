@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2016-2022 Apple Inc. All rights reserved.
+ * Copyright (C) 2016-2023 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -46,10 +46,12 @@
 namespace WebCore {
 namespace DisplayList {
 
-Recorder::Recorder(const GraphicsContextState& state, const FloatRect& initialClip, const AffineTransform& initialCTM, DrawGlyphsMode drawGlyphsMode)
-    : GraphicsContext(state)
+Recorder::Recorder(IsDeferred isDeferred, const GraphicsContextState& state, const FloatRect& initialClip, const AffineTransform& initialCTM, const DestinationColorSpace& colorSpace, DrawGlyphsMode drawGlyphsMode)
+    : GraphicsContext(isDeferred, state)
     , m_initialScale(initialCTM.xScale())
+    , m_colorSpace(colorSpace)
     , m_drawGlyphsMode(drawGlyphsMode)
+    , m_initialClip(initialClip)
 {
     ASSERT(!state.changes());
     m_stateStack.append({ state, initialCTM, initialCTM.mapRect(initialClip) });
@@ -60,31 +62,41 @@ Recorder::~Recorder()
     ASSERT(m_stateStack.size() == 1); // If this fires, it indicates mismatched save/restore.
 }
 
+void Recorder::commitRecording()
+{
+    // Fixup the possible pending state.
+    appendStateChangeItemIfNecessary();
+}
+
 void Recorder::appendStateChangeItem(const GraphicsContextState& state)
 {
     ASSERT(state.changes());
     
     if (state.containsOnlyInlineChanges()) {
         if (state.changes().contains(GraphicsContextState::Change::FillBrush))
-            recordSetInlineFillColor(*fillColor().tryGetAsSRGBABytes());
+            recordSetInlineFillColor(*fillColor().tryGetAsPackedInline());
 
-        if (state.changes().contains(GraphicsContextState::Change::StrokeBrush))
-            recordSetInlineStrokeColor(*strokeColor().tryGetAsSRGBABytes());
-
-        if (state.changes().contains(GraphicsContextState::Change::StrokeThickness))
-            recordSetStrokeThickness(strokeThickness());
-
+        if (state.changes().containsAny({ GraphicsContextState::Change::StrokeBrush, GraphicsContextState::Change::StrokeThickness }))
+            recordSetInlineStroke(buildSetInlineStroke(state));
         return;
     }
 
     if (state.changes().contains(GraphicsContextState::Change::FillBrush)) {
         if (auto pattern = fillPattern())
             recordResourceUse(pattern->tileImage());
+        else if (auto gradient = fillGradient()) {
+            if (gradient->hasValidRenderingResourceIdentifier())
+                recordResourceUse(*gradient);
+        }
     }
 
     if (state.changes().contains(GraphicsContextState::Change::StrokeBrush)) {
         if (auto pattern = strokePattern())
             recordResourceUse(pattern->tileImage());
+        else if (auto gradient = strokeGradient()) {
+            if (gradient->hasValidRenderingResourceIdentifier())
+                recordResourceUse(*gradient);
+        }
     }
 
     recordSetState(state);
@@ -103,6 +115,21 @@ void Recorder::appendStateChangeItemIfNecessary()
     appendStateChangeItem(state);
     state.didApplyChanges();
     currentState().lastDrawingState = state;
+}
+
+SetInlineStroke Recorder::buildSetInlineStroke(const GraphicsContextState& state)
+{
+    ASSERT(state.containsOnlyInlineChanges());
+    ASSERT(state.changes().containsAny({ GraphicsContextState::Change::StrokeBrush, GraphicsContextState::Change::StrokeThickness }));
+
+    if (!state.changes().contains(GraphicsContextState::Change::StrokeBrush))
+        return SetInlineStroke(strokeThickness());
+
+    ASSERT(strokeColor().tryGetAsPackedInline());
+    if (!state.changes().contains(GraphicsContextState::Change::StrokeThickness))
+        return SetInlineStroke(*strokeColor().tryGetAsPackedInline());
+
+    return SetInlineStroke(*strokeColor().tryGetAsPackedInline(), strokeThickness());
 }
 
 const GraphicsContextState& Recorder::state() const
@@ -209,7 +236,7 @@ void Recorder::drawGlyphsAndCacheResources(const Font& font, const GlyphBufferGl
     recordDrawGlyphs(font, glyphs, advances, numGlyphs, localAnchor, smoothingMode);
 }
 
-void Recorder::drawImageBuffer(ImageBuffer& imageBuffer, const FloatRect& destRect, const FloatRect& srcRect, const ImagePaintingOptions& options)
+void Recorder::drawImageBuffer(ImageBuffer& imageBuffer, const FloatRect& destRect, const FloatRect& srcRect, ImagePaintingOptions options)
 {
     appendStateChangeItemIfNecessary();
 
@@ -220,8 +247,16 @@ void Recorder::drawImageBuffer(ImageBuffer& imageBuffer, const FloatRect& destRe
 
     recordDrawImageBuffer(imageBuffer, destRect, srcRect, options);
 }
+void Recorder::drawConsumingImageBuffer(RefPtr<ImageBuffer> imageBuffer, const FloatRect& destRect, const FloatRect& srcRect, ImagePaintingOptions options)
+{
+    // ImageBuffer draws are recorded as ImageBuffer draws, not as NativeImage draws. So for consistency,
+    // record this too. This should be removed once NativeImages are the only image types drawn from.
+    if (!imageBuffer)
+        return;
+    drawImageBuffer(*imageBuffer, destRect, srcRect, options);
+}
 
-void Recorder::drawNativeImage(NativeImage& image, const FloatSize& imageSize, const FloatRect& destRect, const FloatRect& srcRect, const ImagePaintingOptions& options)
+void Recorder::drawNativeImageInternal(NativeImage& image, const FloatSize& imageSize, const FloatRect& destRect, const FloatRect& srcRect, ImagePaintingOptions options)
 {
     appendStateChangeItemIfNecessary();
     recordResourceUse(image);
@@ -230,6 +265,7 @@ void Recorder::drawNativeImage(NativeImage& image, const FloatSize& imageSize, c
 
 void Recorder::drawSystemImage(SystemImage& systemImage, const FloatRect& destinationRect)
 {
+    appendStateChangeItemIfNecessary();
 #if USE(SYSTEM_PREVIEW)
     if (is<ARKitBadgeSystemImage>(systemImage)) {
         if (auto image = downcast<ARKitBadgeSystemImage>(systemImage).image()) {
@@ -243,14 +279,14 @@ void Recorder::drawSystemImage(SystemImage& systemImage, const FloatRect& destin
     recordDrawSystemImage(systemImage, destinationRect);
 }
 
-void Recorder::drawPattern(NativeImage& image, const FloatRect& destRect, const FloatRect& tileRect, const AffineTransform& patternTransform, const FloatPoint& phase, const FloatSize& spacing, const ImagePaintingOptions& options)
+void Recorder::drawPattern(NativeImage& image, const FloatRect& destRect, const FloatRect& tileRect, const AffineTransform& patternTransform, const FloatPoint& phase, const FloatSize& spacing, ImagePaintingOptions options)
 {
     appendStateChangeItemIfNecessary();
     recordResourceUse(image);
     recordDrawPattern(image.renderingResourceIdentifier(), destRect, tileRect, patternTransform, phase, spacing, options);
 }
 
-void Recorder::drawPattern(ImageBuffer& imageBuffer, const FloatRect& destRect, const FloatRect& tileRect, const AffineTransform& patternTransform, const FloatPoint& phase, const FloatSize& spacing, const ImagePaintingOptions& options)
+void Recorder::drawPattern(ImageBuffer& imageBuffer, const FloatRect& destRect, const FloatRect& tileRect, const AffineTransform& patternTransform, const FloatPoint& phase, const FloatSize& spacing, ImagePaintingOptions options)
 {
     appendStateChangeItemIfNecessary();
 
@@ -262,16 +298,22 @@ void Recorder::drawPattern(ImageBuffer& imageBuffer, const FloatRect& destRect, 
     recordDrawPattern(imageBuffer.renderingResourceIdentifier(), destRect, tileRect, patternTransform, phase, spacing, options);
 }
 
-void Recorder::save()
+void Recorder::save(GraphicsContextState::Purpose purpose)
 {
-    GraphicsContext::save();
+    ASSERT(purpose == GraphicsContextState::Purpose::SaveRestore);
+
+    appendStateChangeItemIfNecessary();
+    GraphicsContext::save(purpose);
     recordSave();
     m_stateStack.append(m_stateStack.last());
 }
 
-void Recorder::restore()
+void Recorder::restore(GraphicsContextState::Purpose purpose)
 {
-    GraphicsContext::restore();
+    ASSERT(purpose == GraphicsContextState::Purpose::SaveRestore);
+
+    appendStateChangeItemIfNecessary();
+    GraphicsContext::restore(purpose);
 
     if (!m_stateStack.size())
         return;
@@ -282,18 +324,24 @@ void Recorder::restore()
 
 void Recorder::translate(float x, float y)
 {
+    if (!x && !y)
+        return;
     currentState().translate(x, y);
     recordTranslate(x, y);
 }
 
 void Recorder::rotate(float angleInRadians)
 {
+    if (WTF::areEssentiallyEqual(0.f, fmodf(angleInRadians, piFloat * 2.f)))
+        return;
     currentState().rotate(angleInRadians);
     recordRotate(angleInRadians);
 }
 
 void Recorder::scale(const FloatSize& size)
 {
+    if (areEssentiallyEqual(size, FloatSize { 1.f, 1.f }))
+        return;
     currentState().scale(size);
     recordScale(size);
 }
@@ -325,10 +373,8 @@ void Recorder::beginTransparencyLayer(float opacity)
     appendStateChangeItemIfNecessary();
     recordBeginTransparencyLayer(opacity);
 
-    GraphicsContext::save();
+    GraphicsContext::save(GraphicsContextState::Purpose::TransparencyLayer);
     m_stateStack.append(m_stateStack.last().cloneForTransparencyLayer());
-    
-    m_state.didBeginTransparencyLayer();
 }
 
 void Recorder::endTransparencyLayer()
@@ -339,7 +385,7 @@ void Recorder::endTransparencyLayer()
     recordEndTransparencyLayer();
 
     m_stateStack.removeLast();
-    GraphicsContext::restore();
+    GraphicsContext::restore(GraphicsContextState::Purpose::TransparencyLayer);
 }
 
 void Recorder::drawRect(const FloatRect& rect, float borderThickness)
@@ -429,19 +475,23 @@ void Recorder::fillRectWithRoundedHole(const FloatRect& rect, const FloatRounded
 void Recorder::fillPath(const Path& path)
 {
     appendStateChangeItemIfNecessary();
+
+    if (auto segment = path.singleSegment()) {
 #if ENABLE(INLINE_PATH_DATA)
-    if (path.hasInlineData()) {
-        if (path.hasInlineData<LineData>())
-            recordFillLine(path.inlineData<LineData>());
-        else if (path.hasInlineData<ArcData>())
-            recordFillArc(path.inlineData<ArcData>());
-        else if (path.hasInlineData<QuadCurveData>())
-            recordFillQuadCurve(path.inlineData<QuadCurveData>());
-        else if (path.hasInlineData<BezierCurveData>())
-            recordFillBezierCurve(path.inlineData<BezierCurveData>());
+        if (auto line = path.singleDataLine())
+            recordFillLine(*line);
+        else if (auto arc = path.singleArc())
+            recordFillArc(*arc);
+        else if (auto curve = path.singleQuadCurve())
+            recordFillQuadCurve(*curve);
+        else if (auto curve = path.singleBezierCurve())
+            recordFillBezierCurve(*curve);
+        else
+#endif
+            recordFillPathSegment(*segment);
         return;
     }
-#endif
+
     recordFillPath(path);
 }
 
@@ -461,29 +511,34 @@ void Recorder::strokePath(const Path& path)
 {
 #if ENABLE(INLINE_PATH_DATA)
     auto& state = currentState().state;
-    if (state.changes() && state.containsOnlyInlineChanges() && !state.changes().contains(GraphicsContextState::Change::FillBrush) && path.hasInlineData() && path.hasInlineData<LineData>()) {
-        recordStrokeLineWithColorAndThickness(*strokeColor().tryGetAsSRGBABytes(), strokeThickness(), path.inlineData<LineData>());
-        state.didApplyChanges();
-        currentState().lastDrawingState = state;
-        return;
+    if (state.containsOnlyInlineStrokeChanges()) {
+        if (auto line = path.singleDataLine()) {
+            recordStrokeLineWithColorAndThickness(*line, buildSetInlineStroke(state));
+            state.didApplyChanges();
+            currentState().lastDrawingState = state;
+            return;
+        }
     }
-
-    appendStateChangeItemIfNecessary();
-
-    if (path.hasInlineData()) {
-        if (path.hasInlineData<LineData>())
-            recordStrokeLine(path.inlineData<LineData>());
-        else if (path.hasInlineData<ArcData>())
-            recordStrokeArc(path.inlineData<ArcData>());
-        else if (path.hasInlineData<QuadCurveData>())
-            recordStrokeQuadCurve(path.inlineData<QuadCurveData>());
-        else if (path.hasInlineData<BezierCurveData>())
-            recordStrokeBezierCurve(path.inlineData<BezierCurveData>());
-        return;
-    }
-#else
-    appendStateChangeItemIfNecessary();
 #endif
+
+    appendStateChangeItemIfNecessary();
+
+    if (auto segment = path.singleSegment()) {
+#if ENABLE(INLINE_PATH_DATA)
+        if (auto line = path.singleDataLine())
+            recordStrokeLine(*line);
+        else if (auto arc = path.singleArc())
+            recordStrokeArc(*arc);
+        else if (auto curve = path.singleQuadCurve())
+            recordStrokeQuadCurve(*curve);
+        else if (auto curve = path.singleBezierCurve())
+            recordStrokeBezierCurve(*curve);
+        else
+#endif
+            recordStrokePathSegment(*segment);
+        return;
+    }
+
     recordStrokePath(path);
 }
 
@@ -519,24 +574,49 @@ void Recorder::drawControlPart(ControlPart& part, const FloatRoundedRect& border
     recordDrawControlPart(part, borderRect, deviceScaleFactor, style);
 }
 
+void Recorder::resetClip()
+{
+    currentState().clipBounds = m_initialClip;
+
+    recordResetClip();
+    clip(m_initialClip);
+}
+
 void Recorder::clip(const FloatRect& rect)
 {
+    appendStateChangeItemIfNecessary(); // Conservative: we do not know if the clip application might use state such as antialiasing.
     currentState().clipBounds.intersect(currentState().ctm.mapRect(rect));
     recordClip(rect);
 }
 
+void Recorder::clipRoundedRect(const FloatRoundedRect& rect)
+{
+    appendStateChangeItemIfNecessary(); // Conservative: we do not know if the clip application might use state such as antialiasing.
+    currentState().clipBounds.intersect(currentState().ctm.mapRect(rect.rect()));
+    recordClipRoundedRect(rect);
+}
+
 void Recorder::clipOut(const FloatRect& rect)
 {
+    appendStateChangeItemIfNecessary(); // Conservative: we do not know if the clip application might use state such as antialiasing.
     recordClipOut(rect);
+}
+
+void Recorder::clipOutRoundedRect(const FloatRoundedRect& rect)
+{
+    appendStateChangeItemIfNecessary(); // Conservative: we do not know if the clip application might use state such as antialiasing.
+    recordClipOutRoundedRect(rect);
 }
 
 void Recorder::clipOut(const Path& path)
 {
+    appendStateChangeItemIfNecessary(); // Conservative: we do not know if the clip application might use state such as antialiasing.
     recordClipOutToPath(path);
 }
 
 void Recorder::clipPath(const Path& path, WindRule windRule)
 {
+    appendStateChangeItemIfNecessary(); // Conservative: we do not know if the clip application might use state such as antialiasing.
     currentState().clipBounds.intersect(currentState().ctm.mapRect(path.fastBoundingRect()));
     recordClipPath(path, windRule);
 }
@@ -553,13 +633,10 @@ IntRect Recorder::clipBounds() const
 
 void Recorder::clipToImageBuffer(ImageBuffer& imageBuffer, const FloatRect& destRect)
 {
+    appendStateChangeItemIfNecessary(); // Conservative: we do not know if the clip application might use state such as antialiasing.
+    currentState().clipBounds.intersect(currentState().ctm.mapRect(destRect));
     recordResourceUse(imageBuffer);
     recordClipToImageBuffer(imageBuffer, destRect);
-}
-
-RefPtr<ImageBuffer> Recorder::createImageBuffer(const FloatSize& size, float resolutionScale, const DestinationColorSpace& colorSpace, std::optional<RenderingMode> renderingMode, std::optional<RenderingMethod> renderingMethod) const
-{
-    return GraphicsContext::createImageBuffer(size, resolutionScale, colorSpace, renderingMode, renderingMethod.value_or(RenderingMethod::DisplayList));
 }
 
 #if ENABLE(VIDEO)
@@ -570,11 +647,13 @@ void Recorder::paintFrameForMedia(MediaPlayer& player, const FloatRect& destinat
         return;
     }
     ASSERT(player.identifier());
+    appendStateChangeItemIfNecessary();
     recordPaintFrameForMedia(player, destination);
 }
 
 void Recorder::paintVideoFrame(VideoFrame& frame, const FloatRect& destination, bool shouldDiscardAlpha)
 {
+    appendStateChangeItemIfNecessary();
     recordPaintVideoFrame(frame, destination, shouldDiscardAlpha);
 }
 #endif

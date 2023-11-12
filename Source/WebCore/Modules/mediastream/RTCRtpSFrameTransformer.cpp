@@ -206,7 +206,7 @@ ExceptionOr<void> RTCRtpSFrameTransformer::updateEncryptionKey(const Vector<uint
     return { };
 }
 
-RTCRtpSFrameTransformer::TransformResult RTCRtpSFrameTransformer::decryptFrame(Span<const uint8_t> data)
+RTCRtpSFrameTransformer::TransformResult RTCRtpSFrameTransformer::decryptFrame(std::span<const uint8_t> data)
 {
     auto* frameData = data.data();
     auto frameSize = data.size();
@@ -279,7 +279,7 @@ RTCRtpSFrameTransformer::TransformResult RTCRtpSFrameTransformer::decryptFrame(S
     return result.releaseReturnValue();
 }
 
-RTCRtpSFrameTransformer::TransformResult RTCRtpSFrameTransformer::encryptFrame(Span<const uint8_t> data)
+RTCRtpSFrameTransformer::TransformResult RTCRtpSFrameTransformer::encryptFrame(std::span<const uint8_t> data)
 {
     auto* frameData = data.data();
     auto frameSize = data.size();
@@ -343,7 +343,7 @@ RTCRtpSFrameTransformer::TransformResult RTCRtpSFrameTransformer::encryptFrame(S
     return transformedData;
 }
 
-RTCRtpSFrameTransformer::TransformResult RTCRtpSFrameTransformer::transform(Span<const uint8_t> data)
+RTCRtpSFrameTransformer::TransformResult RTCRtpSFrameTransformer::transform(std::span<const uint8_t> data)
 {
     if (!m_hasKey)
         return makeUnexpected(ErrorInformation { Error::KeyID,  "Key is not initialized"_s, 0 });
@@ -354,27 +354,27 @@ RTCRtpSFrameTransformer::TransformResult RTCRtpSFrameTransformer::transform(Span
 #if !PLATFORM(COCOA)
 ExceptionOr<Vector<uint8_t>> RTCRtpSFrameTransformer::computeSaltKey(const Vector<uint8_t>&)
 {
-    return Exception { NotSupportedError };
+    return Exception { ExceptionCode::NotSupportedError };
 }
 
 ExceptionOr<Vector<uint8_t>> RTCRtpSFrameTransformer::computeAuthenticationKey(const Vector<uint8_t>&)
 {
-    return Exception { NotSupportedError };
+    return Exception { ExceptionCode::NotSupportedError };
 }
 
 ExceptionOr<Vector<uint8_t>> RTCRtpSFrameTransformer::computeEncryptionKey(const Vector<uint8_t>&)
 {
-    return Exception { NotSupportedError };
+    return Exception { ExceptionCode::NotSupportedError };
 }
 
 ExceptionOr<Vector<uint8_t>> RTCRtpSFrameTransformer::decryptData(const uint8_t*, size_t, const Vector<uint8_t>&, const Vector<uint8_t>&)
 {
-    return Exception { NotSupportedError };
+    return Exception { ExceptionCode::NotSupportedError };
 }
 
 ExceptionOr<Vector<uint8_t>> RTCRtpSFrameTransformer::encryptData(const uint8_t*, size_t, const Vector<uint8_t>&, const Vector<uint8_t>&)
 {
-    return Exception { NotSupportedError };
+    return Exception { ExceptionCode::NotSupportedError };
 }
 
 Vector<uint8_t> RTCRtpSFrameTransformer::computeEncryptedDataSignature(const Vector<uint8_t>&, const uint8_t*, size_t, const uint8_t*, size_t, const Vector<uint8_t>&)

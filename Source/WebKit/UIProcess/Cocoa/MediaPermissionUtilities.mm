@@ -38,6 +38,10 @@
 #import <wtf/spi/cf/CFBundleSPI.h>
 #import <wtf/spi/darwin/SandboxSPI.h>
 
+#if PLATFORM(IOS_FAMILY)
+#import "UIKitUtilities.h"
+#endif
+
 #import "TCCSoftLink.h"
 #import <pal/cocoa/AVFoundationSoftLink.h>
 #import <pal/cocoa/SpeechSoftLink.h>
@@ -114,10 +118,10 @@ static NSString* visibleDomain(const String& host)
 
 NSString *applicationVisibleNameFromOrigin(const WebCore::SecurityOriginData& origin)
 {
-    if (origin.protocol != "http"_s && origin.protocol != "https"_s)
+    if (origin.protocol() != "http"_s && origin.protocol() != "https"_s)
         return nil;
 
-    return visibleDomain(origin.host);
+    return visibleDomain(origin.host());
 }
 
 NSString *applicationVisibleName()
@@ -148,7 +152,7 @@ static NSString *alertMessageText(MediaPermissionReason reason, const WebCore::S
     case MediaPermissionReason::Geolocation:
         return [NSString stringWithFormat:WEB_UI_NSSTRING(@"Allow “%@” to use your current location?", @"Message for geolocation prompt"), visibleOrigin];
     case MediaPermissionReason::SpeechRecognition:
-        return [NSString stringWithFormat:WEB_UI_NSSTRING(@"Allow “%@” to capture your audio and use it for speech recognition?", @"Message for spechrecognition prompt"), visibleDomain(origin.host)];
+        return [NSString stringWithFormat:WEB_UI_NSSTRING(@"Allow “%@” to capture your audio and use it for speech recognition?", @"Message for spechrecognition prompt"), visibleDomain(origin.host())];
     }
 }
 
@@ -227,7 +231,7 @@ void alertForPermission(WebPageProxy& page, MediaPermissionReason reason, const 
         completionBlock(shouldAllow);
     }];
 #else
-    UIAlertController* alert = [UIAlertController alertControllerWithTitle:alertTitle message:nil preferredStyle:UIAlertControllerStyleAlert];
+    auto alert = WebKit::createUIAlertController(alertTitle, nil);
     UIAlertAction* allowAction = [UIAlertAction actionWithTitle:allowButtonString style:UIAlertActionStyleDefault handler:[completionBlock](UIAlertAction *action) {
         completionBlock(true);
     }];
@@ -239,16 +243,17 @@ void alertForPermission(WebPageProxy& page, MediaPermissionReason reason, const 
     [alert addAction:doNotAllowAction];
     [alert addAction:allowAction];
 
-    [[UIViewController _viewControllerForFullScreenPresentationFromView:webView.get()] presentViewController:alert animated:YES completion:nil];
+    [[webView _wk_viewControllerForFullScreenPresentation] presentViewController:alert.get() animated:YES completion:nil];
 #endif
 }
 
-#if HAVE(AVCAPTUREDEVICE)
+
 
 void requestAVCaptureAccessForType(MediaPermissionType type, CompletionHandler<void(bool authorized)>&& completionHandler)
 {
     ASSERT(isMainRunLoop());
 
+#if HAVE(AVCAPTUREDEVICE)
     AVMediaType mediaType = type == MediaPermissionType::Audio ? AVMediaTypeAudio : AVMediaTypeVideo;
     auto decisionHandler = makeBlockPtr([completionHandler = WTFMove(completionHandler)](BOOL authorized) mutable {
         callOnMainRunLoop([completionHandler = WTFMove(completionHandler), authorized]() mutable {
@@ -256,10 +261,15 @@ void requestAVCaptureAccessForType(MediaPermissionType type, CompletionHandler<v
         });
     });
     [PAL::getAVCaptureDeviceClass() requestAccessForMediaType:mediaType completionHandler:decisionHandler.get()];
+#else
+    UNUSED_PARAM(type);
+    completionHandler(false);
+#endif
 }
 
 MediaPermissionResult checkAVCaptureAccessForType(MediaPermissionType type)
 {
+#if HAVE(AVCAPTUREDEVICE)
     AVMediaType mediaType = type == MediaPermissionType::Audio ? AVMediaTypeAudio : AVMediaTypeVideo;
     auto authorizationStatus = [PAL::getAVCaptureDeviceClass() authorizationStatusForMediaType:mediaType];
     if (authorizationStatus == AVAuthorizationStatusDenied || authorizationStatus == AVAuthorizationStatusRestricted)
@@ -267,9 +277,11 @@ MediaPermissionResult checkAVCaptureAccessForType(MediaPermissionType type)
     if (authorizationStatus == AVAuthorizationStatusNotDetermined)
         return MediaPermissionResult::Unknown;
     return MediaPermissionResult::Granted;
+#else
+    UNUSED_PARAM(type);
+    return MediaPermissionResult::Denied;
+#endif
 }
-
-#endif // HAVE(AVCAPTUREDEVICE)
 
 #if HAVE(SPEECHRECOGNIZER)
 

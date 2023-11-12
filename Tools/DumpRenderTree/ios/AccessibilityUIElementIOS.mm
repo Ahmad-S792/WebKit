@@ -38,6 +38,10 @@
 #import <wtf/RetainPtr.h>
 #import <wtf/Vector.h>
 
+#if HAVE(ACCESSIBILITY_FRAMEWORK)
+#import <Accessibility/Accessibility.h>
+#endif
+
 #import <UIKit/UIKit.h>
 
 typedef void (*AXPostedNotificationCallback)(id element, NSString* notification, void* context);
@@ -54,7 +58,6 @@ typedef void (*AXPostedNotificationCallback)(id element, NSString* notification,
 - (NSString *)stringForRange:(NSRange)range;
 - (NSAttributedString *)attributedStringForRange:(NSRange)range;
 - (NSAttributedString *)attributedStringForElement;
-- (NSArray *)elementsForRange:(NSRange)range;
 - (NSString *)selectionRangeString;
 - (BOOL)accessibilityInsertText:(NSString *)text;
 - (CGPoint)accessibilityClickPoint;
@@ -79,6 +82,7 @@ typedef void (*AXPostedNotificationCallback)(id element, NSString* notification,
 - (NSString *)accessibilityARIALiveRegionStatus;
 - (NSString *)accessibilityARIARelevantStatus;
 - (UIAccessibilityTraits)_axContainedByFieldsetTrait;
+- (UIAccessibilityTraits)_axTextEntryTrait;
 - (id)_accessibilityFieldsetAncestor;
 - (BOOL)_accessibilityHasTouchEventListener;
 - (NSString *)accessibilityExpandedTextValue;
@@ -184,6 +188,12 @@ bool AccessibilityUIElement::hasContainedByFieldsetTrait()
 {
     UIAccessibilityTraits traits = [m_element accessibilityTraits];
     return (traits & [m_element _axContainedByFieldsetTrait]) == [m_element _axContainedByFieldsetTrait];
+}
+
+bool AccessibilityUIElement::hasTextEntryTrait()
+{
+    UIAccessibilityTraits traits = [m_element accessibilityTraits];
+    return (traits & [m_element _axTextEntryTrait]) == [m_element _axTextEntryTrait];
 }
 
 AccessibilityUIElement AccessibilityUIElement::fieldsetAncestorElement()
@@ -415,15 +425,6 @@ bool AccessibilityUIElement::attributedStringRangeIsMisspelled(unsigned, unsigne
 }
 
 
-void AccessibilityUIElement::elementsForRange(unsigned location, unsigned length, Vector<AccessibilityUIElement>& elements)
-{ 
-    NSArray *elementsForRange = [m_element elementsForRange:NSMakeRange(location, length)];
-    for (id object in elementsForRange) {
-        AccessibilityUIElement element = AccessibilityUIElement(object);
-        elements.append(element);
-    }
-}
-
 static void _CGPathEnumerationIteration(void *info, const CGPathElement *element)
 {
     NSMutableString *result = (NSMutableString *)info;
@@ -503,6 +504,11 @@ bool AccessibilityUIElement::insertText(JSStringRef text)
 
 void AccessibilityUIElement::resetSelectedTextMarkerRange()
 {
+}
+
+AccessibilityTextMarkerRange AccessibilityUIElement::textInputMarkedTextMarkerRange() const
+{
+    return nullptr;
 }
 
 int AccessibilityUIElement::textMarkerRangeLength(AccessibilityTextMarkerRange* range)
@@ -593,6 +599,11 @@ bool AccessibilityUIElement::attributedStringForTextMarkerRangeContainsAttribute
 int AccessibilityUIElement::indexForTextMarker(AccessibilityTextMarker*)
 {
     return -1;
+}
+
+bool AccessibilityUIElement::isTextMarkerNull(AccessibilityTextMarker*)
+{
+    return true;
 }
 
 bool AccessibilityUIElement::isTextMarkerValid(AccessibilityTextMarker*)
@@ -845,6 +856,18 @@ JSRetainPtr<JSStringRef> AccessibilityUIElement::language()
     return WTR::createJSString();
 }
 
+JSRetainPtr<JSStringRef> AccessibilityUIElement::customContent() const
+{
+#if HAVE(ACCESSIBILITY_FRAMEWORK)
+    auto customContent = adoptNS([[NSMutableArray alloc] init]);
+    for (AXCustomContent *content in [m_element accessibilityCustomContent])
+        [customContent addObject:[NSString stringWithFormat:@"%@: %@", content.label, content.value]];
+    return [[customContent.get() componentsJoinedByString:@"\n"] createJSStringRef];
+#else
+    return nullptr;
+#endif
+}
+
 JSRetainPtr<JSStringRef> AccessibilityUIElement::helpText() const
 {
     return concatenateAttributeAndValue(@"AXHint", [m_element accessibilityHint]);
@@ -1047,6 +1070,11 @@ void AccessibilityUIElement::setSelectedTextRange(unsigned location, unsigned le
 {
 }
 
+JSRetainPtr<JSStringRef> AccessibilityUIElement::textInputMarkedRange() const
+{
+    return WTR::createJSString();
+}
+
 void AccessibilityUIElement::increment()
 {
     [m_element accessibilityIncrement];
@@ -1073,16 +1101,6 @@ JSRetainPtr<JSStringRef> AccessibilityUIElement::accessibilityValue() const
 
 void AccessibilityUIElement::clearSelectedChildren() const
 {
-}
-
-JSRetainPtr<JSStringRef> AccessibilityUIElement::documentEncoding()
-{
-    return WTR::createJSString();
-}
-
-JSRetainPtr<JSStringRef> AccessibilityUIElement::documentURI()
-{
-    return WTR::createJSString();
 }
 
 bool AccessibilityUIElement::addNotificationListener(JSObjectRef functionCallback)
@@ -1274,6 +1292,11 @@ void AccessibilityUIElement::columnHeaders(Vector<AccessibilityUIElement>&) cons
 
 void AccessibilityUIElement::rowHeaders(Vector<AccessibilityUIElement>&) const
 {
+}
+
+JSValueRef AccessibilityUIElement::selectedCells(JSContextRef) const
+{
+    return nullptr;
 }
 
 unsigned AccessibilityUIElement::selectedChildrenCount() const

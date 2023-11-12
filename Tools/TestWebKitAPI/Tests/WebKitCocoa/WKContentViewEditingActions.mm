@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017 Apple Inc. All rights reserved.
+ * Copyright (C) 2017-2023 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -34,7 +34,7 @@
 #import "TestNavigationDelegate.h"
 #import "TestUIMenuBuilder.h"
 #import "TestWKWebView.h"
-#import "UIKitSPI.h"
+#import "UIKitSPIForTesting.h"
 #import "WKWebViewConfigurationExtras.h"
 #import <WebCore/LocalizedStrings.h>
 #import <WebKit/WKWebViewConfigurationPrivate.h>
@@ -155,9 +155,9 @@ TEST(WebKit, CaptureTextFromCamera)
     [webView selectAll:nil];
     [webView waitForNextPresentationUpdate];
     EXPECT_TRUE([webView canPerformAction:@selector(captureTextFromCamera:) withSender:nil]);
-    ALLOW_DEPRECATED_DECLARATIONS_BEGIN
-    EXPECT_FALSE([webView canPerformAction:@selector(captureTextFromCamera:) withSender:UIMenuController.sharedMenuController]);
-    ALLOW_DEPRECATED_DECLARATIONS_END
+
+    RetainPtr command = [UIKeyCommand keyCommandWithInput:@"a" modifierFlags:UIKeyModifierCommand action:@selector(captureTextFromCamera:)];
+    EXPECT_FALSE([webView canPerformAction:@selector(captureTextFromCamera:) withSender:command.get()]);
 
     [webView collapseToEnd];
     [webView waitForNextPresentationUpdate];

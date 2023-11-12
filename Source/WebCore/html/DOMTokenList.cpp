@@ -26,7 +26,6 @@
 #include "config.h"
 #include "DOMTokenList.h"
 
-#include "HTMLParserIdioms.h"
 #include "SpaceSplitString.h"
 #include <wtf/HashSet.h>
 #include <wtf/SetForScope.h>
@@ -44,16 +43,16 @@ DOMTokenList::DOMTokenList(Element& element, const QualifiedName& attributeName,
 
 static inline bool tokenContainsHTMLSpace(StringView token)
 {
-    return token.find(isHTMLSpace<UChar>) != notFound;
+    return token.find(isASCIIWhitespace<UChar>) != notFound;
 }
 
 ExceptionOr<void> DOMTokenList::validateToken(StringView token)
 {
     if (token.isEmpty())
-        return Exception { SyntaxError };
+        return Exception { ExceptionCode::SyntaxError };
 
     if (tokenContainsHTMLSpace(token))
-        return Exception { InvalidCharacterError };
+        return Exception { ExceptionCode::InvalidCharacterError };
 
     return { };
 }
@@ -86,7 +85,7 @@ inline ExceptionOr<void> DOMTokenList::addInternal(const AtomString* newTokens, 
         if (result.hasException())
             return result;
         if (!tokens.contains(newTokens[i]) && !uniqueNewTokens.contains(newTokens[i]))
-            uniqueNewTokens.uncheckedAppend(newTokens[i]);
+            uniqueNewTokens.append(newTokens[i]);
     }
 
     if (!uniqueNewTokens.isEmpty())
@@ -182,10 +181,10 @@ static inline void replaceInOrderedSet(Vector<AtomString>& tokens, size_t tokenI
 ExceptionOr<bool> DOMTokenList::replace(const AtomString& token, const AtomString& newToken)
 {
     if (token.isEmpty() || newToken.isEmpty())
-        return Exception { SyntaxError };
+        return Exception { ExceptionCode::SyntaxError };
 
     if (tokenContainsHTMLSpace(token) || tokenContainsHTMLSpace(newToken))
-        return Exception { InvalidCharacterError };
+        return Exception { ExceptionCode::InvalidCharacterError };
 
     auto& tokens = this->tokens();
 
@@ -205,7 +204,7 @@ ExceptionOr<bool> DOMTokenList::replace(const AtomString& token, const AtomStrin
 ExceptionOr<bool> DOMTokenList::supports(StringView token)
 {
     if (!m_isSupportedToken)
-        return Exception { TypeError };
+        return Exception { ExceptionCode::TypeError };
     return m_isSupportedToken(m_element.document(), token);
 }
 
@@ -228,12 +227,12 @@ void DOMTokenList::updateTokensFromAttributeValue(StringView value)
     HashSet<AtomString> addedTokens;
     // https://dom.spec.whatwg.org/#ordered%20sets
     for (unsigned start = 0; ; ) {
-        while (start < value.length() && isHTMLSpace(value[start]))
+        while (start < value.length() && isASCIIWhitespace(value[start]))
             ++start;
         if (start >= value.length())
             break;
         unsigned end = start + 1;
-        while (end < value.length() && !isHTMLSpace(value[end]))
+        while (end < value.length() && !isASCIIWhitespace(value[end]))
             ++end;
 
         auto tokenView = value.substring(start, end - start);

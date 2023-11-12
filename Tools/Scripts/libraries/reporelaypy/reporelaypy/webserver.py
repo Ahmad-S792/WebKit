@@ -22,6 +22,7 @@
 
 import json
 import os
+import re
 
 from flask_cors import CORS
 
@@ -31,7 +32,8 @@ if autoinstall_path:
     AutoInstall.set_directory(autoinstall_path)
 
 from flask import Flask, current_app, json as fjson
-from reporelaypy import Checkout, CheckoutRoute, Database, Redirector, HookReceiver
+from reporelaypy import Checkout, CheckoutRoute, Redirector, HookReceiver
+from webkitflaskpy import Database
 
 app = Flask(__name__)
 CORS(app)
@@ -41,6 +43,7 @@ checkout = Checkout.from_json(os.environ.get('CHECKOUT', '{}'))
 checkout_routes = CheckoutRoute(
     checkout, redirectors=Redirector.from_json(os.environ.get('REDIRECTORS', '[]')),
     import_name=__name__, database=database,
+    blocked_user_agents=json.loads(os.environ.get('BLOCKED_USER_AGENTS', '[]')),
 )
 
 hook_args = json.loads(os.environ.get('HOOKS', '{}'))
@@ -72,6 +75,13 @@ def health():
         fjson.dumps(dict(status='ready'), indent=4),
         mimetype='application/json',
     )
+
+# Crawling a reporelay service is always a bad idea
+@app.route('/robots.txt')
+def robots_txt():
+    return '''User-agent: *
+Disallow: /
+'''
 
 
 app.register_blueprint(checkout_routes)

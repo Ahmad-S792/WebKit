@@ -36,19 +36,22 @@
 #include "ContentSecurityPolicy.h"
 #include "DiagnosticLoggingClient.h"
 #include "DiagnosticLoggingKeys.h"
+#include "DocumentInlines.h"
 #include "DocumentLoader.h"
-#include "Frame.h"
-#include "FrameLoaderClient.h"
 #include "HTMLFrameElement.h"
 #include "HTMLIFrameElement.h"
 #include "HTMLNames.h"
 #include "HTMLObjectElement.h"
+#include "LocalFrame.h"
+#include "LocalFrameLoaderClient.h"
 #include "MIMETypeRegistry.h"
 #include "MixedContentChecker.h"
 #include "NavigationScheduler.h"
+#include "OriginAccessPatterns.h"
 #include "Page.h"
 #include "PluginData.h"
 #include "PluginDocument.h"
+#include "RenderBoxInlines.h"
 #include "RenderEmbeddedObject.h"
 #include "RenderView.h"
 #include "ScriptController.h"
@@ -64,14 +67,14 @@ using namespace HTMLNames;
 static bool canLoadJavaScriptURL(HTMLFrameOwnerElement& ownerElement, const URL& url)
 {
     ASSERT(url.protocolIsJavaScript());
-    if (!ownerElement.document().contentSecurityPolicy()->allowJavaScriptURLs(aboutBlankURL().string(), { }, url.string(), &ownerElement))
+    if (!ownerElement.protectedDocument()->checkedContentSecurityPolicy()->allowJavaScriptURLs(aboutBlankURL().string(), { }, url.string(), &ownerElement))
         return false;
     if (!ownerElement.canLoadScriptURL(url))
         return false;
     return true;
 }
 
-FrameLoader::SubframeLoader::SubframeLoader(Frame& frame)
+FrameLoader::SubframeLoader::SubframeLoader(LocalFrame& frame)
     : m_frame(frame)
 {
 }
@@ -79,6 +82,18 @@ FrameLoader::SubframeLoader::SubframeLoader(Frame& frame)
 void FrameLoader::SubframeLoader::clear()
 {
     m_containsPlugins = false;
+}
+
+void FrameLoader::SubframeLoader::createFrameIfNecessary(HTMLFrameOwnerElement& ownerElement, const AtomString& frameName)
+{
+    if (ownerElement.contentFrame())
+        return;
+    m_frame.loader().client().createFrame(frameName, ownerElement);
+    if (!ownerElement.contentFrame())
+        return;
+
+    if (auto* contentDocument = downcast<LocalFrame>(ownerElement.contentFrame())->document())
+        contentDocument->setReferrerPolicy(ownerElement.referrerPolicy());
 }
 
 bool FrameLoader::SubframeLoader::requestFrame(HTMLFrameOwnerElement& ownerElement, const String& urlString, const AtomString& frameName, LockHistory lockHistory, LockBackForwardList lockBackForwardList)
@@ -113,7 +128,7 @@ bool FrameLoader::SubframeLoader::pluginIsLoadable(const URL& url)
         if (document->isSandboxed(SandboxPlugins))
             return false;
 
-        if (!document->securityOrigin().canDisplay(url)) {
+        if (!document->securityOrigin().canDisplay(url, OriginAccessPatternsForWebProcess::singleton())) {
             FrameLoader::reportLocalLoadFailed(&m_frame, url.string());
             return false;
         }
@@ -123,7 +138,7 @@ bool FrameLoader::SubframeLoader::pluginIsLoadable(const URL& url)
             return false;
         }
 
-        if (!MixedContentChecker::canRunInsecureContent(m_frame, document->securityOrigin(), url))
+        if (!MixedContentChecker::frameAndAncestorsCanRunInsecureContent(m_frame, document->securityOrigin(), url))
             return false;
     }
 
@@ -193,13 +208,13 @@ bool FrameLoader::SubframeLoader::requestObject(HTMLPlugInImageElement& ownerEle
     if (url.isEmpty() && mimeType.isEmpty())
         return false;
 
-    auto& document = ownerElement.document();
+    Ref document = ownerElement.document();
 
     URL completedURL;
     if (!url.isEmpty())
         completedURL = completeURL(url);
 
-    document.contentSecurityPolicy()->upgradeInsecureRequestIfNeeded(completedURL, ContentSecurityPolicy::InsecureRequestType::Load);
+    document->checkedContentSecurityPolicy()->upgradeInsecureRequestIfNeeded(completedURL, ContentSecurityPolicy::InsecureRequestType::Load);
 
     // Historically, we haven't run javascript URLs in <embed> / <object> elements.
     if (completedURL.protocolIsJavaScript())
@@ -210,7 +225,7 @@ bool FrameLoader::SubframeLoader::requestObject(HTMLPlugInImageElement& ownerEle
     bool useFallback;
     if (shouldUsePlugin(completedURL, mimeType, hasFallbackContent, useFallback)) {
         bool success = requestPlugin(ownerElement, completedURL, mimeType, paramNames, paramValues, useFallback);
-        logPluginRequest(document.page(), mimeType, completedURL);
+        logPluginRequest(document->checkedPage().get(), mimeType, completedURL);
         return success;
     }
 
@@ -220,23 +235,30 @@ bool FrameLoader::SubframeLoader::requestObject(HTMLPlugInImageElement& ownerEle
     return loadOrRedirectSubframe(ownerElement, completedURL, frameName, LockHistory::Yes, LockBackForwardList::Yes);
 }
 
-Frame* FrameLoader::SubframeLoader::loadOrRedirectSubframe(HTMLFrameOwnerElement& ownerElement, const URL& requestURL, const AtomString& frameName, LockHistory lockHistory, LockBackForwardList lockBackForwardList)
+LocalFrame* FrameLoader::SubframeLoader::loadOrRedirectSubframe(HTMLFrameOwnerElement& ownerElement, const URL& requestURL, const AtomString& frameName, LockHistory lockHistory, LockBackForwardList lockBackForwardList)
 {
-    auto& initiatingDocument = ownerElement.document();
+    Ref initiatingDocument = ownerElement.document();
 
     URL upgradedRequestURL = requestURL;
-    initiatingDocument.contentSecurityPolicy()->upgradeInsecureRequestIfNeeded(upgradedRequestURL, ContentSecurityPolicy::InsecureRequestType::Load);
+    initiatingDocument->checkedContentSecurityPolicy()->upgradeInsecureRequestIfNeeded(upgradedRequestURL, ContentSecurityPolicy::InsecureRequestType::Load);
 
-    RefPtr frame = dynamicDowncast<LocalFrame>(ownerElement.contentFrame());
+    RefPtr frame = ownerElement.contentFrame();
     if (frame) {
         CompletionHandler<void()> stopDelayingLoadEvent = [] { };
         if (upgradedRequestURL.protocolIsJavaScript()) {
-            ownerElement.document().incrementLoadEventDelayCount();
-            stopDelayingLoadEvent = [ownerDocument = Ref { ownerElement.document() }] {
+            Ref ownerDocument = ownerElement.document();
+            ownerDocument->incrementLoadEventDelayCount();
+            stopDelayingLoadEvent = [ownerDocument = WTFMove(ownerDocument)] {
                 ownerDocument->decrementLoadEventDelayCount();
             };
         }
-        frame->navigationScheduler().scheduleLocationChange(initiatingDocument, initiatingDocument.securityOrigin(), upgradedRequestURL, m_frame.loader().outgoingReferrer(), lockHistory, lockBackForwardList, WTFMove(stopDelayingLoadEvent));
+
+        if (RefPtr localFrame = dynamicDowncast<LocalFrame>(*frame); localFrame && localFrame->loader().isComplete()) {
+            if (CheckedPtr page = localFrame->page())
+                page->willChangeLocationInCompletelyLoadedSubframe();
+        }
+
+        frame->navigationScheduler().scheduleLocationChange(initiatingDocument, initiatingDocument->securityOrigin(), upgradedRequestURL, m_frame.loader().outgoingReferrer(), lockHistory, lockBackForwardList, WTFMove(stopDelayingLoadEvent));
     } else
         frame = loadSubframe(ownerElement, upgradedRequestURL, frameName, m_frame.loader().outgoingReferrer());
 
@@ -247,12 +269,12 @@ Frame* FrameLoader::SubframeLoader::loadOrRedirectSubframe(HTMLFrameOwnerElement
     return dynamicDowncast<LocalFrame>(ownerElement.contentFrame());
 }
 
-RefPtr<Frame> FrameLoader::SubframeLoader::loadSubframe(HTMLFrameOwnerElement& ownerElement, const URL& url, const AtomString& name, const String& referrer)
+RefPtr<LocalFrame> FrameLoader::SubframeLoader::loadSubframe(HTMLFrameOwnerElement& ownerElement, const URL& url, const AtomString& name, const String& referrer)
 {
     Ref protectedFrame { m_frame };
     Ref document = ownerElement.document();
 
-    if (!document->securityOrigin().canDisplay(url)) {
+    if (!document->securityOrigin().canDisplay(url, OriginAccessPatternsForWebProcess::singleton())) {
         FrameLoader::reportLocalLoadFailed(&m_frame, url.string());
         return nullptr;
     }
@@ -283,7 +305,7 @@ RefPtr<Frame> FrameLoader::SubframeLoader::loadSubframe(HTMLFrameOwnerElement& o
     ReferrerPolicy policy = ownerElement.referrerPolicy();
     if (policy == ReferrerPolicy::EmptyString)
         policy = document->referrerPolicy();
-    String referrerToUse = SecurityPolicy::generateReferrerHeader(policy, url, referrer);
+    String referrerToUse = SecurityPolicy::generateReferrerHeader(policy, url, referrer, OriginAccessPatternsForWebProcess::singleton());
 
     m_frame.loader().loadURLIntoChildFrame(url, referrerToUse, frame.get());
 
@@ -358,11 +380,8 @@ bool FrameLoader::SubframeLoader::loadPlugin(HTMLPlugInImageElement& pluginEleme
     IntSize contentSize = roundedIntSize(LayoutSize(renderer->contentWidth(), renderer->contentHeight()));
     bool loadManually = is<PluginDocument>(document) && !m_containsPlugins && downcast<PluginDocument>(document).shouldLoadPluginManually();
 
-#if PLATFORM(IOS_FAMILY)
-    // On iOS, we only tell the plugin to be in full page mode if the containing plugin document is the top level document.
-    if (document.ownerElement())
+    if (document.ownerElement() && document.settings().useImageDocumentForSubframePDF())
         loadManually = false;
-#endif
 
     WeakPtr weakRenderer { *renderer };
 

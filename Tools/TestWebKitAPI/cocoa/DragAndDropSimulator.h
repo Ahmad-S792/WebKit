@@ -31,7 +31,7 @@
 #import <wtf/BlockPtr.h>
 
 #if PLATFORM(IOS_FAMILY)
-#import "UIKitSPI.h"
+#import "UIKitSPIForTesting.h"
 #import <UIKit/NSItemProvider+UIKitAdditions.h>
 #endif
 
@@ -145,5 +145,15 @@ typedef NSDictionary<NSNumber *, NSValue *> *ProgressToCGPointValueMap;
 - (BOOL)containsDraggedType:(NSString *)type;
 
 @end
+
+#if !PLATFORM(MACCATALYST)
+
+@interface DragAndDropSimulator (DOMElementDrag)
+
+- (void)runFromElement:(NSString *)startSelector toElement:(NSString *)endSelector;
+
+@end
+
+#endif // !PLATFORM(MACCATALYST)
 
 #endif // ENABLE(DRAG_SUPPORT)

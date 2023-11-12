@@ -130,7 +130,6 @@ var propertyInfo = [
     ["SVGMarkerElement", "object"],
     ["SVGPathSeg", "object"],
     ["SVGPreserveAspectRatio", "object"],
-    ["SVGRenderingIntent", "object"],
     ["SVGTextContentElement", "object"],
     ["SVGTextPathElement", "object"],
     ["SVGTransform", "object"],
@@ -186,14 +185,11 @@ var propertyInfo = [
     ["onreset", "object"],
     ["onresize", "object"],
     ["onscroll", "object"],
-    ["onsearch", "object"],
     ["onselect", "object"],
     ["onsubmit", "object"],
     ["onunload", "object"],
     ["opener", "object"],
 
-    ["defaultStatus", "string"],
-    ["defaultstatus", "string"],
     ["name", "string"],
     ["status", "string"],
 

@@ -73,6 +73,7 @@ class GtkPort(GLibPort):
     def setup_environ_for_server(self, server_name=None):
         environment = super(GtkPort, self).setup_environ_for_server(server_name)
         environment['LIBOVERLAY_SCROLLBAR'] = '0'
+        environment['WEBKIT_NICOSIA_PAINTING_THREADS'] = '0'
 
         # Configure the software libgl renderer if jhbuild ready and we test inside a virtualized window system
         if self._driver_class() in [XvfbDriver, WestonDriver] and (self._should_use_jhbuild() or self._is_flatpak()):
@@ -81,7 +82,7 @@ class GtkPort(GLibPort):
                                                                     ignore_errors=True).strip()
                 dri_libgl_path = os.path.join(llvmpipe_libgl_path, "dri")
             else:  # in flatpak
-                llvmpipe_libgl_path = "/usr/lib/x86_64-linux-gnu/"
+                llvmpipe_libgl_path = "/usr/lib/{}-linux-gnu/".format(os.uname().machine)
                 dri_libgl_path = os.path.join(llvmpipe_libgl_path, "GL", "lib", "dri")
 
             if os.path.exists(os.path.join(llvmpipe_libgl_path, "libGL.so")) and os.path.exists(os.path.join(dri_libgl_path, "swrast_dri.so")):
@@ -198,13 +199,13 @@ class GtkPort(GLibPort):
     def _is_gtk4_build(self):
         try:
             libdir = self._build_path('lib')
-            candidates = self._filesystem.glob(os.path.join(libdir, 'libwebkit2gtk-*.so'))
+            candidates = self._filesystem.glob(os.path.join(libdir, 'libwebkit*gtk-*.so'))
             if not candidates:
                 return False
             if len(candidates) > 1:
                 _log.warning("Multiple WebKit2GTK libraries found. Skipping GTK4 detection.")
                 return False
-            return os.path.basename(candidates[0]) == 'libwebkit2gtk-5.0.so'
+            return os.path.basename(candidates[0]) == 'libwebkitgtk-6.0.so'
 
         except (webkitpy.common.system.executive.ScriptError, IOError, OSError):
             return False

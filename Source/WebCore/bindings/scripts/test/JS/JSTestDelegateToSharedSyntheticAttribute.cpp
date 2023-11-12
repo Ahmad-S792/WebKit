@@ -111,12 +111,12 @@ template<> void JSTestDelegateToSharedSyntheticAttributeDOMConstructor::initiali
 
 static const HashTableValue JSTestDelegateToSharedSyntheticAttributePrototypeTableValues[] =
 {
-    { "constructor"_s, static_cast<unsigned>(JSC::PropertyAttribute::DontEnum), NoIntrinsic, { HashTableValue::GetterSetterType, jsTestDelegateToSharedSyntheticAttributeConstructor, 0 } },
-    { "property1"_s, static_cast<unsigned>(JSC::PropertyAttribute::CustomAccessor | JSC::PropertyAttribute::DOMAttribute), NoIntrinsic, { HashTableValue::GetterSetterType, jsTestDelegateToSharedSyntheticAttribute_sharedAttribute1, setJSTestDelegateToSharedSyntheticAttribute_sharedAttribute1 } },
-    { "property2"_s, static_cast<unsigned>(JSC::PropertyAttribute::CustomAccessor | JSC::PropertyAttribute::DOMAttribute), NoIntrinsic, { HashTableValue::GetterSetterType, jsTestDelegateToSharedSyntheticAttribute_sharedAttribute1, setJSTestDelegateToSharedSyntheticAttribute_sharedAttribute1 } },
-    { "property3"_s, static_cast<unsigned>(JSC::PropertyAttribute::CustomAccessor | JSC::PropertyAttribute::DOMAttribute), NoIntrinsic, { HashTableValue::GetterSetterType, jsTestDelegateToSharedSyntheticAttribute_sharedAttribute1, setJSTestDelegateToSharedSyntheticAttribute_sharedAttribute1 } },
-    { "property4"_s, static_cast<unsigned>(JSC::PropertyAttribute::CustomAccessor | JSC::PropertyAttribute::DOMAttribute), NoIntrinsic, { HashTableValue::GetterSetterType, jsTestDelegateToSharedSyntheticAttribute_sharedAttribute2, setJSTestDelegateToSharedSyntheticAttribute_sharedAttribute2 } },
-    { "property5"_s, static_cast<unsigned>(JSC::PropertyAttribute::CustomAccessor | JSC::PropertyAttribute::DOMAttribute), NoIntrinsic, { HashTableValue::GetterSetterType, jsTestDelegateToSharedSyntheticAttribute_sharedAttribute2, setJSTestDelegateToSharedSyntheticAttribute_sharedAttribute2 } },
+    { "constructor"_s, static_cast<unsigned>(PropertyAttribute::DontEnum), NoIntrinsic, { HashTableValue::GetterSetterType, jsTestDelegateToSharedSyntheticAttributeConstructor, 0 } },
+    { "property1"_s, JSC::PropertyAttribute::CustomAccessor | JSC::PropertyAttribute::DOMAttribute, NoIntrinsic, { HashTableValue::GetterSetterType, jsTestDelegateToSharedSyntheticAttribute_sharedAttribute1, setJSTestDelegateToSharedSyntheticAttribute_sharedAttribute1 } },
+    { "property2"_s, JSC::PropertyAttribute::CustomAccessor | JSC::PropertyAttribute::DOMAttribute, NoIntrinsic, { HashTableValue::GetterSetterType, jsTestDelegateToSharedSyntheticAttribute_sharedAttribute1, setJSTestDelegateToSharedSyntheticAttribute_sharedAttribute1 } },
+    { "property3"_s, JSC::PropertyAttribute::CustomAccessor | JSC::PropertyAttribute::DOMAttribute, NoIntrinsic, { HashTableValue::GetterSetterType, jsTestDelegateToSharedSyntheticAttribute_sharedAttribute1, setJSTestDelegateToSharedSyntheticAttribute_sharedAttribute1 } },
+    { "property4"_s, JSC::PropertyAttribute::CustomAccessor | JSC::PropertyAttribute::DOMAttribute, NoIntrinsic, { HashTableValue::GetterSetterType, jsTestDelegateToSharedSyntheticAttribute_sharedAttribute2, setJSTestDelegateToSharedSyntheticAttribute_sharedAttribute2 } },
+    { "property5"_s, JSC::PropertyAttribute::CustomAccessor | JSC::PropertyAttribute::DOMAttribute, NoIntrinsic, { HashTableValue::GetterSetterType, jsTestDelegateToSharedSyntheticAttribute_sharedAttribute2, setJSTestDelegateToSharedSyntheticAttribute_sharedAttribute2 } },
 };
 
 const ClassInfo JSTestDelegateToSharedSyntheticAttributePrototype::s_info = { "TestDelegateToSharedSyntheticAttribute"_s, &Base::s_info, nullptr, nullptr, CREATE_METHOD_TABLE(JSTestDelegateToSharedSyntheticAttributePrototype) };
@@ -135,18 +135,13 @@ JSTestDelegateToSharedSyntheticAttribute::JSTestDelegateToSharedSyntheticAttribu
 {
 }
 
-void JSTestDelegateToSharedSyntheticAttribute::finishCreation(VM& vm)
-{
-    Base::finishCreation(vm);
-    ASSERT(inherits(info()));
-
-    static_assert(!std::is_base_of<ActiveDOMObject, TestDelegateToSharedSyntheticAttribute>::value, "Interface is not marked as [ActiveDOMObject] even though implementation class subclasses ActiveDOMObject.");
-
-}
+static_assert(!std::is_base_of<ActiveDOMObject, TestDelegateToSharedSyntheticAttribute>::value, "Interface is not marked as [ActiveDOMObject] even though implementation class subclasses ActiveDOMObject.");
 
 JSObject* JSTestDelegateToSharedSyntheticAttribute::createPrototype(VM& vm, JSDOMGlobalObject& globalObject)
 {
-    return JSTestDelegateToSharedSyntheticAttributePrototype::create(vm, &globalObject, JSTestDelegateToSharedSyntheticAttributePrototype::createStructure(vm, &globalObject, globalObject.objectPrototype()));
+    auto* structure = JSTestDelegateToSharedSyntheticAttributePrototype::createStructure(vm, &globalObject, globalObject.objectPrototype());
+    structure->setMayBePrototype(true);
+    return JSTestDelegateToSharedSyntheticAttributePrototype::create(vm, &globalObject, structure);
 }
 
 JSObject* JSTestDelegateToSharedSyntheticAttribute::prototype(VM& vm, JSDOMGlobalObject& globalObject)
@@ -179,8 +174,8 @@ static inline JSValue jsTestDelegateToSharedSyntheticAttribute_sharedAttribute1G
 {
     auto& vm = JSC::getVM(&lexicalGlobalObject);
     auto throwScope = DECLARE_THROW_SCOPE(vm);
-    auto& impl = thisObject.wrapped();
-    RELEASE_AND_RETURN(throwScope, (toJS<IDLLegacyNullToEmptyStringAdaptor<IDLUSVString>>(lexicalGlobalObject, throwScope, impl.sharedAttribute1(propertyNameToAtomString(propertyName)))));
+    Ref impl = thisObject.wrapped();
+    RELEASE_AND_RETURN(throwScope, (toJS<IDLLegacyNullToEmptyStringAdaptor<IDLUSVString>>(lexicalGlobalObject, throwScope, impl->sharedAttribute1(propertyNameToAtomString(propertyName)))));
 }
 
 JSC_DEFINE_CUSTOM_GETTER(jsTestDelegateToSharedSyntheticAttribute_sharedAttribute1, (JSGlobalObject* lexicalGlobalObject, EncodedJSValue thisValue, PropertyName attributeName))
@@ -194,11 +189,11 @@ static inline bool setJSTestDelegateToSharedSyntheticAttribute_sharedAttribute1S
     UNUSED_PARAM(vm);
     auto throwScope = DECLARE_THROW_SCOPE(vm);
     CustomElementReactionStack customElementReactionStack(lexicalGlobalObject);
-    auto& impl = thisObject.wrapped();
+    Ref impl = thisObject.wrapped();
     auto nativeValue = convert<IDLLegacyNullToEmptyStringAdaptor<IDLUSVString>>(lexicalGlobalObject, value);
     RETURN_IF_EXCEPTION(throwScope, false);
     invokeFunctorPropagatingExceptionIfNecessary(lexicalGlobalObject, throwScope, [&] {
-        return impl.setSharedAttribute1(propertyNameToAtomString(propertyName), WTFMove(nativeValue));
+        return impl->setSharedAttribute1(propertyNameToAtomString(propertyName), WTFMove(nativeValue));
     });
     return true;
 }
@@ -212,8 +207,8 @@ static inline JSValue jsTestDelegateToSharedSyntheticAttribute_sharedAttribute2G
 {
     auto& vm = JSC::getVM(&lexicalGlobalObject);
     auto throwScope = DECLARE_THROW_SCOPE(vm);
-    auto& impl = thisObject.wrapped();
-    RELEASE_AND_RETURN(throwScope, (toJS<IDLLegacyNullToEmptyStringAdaptor<IDLUSVString>>(lexicalGlobalObject, throwScope, impl.sharedAttribute2(propertyNameToAtomString(propertyName)))));
+    Ref impl = thisObject.wrapped();
+    RELEASE_AND_RETURN(throwScope, (toJS<IDLLegacyNullToEmptyStringAdaptor<IDLUSVString>>(lexicalGlobalObject, throwScope, impl->sharedAttribute2(propertyNameToAtomString(propertyName)))));
 }
 
 JSC_DEFINE_CUSTOM_GETTER(jsTestDelegateToSharedSyntheticAttribute_sharedAttribute2, (JSGlobalObject* lexicalGlobalObject, EncodedJSValue thisValue, PropertyName attributeName))
@@ -227,11 +222,11 @@ static inline bool setJSTestDelegateToSharedSyntheticAttribute_sharedAttribute2S
     UNUSED_PARAM(vm);
     auto throwScope = DECLARE_THROW_SCOPE(vm);
     CustomElementReactionStack customElementReactionStack(lexicalGlobalObject);
-    auto& impl = thisObject.wrapped();
+    Ref impl = thisObject.wrapped();
     auto nativeValue = convert<IDLLegacyNullToEmptyStringAdaptor<IDLUSVString>>(lexicalGlobalObject, value);
     RETURN_IF_EXCEPTION(throwScope, false);
     invokeFunctorPropagatingExceptionIfNecessary(lexicalGlobalObject, throwScope, [&] {
-        return impl.setSharedAttribute2(propertyNameToAtomString(propertyName), WTFMove(nativeValue));
+        return impl->setSharedAttribute2(propertyNameToAtomString(propertyName), WTFMove(nativeValue));
     });
     return true;
 }
@@ -256,7 +251,7 @@ void JSTestDelegateToSharedSyntheticAttribute::analyzeHeap(JSCell* cell, HeapAna
     auto* thisObject = jsCast<JSTestDelegateToSharedSyntheticAttribute*>(cell);
     analyzer.setWrappedObjectForCell(cell, &thisObject->wrapped());
     if (thisObject->scriptExecutionContext())
-        analyzer.setLabelForCell(cell, "url " + thisObject->scriptExecutionContext()->url().string());
+        analyzer.setLabelForCell(cell, "url "_s + thisObject->scriptExecutionContext()->url().string());
     Base::analyzeHeap(cell, analyzer);
 }
 

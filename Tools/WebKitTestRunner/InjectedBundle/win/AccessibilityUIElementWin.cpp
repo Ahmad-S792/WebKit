@@ -232,6 +232,12 @@ JSValueRef AccessibilityUIElement::columnHeaders() const
     return nullptr;
 }
 
+JSValueRef AccessibilityUIElement::selectedCells() const
+{
+    notImplemented();
+    return nullptr;
+}
+
 RefPtr<AccessibilityUIElement> AccessibilityUIElement::uiElementAttributeValue(JSStringRef attribute) const
 {
     notImplemented();
@@ -658,6 +664,12 @@ bool AccessibilityUIElement::setSelectedTextRange(unsigned, unsigned)
     return false;
 }
 
+JSRetainPtr<JSStringRef> AccessibilityUIElement::textInputMarkedRange() const
+{
+    notImplemented();
+    return nullptr;
+}
+
 void AccessibilityUIElement::increment()
 {
     notImplemented();
@@ -699,18 +711,6 @@ void AccessibilityUIElement::clearSelectedChildren() const
 }
 
 JSRetainPtr<JSStringRef> AccessibilityUIElement::accessibilityValue() const
-{
-    notImplemented();
-    return nullptr;
-}
-
-JSRetainPtr<JSStringRef> AccessibilityUIElement::documentEncoding()
-{
-    notImplemented();
-    return nullptr;
-}
-
-JSRetainPtr<JSStringRef> AccessibilityUIElement::documentURI()
 {
     notImplemented();
     return nullptr;

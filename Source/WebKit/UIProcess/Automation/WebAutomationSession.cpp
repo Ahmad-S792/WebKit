@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2016, 2017 Apple Inc. All rights reserved.
+ * Copyright (C) 2016-2023 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -31,11 +31,14 @@
 #include "APIHTTPCookieStore.h"
 #include "APINavigation.h"
 #include "APIOpenPanelParameters.h"
+#include "APIString.h"
 #include "AutomationProtocolObjects.h"
 #include "CoordinateSystem.h"
+#include "PageLoadState.h"
 #include "WebAutomationSessionMacros.h"
 #include "WebAutomationSessionMessages.h"
 #include "WebAutomationSessionProxyMessages.h"
+#include "WebFrameProxy.h"
 #include "WebFullScreenManagerProxy.h"
 #include "WebInspectorUIProxy.h"
 #include "WebOpenPanelResultListenerProxy.h"
@@ -59,7 +62,7 @@
 #if ENABLE(WEB_AUTHN)
 #include "VirtualAuthenticatorManager.h"
 #include <WebCore/AuthenticatorTransport.h>
-#endif // ENABLE(WEB_AUTHN)
+#endif
 
 namespace WebKit {
 
@@ -103,13 +106,18 @@ void WebAutomationSession::setClient(std::unique_ptr<API::AutomationSessionClien
 
 void WebAutomationSession::setProcessPool(WebKit::WebProcessPool* processPool)
 {
-    if (m_processPool)
-        m_processPool->removeMessageReceiver(Messages::WebAutomationSession::messageReceiverName());
+    if (auto pool = protectedProcessPool())
+        pool->removeMessageReceiver(Messages::WebAutomationSession::messageReceiverName());
 
     m_processPool = processPool;
 
-    if (m_processPool)
-        m_processPool->addMessageReceiver(Messages::WebAutomationSession::messageReceiverName(), *this);
+    if (auto pool = protectedProcessPool())
+        pool->addMessageReceiver(Messages::WebAutomationSession::messageReceiverName(), *this);
+}
+
+RefPtr<WebProcessPool> WebAutomationSession::protectedProcessPool() const
+{
+    return const_cast<WebProcessPool*>(m_processPool.get());
 }
 
 // NOTE: this class could be split at some point to support local and remote automation sessions.
@@ -286,8 +294,8 @@ void WebAutomationSession::getNextContext(Ref<WebAutomationSession>&& protectedT
         return;
     }
     auto page = pages.takeLast();
-    auto& webPageProxy = page.get();
-    webPageProxy.getWindowFrameWithCallback([this, protectedThis = WTFMove(protectedThis), callback = WTFMove(callback), pages = WTFMove(pages), contexts = WTFMove(contexts), page = WTFMove(page)](WebCore::FloatRect windowFrame) mutable {
+    Ref webPageProxy = page.get();
+    webPageProxy->getWindowFrameWithCallback([this, protectedThis = WTFMove(protectedThis), callback = WTFMove(callback), pages = WTFMove(pages), contexts = WTFMove(contexts), page = WTFMove(page)](WebCore::FloatRect windowFrame) mutable {
         contexts->addItem(protectedThis->buildBrowsingContextForPage(page.get(), windowFrame));
         getNextContext(WTFMove(protectedThis), WTFMove(pages), WTFMove(contexts), WTFMove(callback));
     });
@@ -296,12 +304,11 @@ void WebAutomationSession::getNextContext(Ref<WebAutomationSession>&& protectedT
 void WebAutomationSession::getBrowsingContexts(Ref<GetBrowsingContextsCallback>&& callback)
 {
     Vector<Ref<WebPageProxy>> pages;
-    for (auto& process : m_processPool->processes()) {
-        for (auto& page : process->pages()) {
-            ASSERT(page);
-            if (!page || !page->isControlledByAutomation())
+    for (Ref process : protectedProcessPool()->processes()) {
+        for (Ref page : process->pages()) {
+            if (!page->isControlledByAutomation())
                 continue;
-            pages.append(page.releaseNonNull());
+            pages.append(WTFMove(page));
         }
     }
 
@@ -455,7 +462,7 @@ void WebAutomationSession::waitForNavigationToComplete(const Inspector::Protocol
         auto frameID = webFrameIDForHandle(optionalFrameHandle, frameNotFound);
         if (frameNotFound)
             ASYNC_FAIL_WITH_PREDEFINED_ERROR(FrameNotFound);
-        WebFrameProxy* frame = WebFrameProxy::webFrame(frameID.value());
+        RefPtr frame = WebFrameProxy::webFrame(frameID.value());
         if (!frame)
             ASYNC_FAIL_WITH_PREDEFINED_ERROR(FrameNotFound);
         if (!shouldTimeoutDueToUnexpectedAlert)
@@ -541,7 +548,7 @@ void WebAutomationSession::respondToPendingFrameNavigationCallbacksWithTimeout(H
 {
     auto timeoutError = STRING_FOR_PREDEFINED_ERROR_NAME(Timeout);
     for (auto id : copyToVector(map.keys())) {
-        auto* page = findPageForFrameID(*m_processPool, id);
+        RefPtr page = findPageForFrameID(*protectedProcessPool(), id);
         auto callback = map.take(id);
         if (page && m_client->isShowingJavaScriptDialogOnPage(*this, *page))
             callback->sendSuccess(JSON::Object::create());
@@ -953,11 +960,9 @@ void WebAutomationSession::evaluateJavaScriptFunction(const Inspector::Protocol:
     if (frameNotFound)
         ASYNC_FAIL_WITH_PREDEFINED_ERROR(FrameNotFound);
 
-    Vector<String> argumentsVector;
-    argumentsVector.reserveCapacity(arguments->length());
-
-    for (const auto& argument : arguments.get())
-        argumentsVector.uncheckedAppend(argument->asString());
+    auto argumentsVector = WTF::map(arguments.get(), [](auto& argument) {
+        return argument->asString();
+    });
 
     uint64_t callbackID = m_nextEvaluateJavaScriptCallbackID++;
     m_evaluateJavaScriptFunctionCallbacks.set(callbackID, WTFMove(callback));
@@ -2000,7 +2005,7 @@ void WebAutomationSession::performKeyboardInteractions(const Inspector::Protocol
             if (!virtualKey)
                 ASYNC_FAIL_WITH_PREDEFINED_ERROR_AND_DETAILS(InvalidParameter, "An interaction in the 'interactions' parameter has an invalid 'key' value.");
 
-            actionsToPerform.uncheckedAppend([this, page, interactionType, virtualKey] {
+            actionsToPerform.append([this, page, interactionType, virtualKey] {
                 platformSimulateKeyboardInteraction(*page, interactionType.value(), virtualKey.value());
             });
         }
@@ -2014,7 +2019,7 @@ void WebAutomationSession::performKeyboardInteractions(const Inspector::Protocol
                 ASYNC_FAIL_WITH_PREDEFINED_ERROR_AND_DETAILS(InvalidParameter, "An interaction in the 'interactions' parameter has an invalid 'key' value.");
 
             case Inspector::Protocol::Automation::KeyboardInteractionType::InsertByKey:
-                actionsToPerform.uncheckedAppend([this, page, keySequence] {
+                actionsToPerform.append([this, page, keySequence] {
                     platformSimulateKeySequence(*page, keySequence);
                 });
                 break;
@@ -2235,7 +2240,7 @@ void WebAutomationSession::performInteractionSequence(const Inspector::Protocol:
             if (!m_inputSources.contains(sourceId))
                 ASYNC_FAIL_WITH_PREDEFINED_ERROR_AND_DETAILS(InvalidParameter, "Unknown 'sourceId' specified.");
 
-            SimulatedInputSource& inputSource = *m_inputSources.get(sourceId);
+            Ref inputSource = *m_inputSources.get(sourceId);
             SimulatedInputSourceState sourceState { };
 
             auto pressedCharKeyString = stateObject->getString("pressedCharKey"_s);
@@ -2304,20 +2309,20 @@ void WebAutomationSession::performInteractionSequence(const Inspector::Protocol:
             if (auto duration = stateObject->getInteger("duration"_s))
                 sourceState.duration = Seconds::fromMilliseconds(*duration);
 
-            entries.uncheckedAppend(std::pair<SimulatedInputSource&, SimulatedInputSourceState> { inputSource, sourceState });
+            entries.append(std::pair<SimulatedInputSource&, SimulatedInputSourceState> { inputSource, sourceState });
         }
         
         keyFrames.append(SimulatedInputKeyFrame(WTFMove(entries)));
     }
 
-    SimulatedInputDispatcher& inputDispatcher = inputDispatcherForPage(*page);
-    if (inputDispatcher.isActive()) {
+    Ref inputDispatcher = inputDispatcherForPage(*page);
+    if (inputDispatcher->isActive()) {
         ASSERT_NOT_REACHED();
         ASYNC_FAIL_WITH_PREDEFINED_ERROR_AND_DETAILS(InternalError, "A previous interaction is still underway.");
     }
 
     // Delegate the rest of §17.4 Dispatching Actions to the dispatcher.
-    inputDispatcher.run(frameID, WTFMove(keyFrames), m_inputSources, [protectedThis = Ref { *this }, callback = WTFMove(callback)](std::optional<AutomationCommandError> error) {
+    inputDispatcher->run(frameID, WTFMove(keyFrames), m_inputSources, [protectedThis = Ref { *this }, callback = WTFMove(callback)](std::optional<AutomationCommandError> error) {
         if (error)
             callback->sendFailure(error.value().toProtocolString());
         else
@@ -2343,10 +2348,10 @@ void WebAutomationSession::cancelInteractionSequence(const Inspector::Protocol::
         ASYNC_FAIL_WITH_PREDEFINED_ERROR(FrameNotFound);
 
     Vector<SimulatedInputKeyFrame> keyFrames({ SimulatedInputKeyFrame::keyFrameToResetInputSources(m_inputSources) });
-    SimulatedInputDispatcher& inputDispatcher = inputDispatcherForPage(*page);
-    inputDispatcher.cancel();
+    Ref inputDispatcher = inputDispatcherForPage(*page);
+    inputDispatcher->cancel();
     
-    inputDispatcher.run(frameID, WTFMove(keyFrames), m_inputSources, [this, protectedThis = Ref { *this }, callback = WTFMove(callback)](std::optional<AutomationCommandError> error) {
+    inputDispatcher->run(frameID, WTFMove(keyFrames), m_inputSources, [this, protectedThis = Ref { *this }, callback = WTFMove(callback)](std::optional<AutomationCommandError> error) {
         if (error)
             callback->sendFailure(error.value().toProtocolString());
         else
@@ -2389,10 +2394,7 @@ void WebAutomationSession::takeScreenshot(const Inspector::Protocol::Automation:
 #endif
 #if PLATFORM(GTK) || PLATFORM(COCOA)
     Function<void(WebPageProxy&, std::optional<WebCore::IntRect>&&, Ref<TakeScreenshotCallback>&&)> takeViewSnapsot = [](WebPageProxy& page, std::optional<WebCore::IntRect>&& rect, Ref<TakeScreenshotCallback>&& callback) {
-        page.callAfterNextPresentationUpdate([page = Ref { page }, rect = WTFMove(rect), callback = WTFMove(callback)](CallbackBase::Error error) mutable {
-            if (error != CallbackBase::Error::None)
-                ASYNC_FAIL_WITH_PREDEFINED_ERROR(InternalError);
-
+        page.callAfterNextPresentationUpdate([page = Ref { page }, rect = WTFMove(rect), callback = WTFMove(callback)] () mutable {
             auto snapshot = page->takeViewSnapshot(WTFMove(rect));
             if (!snapshot)
                 ASYNC_FAIL_WITH_PREDEFINED_ERROR(InternalError);
@@ -2428,7 +2430,7 @@ void WebAutomationSession::takeScreenshot(const Inspector::Protocol::Automation:
 #endif
 }
 
-void WebAutomationSession::didTakeScreenshot(uint64_t callbackID, const ShareableBitmapHandle& imageDataHandle, const String& errorType)
+void WebAutomationSession::didTakeScreenshot(uint64_t callbackID, std::optional<ShareableBitmap::Handle>&& imageDataHandle, const String& errorType)
 {
     auto callback = m_screenshotCallbacks.take(callbackID);
     if (!callback)
@@ -2439,7 +2441,10 @@ void WebAutomationSession::didTakeScreenshot(uint64_t callbackID, const Shareabl
         return;
     }
 
-    std::optional<String> base64EncodedData = platformGetBase64EncodedPNGData(imageDataHandle);
+    if (!imageDataHandle)
+        return;
+
+    std::optional<String> base64EncodedData = platformGetBase64EncodedPNGData(WTFMove(*imageDataHandle));
     if (!base64EncodedData)
         ASYNC_FAIL_WITH_PREDEFINED_ERROR(InternalError);
 
@@ -2447,7 +2452,7 @@ void WebAutomationSession::didTakeScreenshot(uint64_t callbackID, const Shareabl
 }
 
 #if !PLATFORM(COCOA) && !USE(CAIRO)
-std::optional<String> WebAutomationSession::platformGetBase64EncodedPNGData(const ShareableBitmapHandle&)
+std::optional<String> WebAutomationSession::platformGetBase64EncodedPNGData(ShareableBitmap::Handle&&)
 {
     return std::nullopt;
 }

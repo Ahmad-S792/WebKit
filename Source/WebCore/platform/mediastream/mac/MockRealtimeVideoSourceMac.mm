@@ -32,6 +32,7 @@
 #import "MockRealtimeVideoSourceMac.h"
 
 #if ENABLE(MEDIA_STREAM)
+
 #import "GraphicsContextCG.h"
 #import "ImageBuffer.h"
 #import "ImageTransferSessionVT.h"
@@ -40,11 +41,12 @@
 #import "NotImplemented.h"
 #import "PlatformLayer.h"
 #import "RealtimeMediaSourceSettings.h"
-#import "RealtimeVideoSource.h"
 #import "RealtimeVideoUtilities.h"
+#import "VideoFrame.h"
 #import <QuartzCore/CALayer.h>
 #import <QuartzCore/CATransaction.h>
 #import <objc/runtime.h>
+#import <wtf/MediaTime.h>
 
 #import "CoreVideoSoftLink.h"
 #import <pal/cf/CoreMediaSoftLink.h>
@@ -57,16 +59,16 @@ CaptureSourceOrError MockRealtimeVideoSource::create(String&& deviceID, AtomStri
     auto device = MockRealtimeMediaSourceCenter::mockDeviceWithPersistentID(deviceID);
     ASSERT(device);
     if (!device)
-        return { "No mock camera device"_s };
+        return CaptureSourceOrError({ "No mock camera device"_s , MediaAccessDenialReason::PermissionDenied });
 #endif
 
-    auto source = adoptRef(*new MockRealtimeVideoSourceMac(WTFMove(deviceID), WTFMove(name), WTFMove(hashSalts), pageIdentifier));
+    Ref<RealtimeMediaSource> source = adoptRef(*new MockRealtimeVideoSourceMac(WTFMove(deviceID), WTFMove(name), WTFMove(hashSalts), pageIdentifier));
     if (constraints) {
         if (auto error = source->applyConstraints(*constraints))
-            return WTFMove(error->message);
+            return CaptureSourceOrError({ WTFMove(error->badConstraint), MediaAccessDenialReason::InvalidConstraint });
     }
 
-    return CaptureSourceOrError(RealtimeVideoSource::create(WTFMove(source)));
+    return source;
 }
 
 Ref<MockRealtimeVideoSource> MockRealtimeVideoSourceMac::createForMockDisplayCapturer(String&& deviceID, AtomString&& name, MediaDeviceHashSalts&& hashSalts, PageIdentifier pageIdentifier)
@@ -82,7 +84,7 @@ MockRealtimeVideoSourceMac::MockRealtimeVideoSourceMac(String&& deviceID, AtomSt
 
 void MockRealtimeVideoSourceMac::updateSampleBuffer()
 {
-    auto imageBuffer = this->imageBuffer();
+    RefPtr imageBuffer = this->imageBuffer();
     if (!imageBuffer)
         return;
 
@@ -92,7 +94,7 @@ void MockRealtimeVideoSourceMac::updateSampleBuffer()
     }
 
     PlatformImagePtr platformImage;
-    if (auto nativeImage = imageBuffer->copyImage()->nativeImage())
+    if (auto nativeImage = imageBuffer->copyNativeImage())
         platformImage = nativeImage->platformImage();
 
     auto presentationTime = MediaTime::createWithDouble((elapsedTime() + 100_ms).seconds());

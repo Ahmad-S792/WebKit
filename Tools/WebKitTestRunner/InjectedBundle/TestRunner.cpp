@@ -51,6 +51,7 @@
 #include <WebKit/WKPagePrivate.h>
 #include <WebKit/WKRetainPtr.h>
 #include <WebKit/WKSerializedScriptValue.h>
+#include <WebKit/WKStringPrivate.h>
 #include <WebKit/WebKit2_C.h>
 #include <wtf/HashMap.h>
 #include <wtf/StdLibExtras.h>
@@ -449,6 +450,35 @@ void TestRunner::setAllowsAnySSLCertificate(bool enabled)
 {
     InjectedBundle::singleton().setAllowsAnySSLCertificate(enabled);
     postSynchronousPageMessage("SetAllowsAnySSLCertificate", enabled);
+}
+
+void TestRunner::setBackgroundFetchPermission(bool enabled)
+{
+    postSynchronousPageMessage("SetBackgroundFetchPermission", enabled);
+}
+
+JSRetainPtr<JSStringRef>  TestRunner::lastAddedBackgroundFetchIdentifier() const
+{
+    auto identifier = InjectedBundle::singleton().lastAddedBackgroundFetchIdentifier();
+    return WKStringCopyJSString(identifier.get());
+}
+
+JSRetainPtr<JSStringRef>  TestRunner::lastRemovedBackgroundFetchIdentifier() const
+{
+    auto identifier = InjectedBundle::singleton().lastRemovedBackgroundFetchIdentifier();
+    return WKStringCopyJSString(identifier.get());
+}
+
+JSRetainPtr<JSStringRef> TestRunner::lastUpdatedBackgroundFetchIdentifier() const
+{
+    auto identifier = InjectedBundle::singleton().lastUpdatedBackgroundFetchIdentifier();
+    return WKStringCopyJSString(identifier.get());
+}
+
+JSRetainPtr<JSStringRef> TestRunner::backgroundFetchState(JSStringRef identifier)
+{
+    auto state = InjectedBundle::singleton().backgroundFetchState(toWK(identifier).get());
+    return WKStringCopyJSString(state.get());
 }
 
 void TestRunner::setShouldSwapToEphemeralSessionOnNextNavigation(bool shouldSwap)
@@ -913,6 +943,32 @@ void TestRunner::simulateWebNotificationClickForServiceWorkerNotifications()
     InjectedBundle::singleton().postSimulateWebNotificationClickForServiceWorkerNotifications();
 }
 
+JSRetainPtr<JSStringRef> TestRunner::getBackgroundFetchIdentifier()
+{
+    auto identifier = InjectedBundle::singleton().getBackgroundFetchIdentifier();
+    return WKStringCopyJSString(identifier.get());
+}
+
+void TestRunner::abortBackgroundFetch(JSStringRef identifier)
+{
+    postSynchronousPageMessageWithReturnValue("AbortBackgroundFetch", toWK(identifier));
+}
+
+void TestRunner::pauseBackgroundFetch(JSStringRef identifier)
+{
+    postSynchronousPageMessageWithReturnValue("PauseBackgroundFetch", toWK(identifier));
+}
+
+void TestRunner::resumeBackgroundFetch(JSStringRef identifier)
+{
+    postSynchronousPageMessageWithReturnValue("ResumeBackgroundFetch", toWK(identifier));
+}
+
+void TestRunner::simulateClickBackgroundFetch(JSStringRef identifier)
+{
+    postSynchronousPageMessageWithReturnValue("SimulateClickBackgroundFetch", toWK(identifier));
+}
+
 void TestRunner::setGeolocationPermission(bool enabled)
 {
     // FIXME: This should be done by frame.
@@ -939,15 +995,24 @@ void TestRunner::setMockGeolocationPositionUnavailableError(JSStringRef message)
     InjectedBundle::singleton().setMockGeolocationPositionUnavailableError(toWK(message).get());
 }
 
+void TestRunner::setCameraPermission(bool enabled)
+{
+    InjectedBundle::singleton().setCameraPermission(enabled);
+}
+
+void TestRunner::setMicrophonePermission(bool enabled)
+{
+    InjectedBundle::singleton().setCameraPermission(enabled);
+}
+
 void TestRunner::setUserMediaPermission(bool enabled)
 {
-    // FIXME: This should be done by frame.
-    InjectedBundle::singleton().setUserMediaPermission(enabled);
+    InjectedBundle::singleton().setCameraPermission(enabled);
+    InjectedBundle::singleton().setMicrophonePermission(enabled);
 }
 
 void TestRunner::resetUserMediaPermission()
 {
-    // FIXME: This should be done by frame.
     InjectedBundle::singleton().resetUserMediaPermission();
 }
 
@@ -1042,9 +1107,19 @@ void TestRunner::setShouldLogDownloadCallbacks(bool value)
     postPageMessage("SetShouldLogDownloadCallbacks", value);
 }
 
+void TestRunner::setShouldDownloadContentDispositionAttachments(bool value)
+{
+    postPageMessage("SetShouldDownloadContentDispositionAttachments", value);
+}
+
 void TestRunner::setShouldLogDownloadSize(bool value)
 {
     postPageMessage("SetShouldLogDownloadSize", value);
+}
+
+void TestRunner::setShouldLogDownloadExpectedSize(bool value)
+{
+    postPageMessage("SetShouldLogDownloadExpectedSize", value);
 }
 
 void TestRunner::setAuthenticationUsername(JSStringRef username)
@@ -1557,6 +1632,11 @@ void TestRunner::setStatisticsNotifyPagesWhenDataRecordsWereScanned(bool value)
     postSynchronousMessage("StatisticsNotifyPagesWhenDataRecordsWereScanned", value);
 }
 
+void TestRunner::setStatisticsTimeAdvanceForTesting(double value)
+{
+    postSynchronousMessage("StatisticsSetTimeAdvanceForTesting", value);
+}
+
 void TestRunner::setStatisticsIsRunningTest(bool value)
 {
     postSynchronousMessage("StatisticsSetIsRunningTest", value);
@@ -1809,28 +1889,59 @@ void TestRunner::callDidReceiveLoadedSubresourceDomainsCallback(Vector<String>&&
     callTestRunnerCallback(LoadedSubresourceDomainsCallbackID, 1, &result);
 }
 
-void TestRunner::addMockMediaDevice(JSStringRef persistentId, JSStringRef label, const char* type)
+void TestRunner::addMockMediaDevice(JSStringRef persistentId, JSStringRef label, const char* type, WKDictionaryRef properties)
 {
     postSynchronousMessage("AddMockMediaDevice", createWKDictionary({
         { "PersistentID", toWK(persistentId) },
         { "Label", toWK(label) },
         { "Type", toWK(type) },
+        { "Properties", properties },
     }));
 }
 
-void TestRunner::addMockCameraDevice(JSStringRef persistentId, JSStringRef label)
+static WKRetainPtr<WKDictionaryRef> captureDeviceProperties(JSValueRef properties)
 {
-    addMockMediaDevice(persistentId, label, "camera");
+    auto context = mainFrameJSContext();
+
+    Vector<WKRetainPtr<WKStringRef>> strings;
+    Vector<WKStringRef> keys;
+    Vector<WKTypeRef> values;
+
+    if (auto object = JSValueToObject(context, properties, nullptr)) {
+        JSPropertyNameArrayRef propertyNameArray = JSObjectCopyPropertyNames(context, object);
+        size_t length = JSPropertyNameArrayGetCount(propertyNameArray);
+
+        for (size_t i = 0; i < length; ++i) {
+            JSStringRef jsPropertyName = JSPropertyNameArrayGetNameAtIndex(propertyNameArray, i);
+            auto jsPropertyValue = JSObjectGetProperty(context, object, jsPropertyName, 0);
+
+            auto propertyName = toWK(jsPropertyName);
+            auto propertyValue = toWKString(context, jsPropertyValue);
+
+            keys.append(propertyName.get());
+            values.append(propertyValue.get());
+            strings.append(WTFMove(propertyName));
+            strings.append(WTFMove(propertyValue));
+        }
+        JSPropertyNameArrayRelease(propertyNameArray);
+    }
+
+    return adoptWK(WKDictionaryCreate(keys.data(), values.data(), keys.size()));
 }
 
-void TestRunner::addMockMicrophoneDevice(JSStringRef persistentId, JSStringRef label)
+void TestRunner::addMockCameraDevice(JSStringRef persistentId, JSStringRef label, JSValueRef properties)
 {
-    addMockMediaDevice(persistentId, label, "microphone");
+    addMockMediaDevice(persistentId, label, "camera", captureDeviceProperties(properties).get());
+}
+
+void TestRunner::addMockMicrophoneDevice(JSStringRef persistentId, JSStringRef label, JSValueRef properties)
+{
+    addMockMediaDevice(persistentId, label, "microphone", captureDeviceProperties(properties).get());
 }
 
 void TestRunner::addMockScreenDevice(JSStringRef persistentId, JSStringRef label)
 {
-    addMockMediaDevice(persistentId, label, "screen");
+    addMockMediaDevice(persistentId, label, "screen", nullptr);
 }
 
 void TestRunner::clearMockMediaDevices()
@@ -1874,9 +1985,12 @@ void TestRunner::setMockCaptureDevicesInterrupted(bool isCameraInterrupted, bool
     }));
 }
 
-void TestRunner::triggerMockMicrophoneConfigurationChange()
+void TestRunner::triggerMockCaptureConfigurationChange(bool forMicrophone, bool forDisplay)
 {
-    postSynchronousMessage("TriggerMockMicrophoneConfigurationChange");
+    postSynchronousMessage("TriggerMockCaptureConfigurationChange", createWKDictionary({
+        { "microphone", adoptWK(WKBooleanCreate(forMicrophone)) },
+        { "display", adoptWK(WKBooleanCreate(forDisplay)) },
+    }));
 }
 
 #if ENABLE(GAMEPAD)
@@ -2029,6 +2143,11 @@ void TestRunner::setQuota(uint64_t quota)
     postSynchronousMessage("SetQuota", quota);
 }
 
+void TestRunner::setOriginQuotaRatioEnabled(bool enabled)
+{
+    postSynchronousPageMessage("SetOriginQuotaRatioEnabled", enabled);
+}
+
 void TestRunner::getApplicationManifestThen(JSValueRef callback)
 {
     cacheTestRunnerCallback(GetApplicationManifestCallbackID, callback);
@@ -2053,11 +2172,6 @@ size_t TestRunner::userScriptInjectedCount() const
 void TestRunner::injectUserScript(JSStringRef script)
 {
     postSynchronousMessage("InjectUserScript", toWK(script));
-}
-
-void TestRunner::sendDisplayConfigurationChangedMessageForTesting()
-{
-    postSynchronousMessage("SendDisplayConfigurationChangedMessageForTesting");
 }
 
 void TestRunner::setServiceWorkerFetchTimeout(double seconds)

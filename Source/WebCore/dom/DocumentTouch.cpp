@@ -29,8 +29,8 @@
 #if ENABLE(TOUCH_EVENTS)
 
 #include "Document.h"
-#include "Frame.h"
 #include "FrameDestructionObserverInlines.h"
+#include "LocalFrame.h"
 #include "Touch.h"
 #include "TouchList.h"
 #include "WindowProxy.h"
@@ -39,9 +39,9 @@ namespace WebCore {
 
 Ref<Touch> DocumentTouch::createTouch(Document& document, RefPtr<WindowProxy>&& window, EventTarget* target, int identifier, int pageX, int pageY, int screenX, int screenY, int radiusX, int radiusY, float rotationAngle, float force)
 {
-    Frame* frame;
-    if (window && is<Frame>(window->frame()))
-        frame = downcast<Frame>(window->frame());
+    RefPtr<LocalFrame> frame;
+    if (window && is<LocalFrame>(window->frame()))
+        frame = downcast<LocalFrame>(window->frame());
     else
         frame = document.frame();
 
@@ -49,7 +49,7 @@ Ref<Touch> DocumentTouch::createTouch(Document& document, RefPtr<WindowProxy>&& 
     // http://developer.apple.com/library/safari/#documentation/UserExperience/Reference/DocumentAdditionsReference/DocumentAdditions/DocumentAdditions.html
     // when this method should throw and nor is it by inspection of iOS behavior. It would be nice to verify any cases where it throws under iOS
     // and implement them here. See https://bugs.webkit.org/show_bug.cgi?id=47819
-    return Touch::create(frame, target, identifier, screenX, screenY, pageX, pageY, radiusX, radiusY, rotationAngle, force);
+    return Touch::create(frame.get(), target, identifier, screenX, screenY, pageX, pageY, radiusX, radiusY, rotationAngle, force);
 }
 
 Ref<TouchList> DocumentTouch::createTouchList(Document&, FixedVector<std::reference_wrapper<Touch>>&& touches)

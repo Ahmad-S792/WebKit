@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2019-2021 Apple Inc. All rights reserved.
+ * Copyright (C) 2019-2023 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -51,7 +51,7 @@
 namespace JSC {
 
 namespace Yarr {
-enum class Flags : uint8_t;
+enum class Flags : uint16_t;
 }
 
 template <typename T, typename = void>
@@ -587,7 +587,7 @@ ptrdiff_t CachedWriteBarrierOffsets::ptrOffset()
     return OBJECT_OFFSETOF(CachedWriteBarrier<void>, m_ptr);
 }
 
-template<typename T, size_t InlineCapacity = 0, typename OverflowHandler = CrashOnOverflow, typename Malloc = WTF::VectorMalloc>
+template<typename T, size_t InlineCapacity = 0, typename OverflowHandler = CrashOnOverflow, typename Malloc = WTF::VectorBufferMalloc>
 class CachedVector : public VariableLengthObject<Vector<SourceType<T>, InlineCapacity, OverflowHandler, 16, Malloc>> {
 public:
     template<typename VectorContainer>
@@ -1178,7 +1178,7 @@ public:
     {
         m_map.encode(encoder, symbolTable.m_map);
         m_maxScopeOffset = symbolTable.m_maxScopeOffset;
-        m_usesNonStrictEval = symbolTable.m_usesNonStrictEval;
+        m_usesSloppyEval = symbolTable.m_usesSloppyEval;
         m_nestedLexicalScope = symbolTable.m_nestedLexicalScope;
         m_scopeType = symbolTable.m_scopeType;
         m_arguments.encode(encoder, symbolTable.m_arguments.get());
@@ -1190,7 +1190,7 @@ public:
         SymbolTable* symbolTable = SymbolTable::create(decoder.vm());
         m_map.decode(decoder, symbolTable->m_map);
         symbolTable->m_maxScopeOffset = m_maxScopeOffset;
-        symbolTable->m_usesNonStrictEval = m_usesNonStrictEval;
+        symbolTable->m_usesSloppyEval = m_usesSloppyEval;
         symbolTable->m_nestedLexicalScope = m_nestedLexicalScope;
         symbolTable->m_scopeType = m_scopeType;
         ScopedArgumentsTable* scopedArgumentsTable = m_arguments.decode(decoder);
@@ -1207,7 +1207,7 @@ public:
 private:
     CachedHashMap<CachedRefPtr<CachedUniquedStringImpl>, CachedSymbolTableEntry, IdentifierRepHash, HashTraits<RefPtr<UniquedStringImpl>>, SymbolTableIndexHashTraits> m_map;
     ScopeOffset m_maxScopeOffset;
-    unsigned m_usesNonStrictEval : 1;
+    unsigned m_usesSloppyEval : 1;
     unsigned m_nestedLexicalScope : 1;
     unsigned m_scopeType : 3;
     CachedPtr<CachedScopedArgumentsTable> m_arguments;
@@ -1452,6 +1452,7 @@ public:
         if (!m_hasMetadata)
             return;
         m_is32Bit = metadataTable.m_is32Bit;
+        m_numValueProfiles = metadataTable.m_numValueProfiles;
         if (m_is32Bit) {
             for (unsigned i = UnlinkedMetadataTable::s_offsetTableEntries; i--;)
                 m_metadata[i] = metadataTable.offsetTable32()[i];
@@ -1466,10 +1467,11 @@ public:
         if (!m_hasMetadata)
             return UnlinkedMetadataTable::empty();
 
-        Ref<UnlinkedMetadataTable> metadataTable = UnlinkedMetadataTable::create(m_is32Bit);
+        Ref<UnlinkedMetadataTable> metadataTable = UnlinkedMetadataTable::create(m_is32Bit, m_numValueProfiles, m_metadata[UnlinkedMetadataTable::s_offsetTableEntries - 1]);
         metadataTable->m_isFinalized = true;
         metadataTable->m_isLinked = false;
         metadataTable->m_hasMetadata = m_hasMetadata;
+        metadataTable->m_numValueProfiles = m_numValueProfiles;
         if (m_is32Bit) {
             for (unsigned i = UnlinkedMetadataTable::s_offsetTableEntries; i--;)
                 metadataTable->offsetTable32()[i] = m_metadata[i];
@@ -1483,6 +1485,7 @@ public:
 private:
     bool m_hasMetadata;
     bool m_is32Bit;
+    unsigned m_numValueProfiles;
     std::array<unsigned, UnlinkedMetadataTable::s_offsetTableEntries> m_metadata;
 };
 
@@ -1527,23 +1530,28 @@ public:
     {
         m_sourceOrigin.encode(encoder, sourceProvider.sourceOrigin());
         m_sourceURL.encode(encoder, sourceProvider.sourceURL());
+        m_preRedirectURL.encode(encoder, sourceProvider.preRedirectURL());
         m_sourceURLDirective.encode(encoder, sourceProvider.sourceURLDirective());
         m_sourceMappingURLDirective.encode(encoder, sourceProvider.sourceMappingURLDirective());
         m_startPosition.encode(encoder, sourceProvider.startPosition());
+        m_sourceTaintedOrigin = sourceProvider.sourceTaintedOrigin();
     }
 
     void decode(Decoder& decoder, SourceProvider& sourceProvider) const
     {
         sourceProvider.setSourceURLDirective(m_sourceURLDirective.decode(decoder));
         sourceProvider.setSourceMappingURLDirective(m_sourceMappingURLDirective.decode(decoder));
+        sourceProvider.setSourceTaintedOrigin(m_sourceTaintedOrigin);
     }
 
 protected:
     CachedSourceOrigin m_sourceOrigin;
     CachedString m_sourceURL;
+    CachedString m_preRedirectURL;
     CachedString m_sourceURLDirective;
     CachedString m_sourceMappingURLDirective;
     CachedTextPosition m_startPosition;
+    SourceTaintedOrigin m_sourceTaintedOrigin;
 };
 
 class CachedStringSourceProvider : public CachedSourceProviderShape<StringSourceProvider, CachedStringSourceProvider> {
@@ -1563,7 +1571,7 @@ public:
         String decodedSourceURL = m_sourceURL.decode(decoder);
         TextPosition decodedStartPosition = m_startPosition.decode(decoder);
 
-        Ref<StringSourceProvider> sourceProvider = StringSourceProvider::create(decodedSource, decodedSourceOrigin, decodedSourceURL, decodedStartPosition, sourceType);
+        Ref<StringSourceProvider> sourceProvider = StringSourceProvider::create(decodedSource, decodedSourceOrigin, decodedSourceURL, m_sourceTaintedOrigin, decodedStartPosition, sourceType);
         Base::decode(decoder, sourceProvider.get());
         return &sourceProvider.leakRef();
     }
@@ -1775,14 +1783,13 @@ public:
 
     unsigned firstLineOffset() const { return m_firstLineOffset; }
     unsigned lineCount() const { return m_lineCount; }
-    unsigned unlinkedFunctionNameStart() const { return m_unlinkedFunctionNameStart; }
+    unsigned unlinkedFunctionStart() const { return m_unlinkedFunctionStart; }
     unsigned unlinkedBodyStartColumn() const { return m_unlinkedBodyStartColumn; }
     unsigned unlinkedBodyEndColumn() const { return m_unlinkedBodyEndColumn; }
     unsigned startOffset() const { return m_startOffset; }
     unsigned sourceLength() const { return m_sourceLength; }
     unsigned parametersStartOffset() const { return m_parametersStartOffset; }
-    unsigned typeProfilingStartOffset() const { return m_typeProfilingStartOffset; }
-    unsigned typeProfilingEndOffset() const { return m_typeProfilingEndOffset; }
+    unsigned unlinkedFunctionEnd() const { return m_unlinkedFunctionEnd; }
     unsigned parameterCount() const { return m_parameterCount; }
 
     CodeFeatures features() const { return m_mutableMetadata.m_features; }
@@ -1799,6 +1806,7 @@ public:
     unsigned scriptMode() const { return m_scriptMode; }
     unsigned superBinding() const { return m_superBinding; }
     unsigned derivedContextType() const { return m_derivedContextType; }
+    unsigned inlineAttribute() const { return m_inlineAttribute; }
     unsigned needsClassFieldInitializer() const { return m_needsClassFieldInitializer; }
     unsigned privateBrandRequirement() const { return m_privateBrandRequirement; }
 
@@ -1816,7 +1824,7 @@ private:
     unsigned m_firstLineOffset : 31;
     unsigned m_lineCount : 31;
     unsigned m_isBuiltinFunction : 1;
-    unsigned m_unlinkedFunctionNameStart : 31;
+    unsigned m_unlinkedFunctionStart : 31;
     unsigned m_isBuiltinDefaultClassConstructor : 1;
     unsigned m_unlinkedBodyStartColumn : 31;
     unsigned m_constructAbility: 1;
@@ -1826,14 +1834,14 @@ private:
     unsigned m_sourceLength : 31;
     unsigned m_superBinding : 1;
     unsigned m_parametersStartOffset : 31;
-    unsigned m_typeProfilingStartOffset;
-    unsigned m_typeProfilingEndOffset;
+    unsigned m_unlinkedFunctionEnd;
     unsigned m_parameterCount:31;
     unsigned m_privateBrandRequirement : 1;
     SourceParseMode m_sourceParseMode;
     unsigned m_constructorKind : 2;
     unsigned m_functionMode : 2; // FunctionMode
     unsigned m_derivedContextType: 2;
+    unsigned m_inlineAttribute : 1;
     unsigned m_needsClassFieldInitializer : 1;
     unsigned m_implementationVisibility : bitWidthOfImplementationVisibility;
 
@@ -2191,14 +2199,13 @@ ALWAYS_INLINE void CachedFunctionExecutable::encode(Encoder& encoder, const Unli
 
     m_firstLineOffset = executable.m_firstLineOffset;
     m_lineCount = executable.m_lineCount;
-    m_unlinkedFunctionNameStart = executable.m_unlinkedFunctionNameStart;
+    m_unlinkedFunctionStart = executable.m_unlinkedFunctionStart;
     m_unlinkedBodyStartColumn = executable.m_unlinkedBodyStartColumn;
     m_unlinkedBodyEndColumn = executable.m_unlinkedBodyEndColumn;
     m_startOffset = executable.m_startOffset;
     m_sourceLength = executable.m_sourceLength;
     m_parametersStartOffset = executable.m_parametersStartOffset;
-    m_typeProfilingStartOffset = executable.m_typeProfilingStartOffset;
-    m_typeProfilingEndOffset = executable.m_typeProfilingEndOffset;
+    m_unlinkedFunctionEnd = executable.m_unlinkedFunctionEnd;
     m_parameterCount = executable.m_parameterCount;
 
     m_sourceParseMode = executable.m_sourceParseMode;
@@ -2211,6 +2218,7 @@ ALWAYS_INLINE void CachedFunctionExecutable::encode(Encoder& encoder, const Unli
     m_scriptMode = executable.m_scriptMode;
     m_superBinding = executable.m_superBinding;
     m_derivedContextType = executable.m_derivedContextType;
+    m_inlineAttribute = executable.m_inlineAttribute;
     m_needsClassFieldInitializer = executable.m_needsClassFieldInitializer;
     m_implementationVisibility = executable.m_implementationVisibility;
     m_privateBrandRequirement = executable.m_privateBrandRequirement;
@@ -2240,7 +2248,7 @@ ALWAYS_INLINE UnlinkedFunctionExecutable::UnlinkedFunctionExecutable(Decoder& de
     , m_isGeneratedFromCache(true)
     , m_lineCount(cachedExecutable.lineCount())
     , m_hasCapturedVariables(cachedExecutable.hasCapturedVariables())
-    , m_unlinkedFunctionNameStart(cachedExecutable.unlinkedFunctionNameStart())
+    , m_unlinkedFunctionStart(cachedExecutable.unlinkedFunctionStart())
     , m_isBuiltinFunction(cachedExecutable.isBuiltinFunction())
     , m_unlinkedBodyStartColumn(cachedExecutable.unlinkedBodyStartColumn())
     , m_isBuiltinDefaultClassConstructor(cachedExecutable.isBuiltinDefaultClassConstructor())
@@ -2252,9 +2260,8 @@ ALWAYS_INLINE UnlinkedFunctionExecutable::UnlinkedFunctionExecutable(Decoder& de
     , m_superBinding(cachedExecutable.superBinding())
     , m_parametersStartOffset(cachedExecutable.parametersStartOffset())
     , m_isCached(false)
-    , m_typeProfilingStartOffset(cachedExecutable.typeProfilingStartOffset())
+    , m_unlinkedFunctionEnd(cachedExecutable.unlinkedFunctionEnd())
     , m_needsClassFieldInitializer(cachedExecutable.needsClassFieldInitializer())
-    , m_typeProfilingEndOffset(cachedExecutable.typeProfilingEndOffset())
     , m_parameterCount(cachedExecutable.parameterCount())
     , m_privateBrandRequirement(cachedExecutable.privateBrandRequirement())
     , m_features(cachedExecutable.features())
@@ -2264,6 +2271,7 @@ ALWAYS_INLINE UnlinkedFunctionExecutable::UnlinkedFunctionExecutable(Decoder& de
     , m_lexicalScopeFeatures(cachedExecutable.lexicalScopeFeatures())
     , m_functionMode(cachedExecutable.functionMode())
     , m_derivedContextType(cachedExecutable.derivedContextType())
+    , m_inlineAttribute(cachedExecutable.inlineAttribute())
     , m_unlinkedCodeBlockForCall()
     , m_unlinkedCodeBlockForConstruct()
 

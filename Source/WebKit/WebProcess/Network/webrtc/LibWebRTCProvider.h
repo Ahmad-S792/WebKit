@@ -33,6 +33,8 @@
 
 #if USE(LIBWEBRTC)
 
+#include <wtf/CheckedRef.h>
+
 #if PLATFORM(COCOA)
 #include <WebCore/LibWebRTCProviderCocoa.h>
 #elif USE(GSTREAMER)
@@ -61,9 +63,10 @@ using LibWebRTCProviderBase = WebCore::LibWebRTCProvider;
 class LibWebRTCProvider final : public LibWebRTCProviderBase {
 public:
     explicit LibWebRTCProvider(WebPage&);
+    ~LibWebRTCProvider();
 
 private:
-    std::unique_ptr<SuspendableSocketFactory> createSocketFactory(String&& /* userAgent */, bool /* isFirstParty */, WebCore::RegistrableDomain&&) final;
+    std::unique_ptr<SuspendableSocketFactory> createSocketFactory(String&& /* userAgent */, WebCore::ScriptExecutionContextIdentifier, bool /* isFirstParty */, WebCore::RegistrableDomain&&) final;
 
     rtc::scoped_refptr<webrtc::PeerConnectionInterface> createPeerConnection(WebCore::ScriptExecutionContextIdentifier, webrtc::PeerConnectionObserver&, rtc::PacketSocketFactory*, webrtc::PeerConnectionInterface::RTCConfiguration&&) final;
 
@@ -74,15 +77,8 @@ private:
 
     void willCreatePeerConnectionFactory() final;
 
-    WebPage& m_webPage;
+    CheckedRef<WebPage> m_webPage;
 };
-
-inline LibWebRTCProvider::LibWebRTCProvider(WebPage& webPage)
-    : m_webPage(webPage)
-{
-    m_useNetworkThreadWithSocketServer = false;
-    m_supportsMDNS = true;
-}
 
 inline UniqueRef<LibWebRTCProvider> createLibWebRTCProvider(WebPage& page)
 {

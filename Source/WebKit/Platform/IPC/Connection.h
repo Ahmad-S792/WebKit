@@ -28,8 +28,6 @@
 
 #pragma once
 
-#include "Decoder.h"
-#include "Encoder.h"
 #include "MessageReceiveQueueMap.h"
 #include "MessageReceiver.h"
 #include "ReceiverMatcher.h"
@@ -41,6 +39,7 @@
 #include <wtf/Forward.h>
 #include <wtf/HashMap.h>
 #include <wtf/Lock.h>
+#include <wtf/NativePromise.h>
 #include <wtf/ObjectIdentifier.h>
 #include <wtf/OptionSet.h>
 #include <wtf/RunLoop.h>
@@ -85,12 +84,10 @@ enum class SendOption : uint8_t {
 #endif
 };
 
-enum class SendSyncOption {
-    // Use this to inform that this sync call will suspend this process until the user responds with input.
-    InformPlatformProcessWillSuspend = 1 << 0,
-    UseFullySynchronousModeForTesting = 1 << 1,
-    ForceDispatchWhenDestinationIsWaitingForUnboundedSyncReply = 1 << 2,
-    MaintainOrderingWithAsyncMessages = 1 << 3,
+enum class SendSyncOption : uint8_t {
+    UseFullySynchronousModeForTesting = 1 << 0,
+    ForceDispatchWhenDestinationIsWaitingForUnboundedSyncReply = 1 << 1,
+    MaintainOrderingWithAsyncMessages = 1 << 2,
 };
 
 enum class WaitForOption {
@@ -98,6 +95,29 @@ enum class WaitForOption {
     InterruptWaitingIfSyncMessageArrives = 1 << 0,
     DispatchIncomingSyncMessagesWhileWaiting = 1 << 1,
 };
+
+enum class Error : uint8_t {
+    NoError = 0,
+    InvalidConnection,
+    NoConnectionForIdentifier,
+    NoMessageSenderConnection,
+    Timeout,
+    Unspecified,
+    MultipleWaitingClients,
+    AttemptingToWaitOnClosedConnection,
+    WaitingOnAlreadyDispatchedMessage,
+    AttemptingToWaitInsideSyncMessageHandling,
+    SyncMessageInterruptedWait,
+    CantWaitForSyncReplies,
+    FailedToEncodeMessageArguments,
+    FailedToDecodeReplyArguments,
+    FailedToFindReplyHandler,
+    FailedToAcquireBufferSpan,
+    FailedToAcquireReplyBufferSpan,
+    StreamConnectionEncodingError,
+};
+
+extern const char* errorAsString(Error);
 
 #define CONNECTION_STRINGIFY(line) #line
 #define CONNECTION_STRINGIFY_MACRO(line) CONNECTION_STRINGIFY(line)
@@ -125,16 +145,67 @@ template<typename AsyncReplyResult> struct AsyncReplyError {
     static AsyncReplyResult create() { return AsyncReplyResult { }; };
 };
 
+class Decoder;
+class Encoder;
 class MachMessage;
 class UnixMessage;
 class WorkQueueMessageReceiver;
 
+struct AsyncReplyIDType;
+using AsyncReplyID = AtomicObjectIdentifier<AsyncReplyIDType>;
+
+template<typename T> struct ConnectionSendSyncResult {
+    std::unique_ptr<Decoder> decoder;
+    std::optional<typename T::ReplyArguments> replyArguments;
+    Error error { Error::NoError };
+
+    ConnectionSendSyncResult(Error error)
+        : error(error)
+    {
+        ASSERT(error != Error::NoError);
+    }
+
+    ConnectionSendSyncResult(std::unique_ptr<Decoder>&& decoder, std::optional<typename T::ReplyArguments>&& replyArguments)
+        : decoder(WTFMove(decoder)), replyArguments(WTFMove(replyArguments))
+    {
+        ASSERT(this->replyArguments.has_value());
+        error = !this->replyArguments ? Error::Unspecified : Error::NoError;
+    }
+
+    bool succeeded() const { return error == Error::NoError && replyArguments.has_value(); }
+
+    typename T::ReplyArguments& reply()
+    {
+        ASSERT(!!replyArguments);
+        return *replyArguments;
+    }
+
+    typename T::ReplyArguments takeReply()
+    {
+        ASSERT(!!replyArguments);
+        return WTFMove(replyArguments).value();
+    }
+
+    template<typename... U>
+    typename T::ReplyArguments takeReplyOr(U&&... defaultValues)
+    {
+        return WTFMove(replyArguments).value_or(typename T::ReplyArguments { std::forward<U>(defaultValues)... });
+    }
+};
+
+struct ConnectionAsyncReplyHandler {
+    CompletionHandler<void(Decoder*)> completionHandler;
+    AsyncReplyID replyID;
+};
+
+enum class ConnectionSyncRequestIDType { };
+using ConnectionSyncRequestID = AtomicObjectIdentifier<ConnectionSyncRequestIDType>;
+
 class Connection : public ThreadSafeRefCountedAndCanMakeThreadSafeWeakPtr<Connection, WTF::DestructionThread::MainRunLoop> {
 public:
-    enum SyncRequestIDType { };
-    using SyncRequestID = ObjectIdentifier<SyncRequestIDType>;
-    enum AsyncReplyIDType { };
-    using AsyncReplyID = ObjectIdentifier<AsyncReplyIDType>;
+    enum class SyncRequestIDType { };
+    using SyncRequestID = ConnectionSyncRequestID;
+    using AsyncReplyID = IPC::AsyncReplyID;
 
     class Client : public MessageReceiver {
     public:
@@ -145,19 +216,48 @@ public:
         virtual ~Client() { }
     };
 
+    struct Identifier;
+    struct Handle {
+        friend struct Identifier;
+        WTF_MAKE_NONCOPYABLE(Handle);
+        Handle() = default;
+        Handle(Handle&&) = default;
+        Handle& operator=(Handle&&) = default;
+
 #if USE(UNIX_DOMAIN_SOCKETS)
-    using Handle = UnixFileDescriptor;
+        Handle(UnixFileDescriptor&& inHandle)
+            : handle(WTFMove(inHandle))
+        { }
+        explicit operator bool() const { return !!handle; }
 #elif OS(WINDOWS)
-    using Handle = Win32Handle;
+        Handle(Win32Handle&& inHandle)
+            : handle(WTFMove(inHandle))
+        { }
+        explicit operator bool() const { return !!handle; }
 #elif OS(DARWIN)
-    using Handle = MachSendRight;
+        Handle(MachSendRight&& sendRight)
+            : handle(WTFMove(sendRight))
+        { }
+        explicit operator bool() const { return MACH_PORT_VALID(handle.sendRight()); }
 #endif
+        void encode(Encoder&);
+        static std::optional<Handle> decode(Decoder&);
+
+    private:
+#if USE(UNIX_DOMAIN_SOCKETS)
+        UnixFileDescriptor handle;
+#elif OS(WINDOWS)
+        Win32Handle handle;
+#elif OS(DARWIN)
+        MachSendRight handle;
+#endif
+    };
 
     struct Identifier {
         Identifier() = default;
 #if USE(UNIX_DOMAIN_SOCKETS)
         explicit Identifier(Handle&& handle)
-            : Identifier(handle.release())
+            : Identifier(handle.handle.release())
         {
         }
         explicit Identifier(int handle)
@@ -168,7 +268,7 @@ public:
         int handle { -1 };
 #elif OS(WINDOWS)
         explicit Identifier(Handle&& handle)
-            : Identifier(handle.release())
+            : Identifier(handle.handle.leak())
         {
         }
         explicit Identifier(HANDLE handle)
@@ -179,7 +279,7 @@ public:
         HANDLE handle { 0 };
 #elif OS(DARWIN)
         explicit Identifier(Handle&& handle)
-            : Identifier(handle.leakSendRight())
+            : Identifier(handle.handle.leakSendRight())
         {
         }
         explicit Identifier(mach_port_t port)
@@ -191,7 +291,7 @@ public:
             , xpcConnection(WTFMove(xpcConnection))
         {
         }
-        operator bool() const { return MACH_PORT_VALID(port); }
+        explicit operator bool() const { return MACH_PORT_VALID(port); }
         mach_port_t port { MACH_PORT_NULL };
         OSObjectPtr<xpc_connection_t> xpcConnection;
 #endif
@@ -217,7 +317,25 @@ public:
     Client* client() const { return m_client; }
 
     enum UniqueIDType { };
-    using UniqueID = ObjectIdentifier<UniqueIDType>;
+    using UniqueID = AtomicObjectIdentifier<UniqueIDType>;
+
+    struct DecoderOrError {
+        std::unique_ptr<Decoder> decoder;
+        Error error { Error::NoError };
+
+        DecoderOrError(std::unique_ptr<Decoder>&& inDecoder)
+            : decoder(WTFMove(inDecoder))
+        { }
+
+        DecoderOrError(Error inError)
+            : decoder(nullptr)
+            , error(inError)
+        {
+            ASSERT(error != Error::NoError);
+        }
+        DecoderOrError(DecoderOrError&&);
+        ~DecoderOrError();
+    };
 
     static RefPtr<Connection> connection(UniqueID);
     UniqueID uniqueID() const { return m_uniqueID; }
@@ -232,6 +350,9 @@ public:
     // handling the message on the client thread first.
     typedef void (*DidCloseOnConnectionWorkQueueCallback)(Connection*);
     void setDidCloseOnConnectionWorkQueueCallback(DidCloseOnConnectionWorkQueueCallback);
+
+    using OutgoingMessageQueueIsGrowingLargeCallback = Function<void()>;
+    void setOutgoingMessageQueueIsGrowingLargeCallback(OutgoingMessageQueueIsGrowingLargeCallback&&);
 
     // Adds a message receive queue. The client should make sure the instance is removed before it goes
     // out of scope.
@@ -259,81 +380,60 @@ public:
     void markCurrentlyDispatchedMessageAsInvalid();
 
     template<typename T, typename C> AsyncReplyID sendWithAsyncReply(T&& message, C&& completionHandler, uint64_t destinationID = 0, OptionSet<SendOption> = { }); // Thread-safe.
-    template<typename T> bool send(T&& message, uint64_t destinationID, OptionSet<SendOption> sendOptions = { }, std::optional<Thread::QOS> qos = std::nullopt); // Thread-safe.
-    template<typename T> static bool send(UniqueID, T&& message, uint64_t destinationID, OptionSet<SendOption> sendOptions = { }, std::optional<Thread::QOS> qos = std::nullopt); // Thread-safe.
+    template<typename T> Ref<typename T::Promise> sendWithPromisedReply(T&& message, uint64_t destinationID = 0, OptionSet<SendOption> = { }); // Thread-safe.
+    template<typename T> Error send(T&& message, uint64_t destinationID, OptionSet<SendOption> sendOptions = { }, std::optional<Thread::QOS> qos = std::nullopt); // Thread-safe.
+    template<typename T> static Error send(UniqueID, T&& message, uint64_t destinationID, OptionSet<SendOption> sendOptions = { }, std::optional<Thread::QOS> qos = std::nullopt); // Thread-safe.
 
     // Sync senders should check the SendSyncResult for true/false in case they need to know if the result was really received.
     // Sync senders should hold on to the SendSyncResult in case they reference the contents of the reply via DataRefererence / ArrayReference.
 
-    template<typename T>
-    struct SendSyncResult {
-        std::unique_ptr<Decoder> decoder;
-        std::optional<typename T::ReplyArguments> replyArguments;
-
-        explicit operator bool() const { return !!decoder; }
-
-        typename T::ReplyArguments& reply()
-        {
-            ASSERT(!!replyArguments);
-            return *replyArguments;
-        }
-
-        typename T::ReplyArguments takeReply()
-        {
-            ASSERT(!!replyArguments);
-            return WTFMove(replyArguments).value();
-        }
-
-        template<typename... U>
-        typename T::ReplyArguments takeReplyOr(U&&... defaultValues)
-        {
-            return WTFMove(replyArguments).value_or(typename T::ReplyArguments { std::forward<U>(defaultValues)... });
-        }
-    };
-
+    template<typename T> using SendSyncResult = ConnectionSendSyncResult<T>;
     template<typename T> SendSyncResult<T> sendSync(T&& message, uint64_t destinationID, Timeout = Timeout::infinity(), OptionSet<SendSyncOption> sendSyncOptions = { }); // Main thread only.
 
-    template<typename> bool waitForAndDispatchImmediately(uint64_t destinationID, Timeout, OptionSet<WaitForOption> waitForOptions = { }); // Main thread only.
-    template<typename> bool waitForAsyncReplyAndDispatchImmediately(AsyncReplyID, Timeout); // Main thread only.
+    template<typename> Error waitForAndDispatchImmediately(uint64_t destinationID, Timeout, OptionSet<WaitForOption> waitForOptions = { }); // Main thread only.
+    template<typename> Error waitForAsyncReplyAndDispatchImmediately(AsyncReplyID, Timeout); // Main thread only.
 
     // Thread-safe.
-    template<typename T, typename C, typename U>
-    AsyncReplyID sendWithAsyncReply(T&& message, C&& completionHandler, ObjectIdentifier<U> destinationID = { }, OptionSet<SendOption> sendOptions = { })
+    template<typename T, typename C>
+    AsyncReplyID sendWithAsyncReply(T&& message, C&& completionHandler, const ObjectIdentifierGenericBase& destinationID, OptionSet<SendOption> sendOptions = { })
     {
-        return sendWithAsyncReply<T, C>(WTFMove(message), WTFMove(completionHandler), destinationID.toUInt64(), sendOptions);
+        return sendWithAsyncReply<T, C>(std::forward<T>(message), std::forward<C>(completionHandler), destinationID.toUInt64(), sendOptions);
+    }
+
+    template<typename T>
+    Ref<typename T::Promise> sendWithPromisedReply(T&& message, const ObjectIdentifierGenericBase& destinationID, OptionSet<SendOption> sendOptions = { })
+    {
+        return sendWithPromisedReply<T>(WTFMove(message), destinationID.toUInt64(), sendOptions);
     }
 
     // Thread-safe.
-    template<typename T, typename U>
-    bool send(T&& message, ObjectIdentifier<U> destinationID, OptionSet<SendOption> sendOptions = { }, std::optional<Thread::QOS> qos = std::nullopt)
+    template<typename T>
+    Error send(T&& message, const ObjectIdentifierGenericBase& destinationID, OptionSet<SendOption> sendOptions = { }, std::optional<Thread::QOS> qos = std::nullopt)
     {
-        return send<T>(WTFMove(message), destinationID.toUInt64(), sendOptions, qos);
+        return send<T>(std::forward<T>(message), destinationID.toUInt64(), sendOptions, qos);
     }
 
     // Main thread only.
-    template<typename T, typename U>
-    SendSyncResult<T> sendSync(T&& message, ObjectIdentifier<U> destinationID, Timeout timeout = Timeout::infinity(), OptionSet<SendSyncOption> sendSyncOptions = { })
+    template<typename T>
+    SendSyncResult<T> sendSync(T&& message, const ObjectIdentifierGenericBase& destinationID, Timeout timeout = Timeout::infinity(), OptionSet<SendSyncOption> sendSyncOptions = { })
     {
-        return sendSync<T>(WTFMove(message), destinationID.toUInt64(), timeout, sendSyncOptions);
+        return sendSync<T>(std::forward<T>(message), destinationID.toUInt64(), timeout, sendSyncOptions);
     }
 
     // Main thread only.
-    template<typename T, typename U>
-    bool waitForAndDispatchImmediately(ObjectIdentifier<U> destinationID, Timeout timeout, OptionSet<WaitForOption> waitForOptions = { })
+    template<typename T>
+    Error waitForAndDispatchImmediately(const ObjectIdentifierGenericBase& destinationID, Timeout timeout, OptionSet<WaitForOption> waitForOptions = { })
     {
         return waitForAndDispatchImmediately<T>(destinationID.toUInt64(), timeout, waitForOptions);
     }
 
-    bool sendMessage(UniqueRef<Encoder>&&, OptionSet<SendOption> sendOptions, std::optional<Thread::QOS> = std::nullopt);
+    Error sendMessage(UniqueRef<Encoder>&&, OptionSet<SendOption> sendOptions, std::optional<Thread::QOS> = std::nullopt);
 
-    struct AsyncReplyHandler {
-        CompletionHandler<void(Decoder*)> completionHandler;
-        AsyncReplyID replyID;
-    };
-    bool sendMessageWithAsyncReply(UniqueRef<Encoder>&&, AsyncReplyHandler, OptionSet<SendOption> sendOptions, std::optional<Thread::QOS> = std::nullopt);
+    using AsyncReplyHandler = ConnectionAsyncReplyHandler;
+    Error sendMessageWithAsyncReply(UniqueRef<Encoder>&&, AsyncReplyHandler, OptionSet<SendOption> sendOptions, std::optional<Thread::QOS> = std::nullopt);
     UniqueRef<Encoder> createSyncMessageEncoder(MessageName, uint64_t destinationID, SyncRequestID&);
-    std::unique_ptr<Decoder> sendSyncMessage(SyncRequestID, UniqueRef<Encoder>&&, Timeout, OptionSet<SendSyncOption> sendSyncOptions);
-    bool sendSyncReply(UniqueRef<Encoder>&&);
+    DecoderOrError sendSyncMessage(SyncRequestID, UniqueRef<Encoder>&&, Timeout, OptionSet<SendSyncOption> sendSyncOptions);
+    Error sendSyncReply(UniqueRef<Encoder>&&);
 
     void wakeUpRunLoop();
 
@@ -366,7 +466,7 @@ public:
     void setIgnoreInvalidMessageForTesting() { m_ignoreInvalidMessageForTesting = true; }
     bool ignoreInvalidMessageForTesting() const { return m_ignoreInvalidMessageForTesting; }
     void dispatchIncomingMessageForTesting(std::unique_ptr<Decoder>&&);
-    std::unique_ptr<Decoder> waitForMessageForTesting(MessageName, uint64_t destinationID, Timeout, OptionSet<WaitForOption>);
+    DecoderOrError waitForMessageForTesting(MessageName, uint64_t destinationID, Timeout, OptionSet<WaitForOption>);
 #endif
 
     void dispatchMessageReceiverMessage(MessageReceiver&, std::unique_ptr<Decoder>&&);
@@ -378,6 +478,12 @@ public:
     void dispatchOnReceiveQueueForTesting(Function<void()>&&);
 
     template<typename T, typename C> static AsyncReplyHandler makeAsyncReplyHandler(C&& completionHandler, ThreadLikeAssertion callThread = CompletionHandlerCallThread::AnyThread);
+    template<typename T> static AsyncReplyHandler makeAsyncReplyHandler(typename T::Promise::Producer&&, ThreadLikeAssertion callThread = CompletionHandlerCallThread::AnyThread);
+
+    CompletionHandler<void(Decoder*)> takeAsyncReplyHandler(AsyncReplyID);
+
+    template<typename T, typename C> static void callReply(IPC::Decoder&, C&& completionHandler);
+    template<typename T, typename C> static void cancelReply(C&& completionHandler);
 
 private:
     Connection(Identifier, bool isServer);
@@ -388,14 +494,14 @@ private:
 
     bool isIncomingMessagesThrottlingEnabled() const { return m_incomingMessagesThrottlingLevel.has_value(); }
 
-    static HashMap<IPC::Connection::UniqueID, Connection*>& connectionMap() WTF_REQUIRES_LOCK(s_connectionMapLock);
+    static HashMap<IPC::Connection::UniqueID, ThreadSafeWeakPtr<Connection>>& connectionMap() WTF_REQUIRES_LOCK(s_connectionMapLock);
 
-    std::unique_ptr<Decoder> waitForMessage(MessageName, uint64_t destinationID, Timeout, OptionSet<WaitForOption>);
+    DecoderOrError waitForMessage(MessageName, uint64_t destinationID, Timeout, OptionSet<WaitForOption>);
 
-    SyncRequestID makeSyncRequestID() { return SyncRequestID::generateThreadSafe(); }
+    SyncRequestID makeSyncRequestID() { return SyncRequestID::generate(); }
     bool pushPendingSyncRequestID(SyncRequestID);
     void popPendingSyncRequestID(SyncRequestID);
-    std::unique_ptr<Decoder> waitForSyncReply(SyncRequestID, MessageName, Timeout, OptionSet<SendSyncOption>);
+    DecoderOrError waitForSyncReply(SyncRequestID, MessageName, Timeout, OptionSet<SendSyncOption>);
 
     void enqueueMatchingMessagesToMessageReceiveQueue(MessageReceiveQueue&, const ReceiverMatcher&) WTF_REQUIRES_LOCK(m_incomingMessagesLock);
 
@@ -416,14 +522,11 @@ private:
     void dispatchMessage(std::unique_ptr<Decoder>);
     void dispatchMessage(Decoder&);
     void dispatchSyncMessage(Decoder&);
-    void didFailToSendSyncMessage();
+    void didFailToSendSyncMessage(Error);
 
     // Can be called on any thread.
     void enqueueIncomingMessage(std::unique_ptr<Decoder>) WTF_REQUIRES_LOCK(m_incomingMessagesLock);
     size_t incomingMessagesDispatchingBatchSize() const;
-
-    void willSendSyncMessage(OptionSet<SendSyncOption>);
-    void didReceiveSyncReply(OptionSet<SendSyncOption>);
 
     Timeout timeoutRespectingIgnoreTimeoutsForTesting(Timeout) const;
 
@@ -439,15 +542,11 @@ private:
     // Only valid between open() and invalidate().
     SerialFunctionDispatcher& dispatcher();
 
-    template<typename T, typename C> static void callReply(IPC::Decoder&, C&& completionHandler);
-    template<typename T, typename C> static void cancelReply(C&& completionHandler);
-
     class SyncMessageState;
     struct SyncMessageStateRelease {
         void operator()(SyncMessageState*) const;
     };
     void addAsyncReplyHandler(AsyncReplyHandler&&);
-    CompletionHandler<void(Decoder*)> takeAsyncReplyHandler(AsyncReplyID);
     void cancelAsyncReplyHandlers();
 
     static Lock s_connectionMapLock;
@@ -460,6 +559,8 @@ private:
     bool m_onlySendMessagesAsDispatchWhenWaitingForSyncReplyWhenProcessingSuchAMessage { false };
     bool m_shouldExitOnSyncMessageSendFailure { false };
     DidCloseOnConnectionWorkQueueCallback m_didCloseOnConnectionWorkQueueCallback { nullptr };
+    OutgoingMessageQueueIsGrowingLargeCallback m_outgoingMessageQueueIsGrowingLargeCallback;
+    MonotonicTime m_lastOutgoingMessageQueueIsGrowingLargeCallbackCallTime WTF_GUARDED_BY_LOCK(m_outgoingMessagesLock);
 
     Ref<WorkQueue> m_connectionQueue;
     bool m_isConnected { false };
@@ -576,7 +677,7 @@ private:
 };
 
 template<typename T>
-bool Connection::send(T&& message, uint64_t destinationID, OptionSet<SendOption> sendOptions, std::optional<Thread::QOS> qos)
+Error Connection::send(T&& message, uint64_t destinationID, OptionSet<SendOption> sendOptions, std::optional<Thread::QOS> qos)
 {
     static_assert(!T::isSync, "Async message expected");
 
@@ -587,26 +688,41 @@ bool Connection::send(T&& message, uint64_t destinationID, OptionSet<SendOption>
 }
 
 template<typename T>
-bool Connection::send(UniqueID connectionID, T&& message, uint64_t destinationID, OptionSet<SendOption> sendOptions, std::optional<Thread::QOS> qos)
+Error Connection::send(UniqueID connectionID, T&& message, uint64_t destinationID, OptionSet<SendOption> sendOptions, std::optional<Thread::QOS> qos)
 {
     Locker locker { s_connectionMapLock };
-    auto* connection = connectionMap().get(connectionID);
+    RefPtr connection = connectionMap().get(connectionID).get();
     if (!connection)
-        return false;
-    return connection->send(WTFMove(message), destinationID, sendOptions, qos);
+        return Error::NoConnectionForIdentifier;
+    return connection->send(std::forward<T>(message), destinationID, sendOptions, qos);
 }
 
 template<typename T, typename C>
 Connection::AsyncReplyID Connection::sendWithAsyncReply(T&& message, C&& completionHandler, uint64_t destinationID, OptionSet<SendOption> sendOptions)
 {
     static_assert(!T::isSync, "Async message expected");
-    auto handler = makeAsyncReplyHandler<T>(WTFMove(completionHandler));
+    auto handler = makeAsyncReplyHandler<T>(std::forward<C>(completionHandler));
     auto replyID = handler.replyID;
     auto encoder = makeUniqueRef<Encoder>(T::name(), destinationID);
     encoder.get() << message.arguments();
-    if (sendMessageWithAsyncReply(WTFMove(encoder), WTFMove(handler), sendOptions))
+    if (sendMessageWithAsyncReply(WTFMove(encoder), WTFMove(handler), sendOptions) == Error::NoError)
         return replyID;
+    // FIXME: Propagate the error back.
     return { };
+}
+
+template<typename T>
+Ref<typename T::Promise> Connection::sendWithPromisedReply(T&& message, uint64_t destinationID, OptionSet<SendOption> sendOptions)
+{
+    static_assert(!T::isSync, "Async message expected");
+    typename T::Promise::Producer producer(WTF::PromiseDispatchMode::RunSynchronouslyOnTarget);
+    Ref<typename T::Promise> promise = producer;
+    auto handler = makeAsyncReplyHandler<T>(WTFMove(producer));
+    auto encoder = makeUniqueRef<Encoder>(T::name(), destinationID);
+    encoder.get() << message.arguments();
+    sendMessageWithAsyncReply(WTFMove(encoder), WTFMove(handler), sendOptions);
+    // The promise will be rejected in the handler should an error occur.
+    return promise;
 }
 
 template<typename T> Connection::SendSyncResult<T> Connection::sendSync(T&& message, uint64_t destinationID, Timeout timeout, OptionSet<SendSyncOption> sendSyncOptions)
@@ -624,49 +740,55 @@ template<typename T> Connection::SendSyncResult<T> Connection::sendSync(T&& mess
     encoder.get() << message.arguments();
 
     // Now send the message and wait for a reply.
-    std::unique_ptr<Decoder> replyDecoder = sendSyncMessage(syncRequestID, WTFMove(encoder), timeout, sendSyncOptions);
-    if (!replyDecoder)
-        return { };
+    auto replyDecoderOrError = sendSyncMessage(syncRequestID, WTFMove(encoder), timeout, sendSyncOptions);
+    if (!replyDecoderOrError.decoder) {
+        ASSERT(replyDecoderOrError.error != Error::NoError);
+        return { replyDecoderOrError.error };
+    }
 
-    SendSyncResult<T> result;
-    *replyDecoder >> result.replyArguments;
-    if (!result.replyArguments)
-        return { };
-    result.decoder = WTFMove(replyDecoder);
-    return result;
+    std::optional<typename T::ReplyArguments> replyArguments;
+    *replyDecoderOrError.decoder >> replyArguments;
+    if (!replyArguments)
+        return { Error::FailedToDecodeReplyArguments };
+
+    return { WTFMove(replyDecoderOrError.decoder), WTFMove(replyArguments) };
 }
 
-template<typename T> bool Connection::waitForAndDispatchImmediately(uint64_t destinationID, Timeout timeout, OptionSet<WaitForOption> waitForOptions)
+template<typename T> Error Connection::waitForAndDispatchImmediately(uint64_t destinationID, Timeout timeout, OptionSet<WaitForOption> waitForOptions)
 {
-    std::unique_ptr<Decoder> decoder = waitForMessage(T::name(), destinationID, timeout, waitForOptions);
-    if (!decoder)
-        return false;
+    static_assert(T::canDispatchOutOfOrder, "Can only use waitForAndDispatchImmediately on messages declared with CanDispatchOutOfOrder");
+    auto decoderOrError = waitForMessage(T::name(), destinationID, timeout, waitForOptions);
+    if (!decoderOrError.decoder)
+        return decoderOrError.error;
+
     if (!isValid())
-        return false;
-    ASSERT(decoder->destinationID() == destinationID);
-    m_client->didReceiveMessage(*this, *decoder);
-    return true;
+        return Error::InvalidConnection;
+
+    ASSERT(decoderOrError.decoder->destinationID() == destinationID);
+    m_client->didReceiveMessage(*this, *decoderOrError.decoder);
+    return Error::NoError;
 }
 
-template<typename T> bool Connection::waitForAsyncReplyAndDispatchImmediately(AsyncReplyID replyID, Timeout timeout)
+template<typename T> Error Connection::waitForAsyncReplyAndDispatchImmediately(AsyncReplyID replyID, Timeout timeout)
 {
-    std::unique_ptr<Decoder> decoder = waitForMessage(T::asyncMessageReplyName(), replyID.toUInt64(), timeout, { });
-    if (!decoder)
-        return false;
+    static_assert(T::replyCanDispatchOutOfOrder, "Can only use waitForAsyncReplyAndDispatchImmediately on messages declared with ReplyCanDispatchOutOfOrder");
+    auto decoderOrError = waitForMessage(T::asyncMessageReplyName(), replyID.toUInt64(), timeout, { });
+    if (!decoderOrError.decoder)
+        return decoderOrError.error;
 
-    ASSERT(decoder->messageReceiverName() == ReceiverName::AsyncReply);
-    ASSERT(decoder->destinationID() == replyID.toUInt64());
-    auto handler = takeAsyncReplyHandler(makeObjectIdentifier<AsyncReplyIDType>(decoder->destinationID()));
+    ASSERT(decoderOrError.decoder->messageReceiverName() == ReceiverName::AsyncReply);
+    ASSERT(decoderOrError.decoder->destinationID() == replyID.toUInt64());
+    auto handler = takeAsyncReplyHandler(AtomicObjectIdentifier<AsyncReplyIDType>(decoderOrError.decoder->destinationID()));
     if (!handler) {
         ASSERT_NOT_REACHED();
-        return false;
+        return Error::FailedToFindReplyHandler;
     }
-    handler(decoder.get());
-    return true;
+    handler(decoderOrError.decoder.get());
+    return Error::NoError;
 }
 
 #if ENABLE(IPC_TESTING_API)
-inline std::unique_ptr<Decoder> Connection::waitForMessageForTesting(MessageName messageName, uint64_t destinationID, Timeout timeout, OptionSet<WaitForOption> options)
+inline auto Connection::waitForMessageForTesting(MessageName messageName, uint64_t destinationID, Timeout timeout, OptionSet<WaitForOption> options) -> DecoderOrError
 {
     return waitForMessage(messageName, destinationID, timeout, options);
 }
@@ -686,7 +808,7 @@ Connection::AsyncReplyHandler Connection::makeAsyncReplyHandler(C&& completionHa
                     cancelReply<T>(WTFMove(completionHandler));
             }, callThread
         },
-        AsyncReplyID::generateThreadSafe()
+        AsyncReplyID::generate()
     };
 }
 
@@ -698,12 +820,12 @@ void Connection::callReply(Decoder& decoder, C&& completionHandler)
         completionHandler();
     } else {
         if (auto arguments = decoder.decode<typename T::ReplyArguments>()) {
-            std::apply(WTFMove(completionHandler), WTFMove(*arguments));
+            std::apply(std::forward<C>(completionHandler), WTFMove(*arguments));
             return;
         }
 
         ASSERT_NOT_REACHED();
-        cancelReply<T>(WTFMove(completionHandler));
+        cancelReply<T>(std::forward<C>(completionHandler));
     }
 }
 
@@ -714,6 +836,38 @@ void Connection::cancelReply(C&& completionHandler)
     {
         completionHandler(AsyncReplyError<std::tuple_element_t<Indices, typename T::ReplyArguments>>::create()...);
     }(std::make_index_sequence<std::tuple_size_v<typename T::ReplyArguments>> { });
+}
+
+template<typename T>
+Connection::AsyncReplyHandler Connection::makeAsyncReplyHandler(typename T::Promise::Producer&& producer, ThreadLikeAssertion callThread)
+{
+    return AsyncReplyHandler {
+        {
+            [producer = WTFMove(producer)] (Decoder* decoder) mutable {
+                if (!decoder) {
+                    producer.reject(Error::InvalidConnection);
+                    return;
+                }
+                if (!decoder->isValid()) {
+                    producer.reject(Error::FailedToDecodeReplyArguments);
+                    return;
+                }
+                if constexpr (!std::tuple_size_v<typename T::ReplyArguments>) {
+                    producer.resolve();
+                    return;
+                } else if (auto arguments = decoder->decode<typename T::ReplyArguments>()) {
+                    if constexpr (std::tuple_size_v<typename T::ReplyArguments> == 1)
+                        producer.resolve(std::get<0>(WTFMove(*arguments)));
+                    else
+                        producer.resolve(WTFMove(*arguments));
+                    return;
+                }
+                ASSERT_NOT_REACHED();
+                producer.reject(Error::FailedToDecodeReplyArguments);
+            }, callThread
+        },
+        AsyncReplyID::generate()
+    };
 }
 
 class UnboundedSynchronousIPCScope {
@@ -739,7 +893,5 @@ public:
 private:
     static std::atomic<unsigned> unboundedSynchronousIPCCount;
 };
-
-void AccessibilityProcessSuspendedNotification(bool suspended);
 
 } // namespace IPC

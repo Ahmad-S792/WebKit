@@ -22,7 +22,6 @@
 
 import calendar
 import re
-import requests
 import sys
 import time
 import webkitcorepy
@@ -31,8 +30,10 @@ from .issue import Issue
 from .tracker import Tracker as GenericTracker
 
 from datetime import datetime
-from requests.auth import HTTPBasicAuth
 from webkitbugspy import User
+
+requests = webkitcorepy.CallByNeed(lambda: __import__('requests'))
+HTTPBasicAuth = webkitcorepy.CallByNeed(lambda: __import__('requests.auth', fromlist=['HTTPBasicAuth']).HTTPBasicAuth)
 
 
 class Tracker(GenericTracker):
@@ -80,8 +81,9 @@ class Tracker(GenericTracker):
             component_color=DEFAULT_COMPONENT_COLOR,
             version_color=DEFAULT_VERSION_COLOR,
             session=None, redact=None, hide_title=None,
+            redact_exemption=None,
     ):
-        super(Tracker, self).__init__(users=users, redact=redact, hide_title=hide_title)
+        super(Tracker, self).__init__(users=users, redact=redact, hide_title=hide_title, redact_exemption=redact_exemption)
 
         self.session = session or requests.Session()
         self.component_color = component_color
@@ -336,7 +338,7 @@ with 'repo' and 'workflow' access and appropriate 'Expiration' for your {host} u
 
         return issue
 
-    def set(self, issue, assignee=None, opened=None, why=None, project=None, component=None, version=None, labels=None, **properties):
+    def set(self, issue, assignee=None, opened=None, why=None, project=None, component=None, version=None, labels=None, original=None, **properties):
         update_dict = dict()
 
         if properties:
@@ -422,7 +424,11 @@ with 'repo' and 'workflow' access and appropriate 'Expiration' for your {host} u
                     issue._opened = None
                 return None
 
-        return self.add_comment(issue, why) if why else issue
+        if issue and original:
+            issue = self.add_comment(issue, 'Duplicate of #{}'.format(original.id))
+        if issue and why:
+            issue = self.add_comment(issue, why)
+        return issue
 
     def add_assignees(self, issue, assignees):
         response = self.request(

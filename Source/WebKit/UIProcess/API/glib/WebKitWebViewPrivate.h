@@ -38,6 +38,7 @@
 #include <WebCore/CompositionUnderline.h>
 #include <WebCore/IntRect.h>
 #include <WebCore/LinkIcon.h>
+#include <WebCore/MediaProducer.h>
 #include <WebCore/ResourceRequest.h>
 #include <wtf/CompletionHandler.h>
 #include <wtf/text/CString.h>
@@ -84,8 +85,10 @@ void webKitWebViewDidReceiveSnapshot(WebKitWebView*, uint64_t callbackID, WebKit
 void webkitWebViewMaximizeWindow(WebKitWebView*, CompletionHandler<void()>&&);
 void webkitWebViewMinimizeWindow(WebKitWebView*, CompletionHandler<void()>&&);
 void webkitWebViewRestoreWindow(WebKitWebView*, CompletionHandler<void()>&&);
-void webkitWebViewEnterFullScreen(WebKitWebView*);
-void webkitWebViewExitFullScreen(WebKitWebView*);
+#if ENABLE(FULLSCREEN_API)
+bool webkitWebViewEnterFullScreen(WebKitWebView*);
+bool webkitWebViewExitFullScreen(WebKitWebView*);
+#endif
 void webkitWebViewPopulateContextMenu(WebKitWebView*, const Vector<WebKit::WebContextMenuItemData>& proposedMenu, const WebKit::WebHitTestResultData&, GVariant*);
 void webkitWebViewSubmitFormRequest(WebKitWebView*, WebKitFormSubmissionRequest*);
 void webkitWebViewHandleAuthenticationChallenge(WebKitWebView*, WebKit::AuthenticationChallengeProxy*);

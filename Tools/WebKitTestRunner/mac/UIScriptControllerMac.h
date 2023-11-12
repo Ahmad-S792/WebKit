@@ -60,7 +60,7 @@ private:
     NSView *platformContentView() const override;
     void clearAllCallbacks() override;
     void copyText(JSStringRef) override;
-    void setSpellCheckerResults(JSValueRef) override;
+    void setAppAccentColor(unsigned short red, unsigned short green, unsigned short blue) final;
 
     void chooseMenuAction(JSStringRef, JSValueRef) override;
 
@@ -69,6 +69,7 @@ private:
     void sendEventStream(JSStringRef, JSValueRef) override;
 
     NSTableView *dataListSuggestionsTableView() const;
+    JSRetainPtr<JSStringRef> scrollbarStateForScrollingNodeID(unsigned long long, bool) const override;
 };
 
 } // namespace WTR

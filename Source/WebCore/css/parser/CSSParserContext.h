@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2018-2022 Apple Inc. All rights reserved.
+ * Copyright (C) 2018-2023 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -55,11 +55,6 @@ inline bool operator==(const ResolvedURL& a, const ResolvedURL& b)
     return a.specifiedURLString == b.specifiedURLString && a.resolvedURL == b.resolvedURL;
 }
 
-inline bool operator!=(const ResolvedURL& a, const ResolvedURL& b)
-{
-    return !(a == b);
-}
-
 struct CSSParserContext {
     WTF_MAKE_STRUCT_FAST_ALLOCATED;
 
@@ -81,7 +76,6 @@ struct CSSParserContext {
     bool colorMixEnabled { false };
     bool constantPropertiesEnabled { false };
     bool counterStyleAtRuleImageSymbolsEnabled { false };
-    bool cssColor4 { false };
     bool relativeColorSyntaxEnabled { false };
     bool springTimingFunctionEnabled { false };
 #if ENABLE(CSS_TRANSFORM_STYLE_OPTIMIZED_3D)
@@ -98,6 +92,12 @@ struct CSSParserContext {
     bool masonryEnabled { false };
     bool cssNestingEnabled { false };
     bool cssPaintingAPIEnabled { false };
+    bool cssScopeAtRuleEnabled { false };
+    bool cssTextUnderlinePositionLeftRightEnabled { false };
+    bool cssWordBreakAutoPhraseEnabled { false };
+    bool popoverAttributeEnabled { false };
+    bool sidewaysWritingModesEnabled { false };
+    bool cssTextWrapPrettyEnabled { false };
 
     // Settings, those affecting properties.
     CSSPropertySettings propertySettings;
@@ -105,10 +105,9 @@ struct CSSParserContext {
     CSSParserContext(CSSParserMode, const URL& baseURL = URL());
     WEBCORE_EXPORT CSSParserContext(const Document&, const URL& baseURL = URL(), const String& charset = emptyString());
     ResolvedURL completeURL(const String&) const;
-};
 
-bool operator==(const CSSParserContext&, const CSSParserContext&);
-inline bool operator!=(const CSSParserContext& a, const CSSParserContext& b) { return !(a == b); }
+    bool operator==(const CSSParserContext&) const = default;
+};
 
 void add(Hasher&, const CSSParserContext&);
 

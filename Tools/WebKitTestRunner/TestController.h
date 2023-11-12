@@ -45,6 +45,7 @@
 #include "InstanceMethodSwizzler.h"
 #endif
 
+OBJC_CLASS NSColor;
 OBJC_CLASS NSString;
 OBJC_CLASS UIKeyboardInputMode;
 OBJC_CLASS UIPasteboardConsistencyEnforcer;
@@ -94,8 +95,6 @@ public:
     static void configureWebsiteDataStoreTemporaryDirectories(WKWebsiteDataStoreConfigurationRef);
     static WKWebsiteDataStoreRef defaultWebsiteDataStore();
 
-    static WKURLRef createTestURL(const char* pathOrURL);
-
     static const WTF::Seconds defaultShortTimeout;
     static const WTF::Seconds noTimeout;
 
@@ -143,7 +142,8 @@ public:
     String saltForOrigin(WKFrameRef, String);
     void getUserMediaInfoForOrigin(WKFrameRef, WKStringRef originKey, bool&, WKRetainPtr<WKStringRef>&);
     WKStringRef getUserMediaSaltForOrigin(WKFrameRef, WKStringRef originKey);
-    void setUserMediaPermission(bool);
+    void setCameraPermission(bool);
+    void setMicrophonePermission(bool);
     void resetUserMediaPermission();
     void setUserMediaPersistentPermissionForOrigin(bool, WKStringRef userMediaDocumentOriginString, WKStringRef topLevelDocumentOriginString);
     void handleUserMediaPermissionRequest(WKFrameRef, WKSecurityOriginRef, WKSecurityOriginRef, WKUserMediaPermissionRequestRef);
@@ -188,6 +188,7 @@ public:
     void setAuthenticationUsername(String username) { m_authenticationUsername = username; }
     void setAuthenticationPassword(String password) { m_authenticationPassword = password; }
     void setAllowsAnySSLCertificate(bool);
+
     void setShouldSwapToEphemeralSessionOnNextNavigation(bool value) { m_shouldSwapToEphemeralSessionOnNextNavigation = value; }
     void setShouldSwapToDefaultSessionOnNextNavigation(bool value) { m_shouldSwapToDefaultSessionOnNextNavigation = value; }
 
@@ -200,6 +201,8 @@ public:
     void setShouldLogCanAuthenticateAgainstProtectionSpace(bool shouldLog) { m_shouldLogCanAuthenticateAgainstProtectionSpace = shouldLog; }
     void setShouldLogDownloadCallbacks(bool shouldLog) { m_shouldLogDownloadCallbacks = shouldLog; }
     void setShouldLogDownloadSize(bool shouldLog) { m_shouldLogDownloadSize = shouldLog; }
+    void setShouldLogDownloadExpectedSize(bool shouldLog) { m_shouldLogDownloadExpectedSize = shouldLog; }
+    void setShouldDownloadContentDispositionAttachments(bool shouldDownload) { m_shouldDownloadContentDispositionAttachments = shouldDownload; }
 
     bool isCurrentInvocation(TestInvocation* invocation) const { return invocation == m_currentInvocation.get(); }
 
@@ -245,6 +248,7 @@ public:
     void statisticsProcessStatisticsAndDataRecords();
     void statisticsUpdateCookieBlocking();
     void setStatisticsNotifyPagesWhenDataRecordsWereScanned(bool);
+    void setStatisticsTimeAdvanceForTesting(double);
     void setStatisticsIsRunningTest(bool);
     void setStatisticsShouldClassifyResourcesBeforeDataRecordsRemoval(bool);
     void setStatisticsMinimumTimeBetweenDataRecordsRemoval(double);
@@ -318,11 +322,12 @@ public:
 
     void setAllowStorageQuotaIncrease(bool);
     void setQuota(uint64_t);
+    void setOriginQuotaRatioEnabled(bool);
 
     bool didReceiveServerRedirectForProvisionalNavigation() const { return m_didReceiveServerRedirectForProvisionalNavigation; }
     void clearDidReceiveServerRedirectForProvisionalNavigation() { m_didReceiveServerRedirectForProvisionalNavigation = false; }
 
-    void addMockMediaDevice(WKStringRef persistentID, WKStringRef label, WKStringRef type);
+    void addMockMediaDevice(WKStringRef persistentID, WKStringRef label, WKStringRef type, WKDictionaryRef properties);
     void clearMockMediaDevices();
     void removeMockMediaDevice(WKStringRef persistentID);
     void setMockMediaDeviceIsEphemeral(WKStringRef, bool);
@@ -330,13 +335,11 @@ public:
     void setMockCameraOrientation(uint64_t);
     bool isMockRealtimeMediaSourceCenterEnabled() const;
     void setMockCaptureDevicesInterrupted(bool isCameraInterrupted, bool isMicrophoneInterrupted);
-    void triggerMockMicrophoneConfigurationChange();
+    void triggerMockCaptureConfigurationChange(bool forMicrophone, bool forDisplay);
     bool hasAppBoundSession();
 
     void injectUserScript(WKStringRef);
     
-    void sendDisplayConfigurationChangedMessageForTesting();
-
     void setServiceWorkerFetchTimeoutForTesting(double seconds);
 
     void addTestKeyToKeychain(const String& privateKeyBase64, const String& attrLabel, const String& applicationTagBase64);
@@ -384,14 +387,13 @@ public:
 
     WKURLRef currentTestURL() const;
 
-    void completeSpeechRecognitionPermissionCheck(WKSpeechRecognitionPermissionCallbackRef);
     void setIsSpeechRecognitionPermissionGranted(bool);
 
     void completeMediaKeySystemPermissionCheck(WKMediaKeySystemPermissionCallbackRef);
     void setIsMediaKeySystemPermissionGranted(bool);
     WKRetainPtr<WKStringRef> takeViewPortSnapshot();
 
-    WKPreferencesRef platformPreferences();
+    WKPreferencesRef platformPreferences() { return m_preferences.get(); }
 
     bool grantNotificationPermission(WKStringRef origin);
     bool denyNotificationPermission(WKStringRef origin);
@@ -401,9 +403,26 @@ public:
 
     void handleQueryPermission(WKStringRef, WKSecurityOriginRef, WKQueryPermissionResultCallbackRef);
 
-#if PLATFORM(IOS)
+#if PLATFORM(IOS) || PLATFORM(VISION)
     void lockScreenOrientation(WKScreenOrientationType);
     void unlockScreenOrientation();
+#endif
+
+    WKRetainPtr<WKStringRef> getBackgroundFetchIdentifier();
+    void abortBackgroundFetch(WKStringRef);
+    void pauseBackgroundFetch(WKStringRef);
+    void resumeBackgroundFetch(WKStringRef);
+    void simulateClickBackgroundFetch(WKStringRef);
+    void setBackgroundFetchPermission(bool);
+    WKRetainPtr<WKStringRef> lastAddedBackgroundFetchIdentifier() const;
+    WKRetainPtr<WKStringRef> lastRemovedBackgroundFetchIdentifier() const;
+    WKRetainPtr<WKStringRef> lastUpdatedBackgroundFetchIdentifier() const;
+    WKRetainPtr<WKStringRef> backgroundFetchState(WKStringRef);
+
+    void receivedServiceWorkerConsoleMessage(const String&);
+
+#if ENABLE(IMAGE_ANALYSIS)
+    static uint64_t currentImageAnalysisRequestID();
 #endif
 
 private:
@@ -415,7 +434,9 @@ private:
 
     void runTestingServerLoop();
     bool runTest(const char* pathOrURL);
-    
+
+    WKURLRef createTestURL(const char* pathOrURL);
+
     // Returns false if timed out.
     bool waitForCompletion(const WTF::Function<void ()>&, WTF::Seconds timeout);
 
@@ -501,6 +522,9 @@ private:
     static void didFinishNavigation(WKPageRef, WKNavigationRef, WKTypeRef userData, const void*);
     void didFinishNavigation(WKPageRef, WKNavigationRef);
 
+    static void didFailProvisionalNavigation(WKPageRef, WKNavigationRef, WKErrorRef, WKTypeRef, const void*);
+    void didFailProvisionalNavigation(WKPageRef, WKErrorRef);
+
     // WKDownloadClient
     static void navigationActionDidBecomeDownload(WKPageRef, WKNavigationActionRef, WKDownloadRef, const void*);
     static void navigationResponseDidBecomeDownload(WKPageRef, WKNavigationResponseRef, WKDownloadRef, const void*);
@@ -516,7 +540,7 @@ private:
     bool downloadDidReceiveServerRedirectToURL(WKDownloadRef, WKURLRequestRef);
     static void downloadDidReceiveAuthenticationChallenge(WKDownloadRef, WKAuthenticationChallengeRef, const void *clientInfo);
 
-    void downloadDidWriteData(long long totalBytesWritten);
+    void downloadDidWriteData(long long totalBytesWritten, long long totalBytesExpectedToWrite);
     static void downloadDidWriteData(WKDownloadRef, long long bytesWritten, long long totalBytesWritten, long long totalBytesExpectedToWrite, const void* clientInfo);
 
     static void webProcessDidTerminate(WKPageRef,  WKProcessTerminationReason, const void* clientInfo);
@@ -585,11 +609,18 @@ private:
     static const char* libraryPathForTesting();
     static const char* platformLibraryPathForTesting();
 
+    WKRetainPtr<WKURLRef> m_mainResourceURL;
     std::unique_ptr<TestInvocation> m_currentInvocation;
 #if PLATFORM(COCOA)
     std::unique_ptr<ClassMethodSwizzler> m_calendarSwizzler;
     std::pair<RetainPtr<NSString>, RetainPtr<NSString>> m_overriddenCalendarAndLocaleIdentifiers;
 #endif // PLATFORM(COCOA)
+#if ENABLE(IMAGE_ANALYSIS)
+    std::unique_ptr<InstanceMethodSwizzler> m_imageAnalysisRequestSwizzler;
+#endif
+#if HAVE(UIKIT_RESIZABLE_WINDOWS)
+    std::unique_ptr<InstanceMethodSwizzler> m_enhancedWindowingEnabledSwizzler;
+#endif
     bool m_verbose { false };
     bool m_printSeparators { false };
     bool m_usingServerMode { false };
@@ -613,7 +644,7 @@ private:
     std::unique_ptr<PlatformWebView> m_mainWebView;
     Vector<UniqueRef<PlatformWebView>> m_auxiliaryWebViews;
     WKRetainPtr<WKContextRef> m_context;
-    WKRetainPtr<WKPageGroupRef> m_pageGroup;
+    WKRetainPtr<WKPreferencesRef> m_preferences;
     WKRetainPtr<WKUserContentControllerRef> m_userContentController;
 
 #if PLATFORM(IOS_FAMILY)
@@ -651,7 +682,8 @@ private:
     PermissionRequestList m_userMediaPermissionRequests;
 
     bool m_isUserMediaPermissionSet { false };
-    bool m_isUserMediaPermissionAllowed { false };
+    bool m_isCameraPermissionAllowed { false };
+    bool m_isMicrophonePermissionAllowed { false };
 
     bool m_policyDelegateEnabled { false };
     bool m_policyDelegatePermissive { false };
@@ -686,6 +718,10 @@ private:
     bool m_didLockOrientation { false };
 #endif
 
+#if PLATFORM(MAC)
+    RetainPtr<NSColor> m_defaultAppAccentColor;
+#endif
+
     std::unique_ptr<EventSenderProxy> m_eventSenderProxy;
     WKRetainPtr<WKWebsiteDataStoreRef> m_websiteDataStore;
 
@@ -718,7 +754,11 @@ private:
     bool m_isMediaKeySystemPermissionGranted { true };
 
     std::optional<long long> m_downloadTotalBytesWritten;
+    std::optional<uint64_t> m_downloadTotalBytesExpectedToWrite;
     bool m_shouldLogDownloadSize { false };
+    bool m_shouldLogDownloadExpectedSize { false };
+    size_t m_downloadIndex { 0 };
+    bool m_shouldDownloadContentDispositionAttachments { true };
     bool m_dumpPolicyDelegateCallbacks { false };
 };
 

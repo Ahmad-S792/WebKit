@@ -27,100 +27,102 @@
 #error This file requires ARC. Add the "-fobjc-arc" compiler flag for this file.
 #endif
 
-#include "config.h"
-#include "WebExtensionContextProxy.h"
+#import "config.h"
+#import "WebExtensionContextProxy.h"
 
 #if ENABLE(WK_WEB_EXTENSIONS)
 
-#include "WebExtensionAPINamespace.h"
-#include "WebExtensionAPIWebNavigation.h"
-#include <WebCore/ProcessQualified.h>
-#include <wtf/ObjectIdentifier.h>
+#import "CocoaHelpers.h"
+#import "JSWebExtensionWrapper.h"
+#import "WebExtensionAPINamespace.h"
+#import "WebExtensionContextMessages.h"
+#import "WebExtensionContextProxyMessages.h"
+#import "WebProcess.h"
+#import "_WKWebExtensionLocalization.h"
+#import <wtf/HashMap.h>
+#import <wtf/NeverDestroyed.h>
+#import <wtf/ObjectIdentifier.h>
 
 namespace WebKit {
 
-using namespace WebCore;
-
-// MARK: webNavigation support
-
-void WebExtensionContextProxy::dispatchWebNavigationOnBeforeNavigateEvent(WebPageProxyIdentifier pageID, WebCore::FrameIdentifier frameID, URL targetURL)
+static HashMap<WebExtensionContextIdentifier, WeakPtr<WebExtensionContextProxy>>& webExtensionContextProxies()
 {
-    NSDictionary *navigationDetails = @{
-        @"url": [(NSURL *)targetURL absoluteString],
-
-        // FIXME: We should be passing more arguments here and these arguments should have the correct values.
-        @"tabId": @(pageID.toUInt64()),
-        @"frameId": @(frameID.object().toUInt64())
-    };
-
-    enumerateNamespaceObjects([&](auto& namespaceObject) {
-        auto& webNavigationObject = namespaceObject.webNavigation();
-        webNavigationObject.onBeforeNavigate().invokeListenersWithArgument(navigationDetails, targetURL);
-    });
+    static MainThreadNeverDestroyed<HashMap<WebExtensionContextIdentifier, WeakPtr<WebExtensionContextProxy>>> contexts;
+    return contexts;
 }
 
-void WebExtensionContextProxy::dispatchWebNavigationOnCommittedEvent(WebPageProxyIdentifier pageID, WebCore::FrameIdentifier frameID, URL frameURL)
+RefPtr<WebExtensionContextProxy> WebExtensionContextProxy::get(WebExtensionContextIdentifier identifier)
 {
-    NSDictionary *navigationDetails = @{
-        @"url": [(NSURL *)frameURL absoluteString],
-
-        // FIXME: We should be passing more arguments here and these arguments should have the correct values.
-        @"tabId": @(pageID.toUInt64()),
-        @"frameId": @(frameID.object().toUInt64())
-    };
-
-    enumerateNamespaceObjects([&](auto& namespaceObject) {
-        auto& webNavigationObject = namespaceObject.webNavigation();
-        webNavigationObject.onCommitted().invokeListenersWithArgument(navigationDetails, frameURL);
-    });
+    return webExtensionContextProxies().get(identifier).get();
 }
 
-void WebExtensionContextProxy::dispatchWebNavigationOnDOMContentLoadedEvent(WebPageProxyIdentifier pageID, WebCore::FrameIdentifier frameID, URL frameURL)
+WebExtensionContextProxy::WebExtensionContextProxy(const WebExtensionContextParameters& parameters)
+    : m_identifier(parameters.identifier)
 {
-    NSDictionary *navigationDetails = @{
-        @"url": [(NSURL *)frameURL absoluteString],
+    ASSERT(!webExtensionContextProxies().contains(m_identifier));
+    webExtensionContextProxies().add(m_identifier, this);
 
-        // FIXME: We should be passing more arguments here and these arguments should have the correct values.
-        @"tabId": @(pageID.toUInt64()),
-        @"frameId": @(frameID.object().toUInt64())
-    };
-
-    enumerateNamespaceObjects([&](auto& namespaceObject) {
-        auto& webNavigationObject = namespaceObject.webNavigation();
-        webNavigationObject.onDOMContentLoaded().invokeListenersWithArgument(navigationDetails, frameURL);
-    });
+    WebProcess::singleton().addMessageReceiver(Messages::WebExtensionContextProxy::messageReceiverName(), m_identifier, *this);
 }
 
-void WebExtensionContextProxy::dispatchWebNavigationOnCompletedEvent(WebPageProxyIdentifier pageID, WebCore::FrameIdentifier frameID, URL frameURL)
+WebExtensionContextProxy::~WebExtensionContextProxy()
 {
-    NSDictionary *navigationDetails = @{
-        @"url": [(NSURL *)frameURL absoluteString],
-
-        // FIXME: We should be passing more arguments here and these arguments should have the correct values.
-        @"tabId": @(pageID.toUInt64()),
-        @"frameId": @(frameID.object().toUInt64())
-    };
-
-    enumerateNamespaceObjects([&](auto& namespaceObject) {
-        auto& webNavigationObject = namespaceObject.webNavigation();
-        webNavigationObject.onCompleted().invokeListenersWithArgument(navigationDetails, frameURL);
-    });
+    WebProcess::singleton().removeMessageReceiver(Messages::WebExtensionContextProxy::messageReceiverName(), m_identifier);
 }
 
-void WebExtensionContextProxy::dispatchWebNavigationOnErrorOccurredEvent(WebPageProxyIdentifier pageID, WebCore::FrameIdentifier frameID, URL frameURL)
+Ref<WebExtensionContextProxy> WebExtensionContextProxy::getOrCreate(const WebExtensionContextParameters& parameters, WebPage* newPage)
 {
-    NSDictionary *navigationDetails = @{
-        @"url": [(NSURL *)frameURL absoluteString],
+    auto updateProperties = [&](WebExtensionContextProxy& context) {
+        context.m_baseURL = parameters.baseURL;
+        context.m_uniqueIdentifier = parameters.uniqueIdentifier;
+        context.m_localization = parseLocalization(parameters.localizationJSON.get(), parameters.baseURL);
+        context.m_manifest = parseJSON(parameters.manifestJSON.get());
+        context.m_manifestVersion = parameters.manifestVersion;
+        context.m_testingMode = parameters.testingMode;
 
-        // FIXME: We should be passing more arguments here and these arguments should have the correct values.
-        @"tabId": @(pageID.toUInt64()),
-        @"frameId": @(frameID.object().toUInt64())
+        if (parameters.backgroundPageIdentifier) {
+            if (newPage && parameters.backgroundPageIdentifier.value() == newPage->identifier())
+                context.setBackgroundPage(*newPage);
+            else if (auto* page = WebProcess::singleton().webPage(parameters.backgroundPageIdentifier.value()))
+                context.setBackgroundPage(*page);
+        }
+
+        for (auto& identifierTuple : parameters.popupPageIdentifiers) {
+            auto& pageIdentifier = std::get<WebCore::PageIdentifier>(identifierTuple);
+            auto& tabIdentifier = std::get<std::optional<WebExtensionTabIdentifier>>(identifierTuple);
+            auto& windowIdentifier = std::get<std::optional<WebExtensionWindowIdentifier>>(identifierTuple);
+
+            if (newPage && pageIdentifier == newPage->identifier())
+                context.addPopupPage(*newPage, tabIdentifier, windowIdentifier);
+            else if (auto* page = WebProcess::singleton().webPage(pageIdentifier))
+                context.addPopupPage(*page, tabIdentifier, windowIdentifier);
+        }
+
+        for (auto& identifierTuple : parameters.tabPageIdentifiers) {
+            auto& pageIdentifier = std::get<WebCore::PageIdentifier>(identifierTuple);
+            auto& tabIdentifier = std::get<std::optional<WebExtensionTabIdentifier>>(identifierTuple);
+            auto& windowIdentifier = std::get<std::optional<WebExtensionWindowIdentifier>>(identifierTuple);
+
+            if (newPage && pageIdentifier == newPage->identifier())
+                context.addTabPage(*newPage, tabIdentifier, windowIdentifier);
+            else if (auto* page = WebProcess::singleton().webPage(pageIdentifier))
+                context.addTabPage(*page, tabIdentifier, windowIdentifier);
+        }
     };
 
-    enumerateNamespaceObjects([&](auto& namespaceObject) {
-        auto& webNavigationObject = namespaceObject.webNavigation();
-        webNavigationObject.onErrorOccurred().invokeListenersWithArgument(navigationDetails, frameURL);
-    });
+    if (auto context = webExtensionContextProxies().get(parameters.identifier)) {
+        updateProperties(*context);
+        return *context;
+    }
+
+    auto result = adoptRef(new WebExtensionContextProxy(parameters));
+    updateProperties(*result);
+    return result.releaseNonNull();
+}
+
+_WKWebExtensionLocalization *WebExtensionContextProxy::parseLocalization(API::Data& json, const URL& baseURL)
+{
+    return [[_WKWebExtensionLocalization alloc] initWithLocalizedDictionary:parseJSON(json) uniqueIdentifier:baseURL.host().toString()];
 }
 
 } // namespace WebKit

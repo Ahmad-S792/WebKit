@@ -52,9 +52,9 @@ RemoteRealtimeMediaSource::RemoteRealtimeMediaSource(RemoteRealtimeMediaSourcePr
 
 void RemoteRealtimeMediaSource::createRemoteMediaSource()
 {
-    m_proxy.createRemoteMediaSource(deviceIDHashSalts(), pageIdentifier(), [this, protectedThis = Ref { *this }](bool succeeded, auto&& errorMessage, auto&& settings, auto&& capabilities, auto&&, auto, auto) {
-        if (!succeeded) {
-            m_proxy.didFail(WTFMove(errorMessage));
+    m_proxy.createRemoteMediaSource(deviceIDHashSalts(), pageIdentifier(), [this, protectedThis = Ref { *this }](WebCore::CaptureSourceError&& error, WebCore::RealtimeMediaSourceSettings&& settings, WebCore::RealtimeMediaSourceCapabilities&& capabilities) {
+        if (error) {
+            m_proxy.didFail(WTFMove(error));
             return;
         }
 
@@ -68,14 +68,6 @@ void RemoteRealtimeMediaSource::createRemoteMediaSource()
     }, m_proxy.shouldCaptureInGPUProcess() && m_manager.shouldUseGPUProcessRemoteFrames());
 }
 
-void RemoteRealtimeMediaSource::removeAsClient()
-{
-    if (m_proxy.shouldCaptureInGPUProcess()) {
-        if (auto* connection = WebProcess::singleton().existingGPUProcessConnection())
-            connection->removeClient(*this);
-    }
-}
-
 void RemoteRealtimeMediaSource::setCapabilities(RealtimeMediaSourceCapabilities&& capabilities)
 {
     m_capabilities = WTFMove(capabilities);
@@ -86,6 +78,16 @@ void RemoteRealtimeMediaSource::setSettings(RealtimeMediaSourceSettings&& settin
     auto changed = m_settings.difference(settings);
     m_settings = WTFMove(settings);
     notifySettingsDidChangeObservers(changed);
+}
+
+void RemoteRealtimeMediaSource::getPhotoCapabilities(PhotoCapabilitiesHandler&& callback)
+{
+    m_proxy.getPhotoCapabilities(WTFMove(callback));
+}
+
+Ref<RealtimeMediaSource::PhotoSettingsNativePromise> RemoteRealtimeMediaSource::getPhotoSettings()
+{
+    return m_proxy.getPhotoSettings();
 }
 
 void RemoteRealtimeMediaSource::configurationChanged(String&& persistentID, WebCore::RealtimeMediaSourceSettings&& settings, WebCore::RealtimeMediaSourceCapabilities&& capabilities)
@@ -111,7 +113,7 @@ void RemoteRealtimeMediaSource::didEnd()
     if (m_proxy.isEnded())
         return;
 
-    m_proxy.end(pageIdentifier());
+    m_proxy.end();
     m_manager.removeSource(identifier());
     m_manager.remoteCaptureSampleManager().removeSource(identifier());
 }
@@ -139,7 +141,7 @@ void RemoteRealtimeMediaSource::gpuProcessConnectionDidClose(GPUProcessConnectio
         return;
 
     m_proxy.updateConnection();
-    m_manager.remoteCaptureSampleManager().didUpdateSourceConnection(m_proxy.connection());
+    m_manager.remoteCaptureSampleManager().didUpdateSourceConnection(Ref { m_proxy.connection() });
     m_proxy.resetReady();
     createRemoteMediaSource();
 

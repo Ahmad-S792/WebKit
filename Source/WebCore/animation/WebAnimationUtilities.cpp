@@ -39,6 +39,7 @@
 #include "DeclarativeAnimation.h"
 #include "Element.h"
 #include "KeyframeEffectStack.h"
+#include "ScriptExecutionContext.h"
 #include "WebAnimation.h"
 
 namespace WebCore {
@@ -86,16 +87,16 @@ static bool compareDeclarativeAnimationOwningElementPositionsInDocumentTreeOrder
     };
 
     auto& aReferenceElement = a.element;
-    int aSortingIndex = sortingIndex(a.pseudoId);
-
     auto& bReferenceElement = b.element;
-    int bSortingIndex = sortingIndex(b.pseudoId);
 
     if (&aReferenceElement == &bReferenceElement) {
+        auto aSortingIndex = sortingIndex(a.pseudoId);
+        auto bSortingIndex = sortingIndex(b.pseudoId);
         ASSERT(aSortingIndex != bSortingIndex);
         return aSortingIndex < bSortingIndex;
     }
-    return aReferenceElement.compareDocumentPosition(bReferenceElement) & Node::DOCUMENT_POSITION_FOLLOWING;
+
+    return is_lt(treeOrder<Tree>(aReferenceElement, bReferenceElement));
 }
 
 static bool compareCSSTransitions(const CSSTransition& a, const CSSTransition& b)
@@ -325,14 +326,14 @@ ExceptionOr<PseudoId> pseudoIdFromString(const String& pseudoElement)
 
     auto isLegacy = pseudoElement == ":before"_s || pseudoElement == ":after"_s || pseudoElement == ":first-letter"_s || pseudoElement == ":first-line"_s;
     if (!isLegacy && !pseudoElement.startsWith("::"_s))
-        return Exception { SyntaxError };
+        return Exception { ExceptionCode::SyntaxError };
     auto pseudoType = CSSSelector::parsePseudoElementType(StringView(pseudoElement).substring(isLegacy ? 1 : 2));
     if (pseudoType == CSSSelector::PseudoElementUnknown || pseudoType == CSSSelector::PseudoElementWebKitCustom)
-        return Exception { SyntaxError };
+        return Exception { ExceptionCode::SyntaxError };
     return CSSSelector::pseudoId(pseudoType);
 }
 
-AtomString animatablePropertyAsString(AnimatableProperty property)
+AtomString animatablePropertyAsString(AnimatableCSSProperty property)
 {
     return WTF::switchOn(property,
         [] (CSSPropertyID propertyId) {

@@ -4,7 +4,7 @@
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
  * License as published by the Free Software Foundation; either
- * version 2,1 of the License, or (at your option) any later version.
+ * version 2.1 of the License, or (at your option) any later version.
  *
  * This library is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -27,8 +27,9 @@
 #include <JavaScriptCore/APICast.h>
 #include <JavaScriptCore/JSGlobalObjectInlines.h>
 #include <JavaScriptCore/JSLock.h>
-#include <WebCore/Frame.h>
+#include <WebCore/FrameDestructionObserverInlines.h>
 #include <WebCore/JSNode.h>
+#include <WebCore/LocalFrame.h>
 #include <WebCore/Node.h>
 #include <WebCore/ScriptController.h>
 #include <glib/gi18n-lib.h>
@@ -56,14 +57,6 @@ using namespace WebCore;
  * Since: 2.8
  */
 
-#if !ENABLE(2022_GLIB_API)
-enum {
-    PROP_0,
-
-    PROP_NODE
-};
-#endif
-
 struct _WebKitWebHitTestResultPrivate {
     WeakPtr<Node, WeakPtrImplWithEventTargetData> node;
 
@@ -73,16 +66,16 @@ struct _WebKitWebHitTestResultPrivate {
 };
 
 #if ENABLE(2022_GLIB_API)
-struct _WebKitWebHitTestResultClass {
-    GObjectClass parent;
-};
-
-WEBKIT_DEFINE_FINAL_TYPE(WebKitWebHitTestResult, webkit_web_hit_test_result, G_TYPE_OBJECT)
+WEBKIT_DEFINE_FINAL_TYPE(WebKitWebHitTestResult, webkit_web_hit_test_result, G_TYPE_OBJECT, GObject)
 #else
 WEBKIT_DEFINE_TYPE(WebKitWebHitTestResult, webkit_web_hit_test_result, WEBKIT_TYPE_HIT_TEST_RESULT)
-#endif
 
-#if !ENABLE(2022_GLIB_API)
+enum {
+    PROP_0,
+
+    PROP_NODE
+};
+
 static void webkitWebHitTestResultGetProperty(GObject* object, guint propId, GValue* value, GParamSpec* paramSpec)
 {
     WebKitWebHitTestResult* webHitTestResult = WEBKIT_WEB_HIT_TEST_RESULT(object);
@@ -429,7 +422,7 @@ JSCValue* webkit_web_hit_test_result_get_js_node(WebKitWebHitTestResult* webHitT
         world = webkit_script_world_get_default();
 
     auto* wkWorld = webkitScriptWorldGetInjectedBundleScriptWorld(world);
-    JSDOMWindow* globalObject = frame->script().globalObject(wkWorld->coreWorld());
+    auto* globalObject = frame->script().globalObject(wkWorld->coreWorld());
     auto jsContext = jscContextGetOrCreate(toGlobalRef(globalObject));
     JSValueRef jsValue = nullptr;
     {

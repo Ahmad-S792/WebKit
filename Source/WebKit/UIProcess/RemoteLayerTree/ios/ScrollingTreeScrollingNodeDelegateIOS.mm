@@ -33,6 +33,7 @@
 #import "RemoteScrollingCoordinatorProxyIOS.h"
 #import "RemoteScrollingTree.h"
 #import "UIKitSPI.h"
+#import "UIKitUtilities.h"
 #import "WKScrollView.h"
 #import "WebPageProxy.h"
 #import <QuartzCore/QuartzCore.h>
@@ -231,10 +232,8 @@ void ScrollingTreeScrollingNodeDelegateIOS::updateScrollViewForOverscrollBehavio
         scrollView.bouncesVertically = verticalOverscrollBehavior != OverscrollBehavior::None;
     }
     if (allowPropogation == AllowOverscrollToPreventScrollPropagation::Yes) {
-#if HAVE(UIKIT_OVERSCROLL_BEHAVIOR_SUPPORT)
-        scrollView._allowsParentToBeginHorizontally = horizontalOverscrollBehavior == OverscrollBehavior::Auto;
-        scrollView._allowsParentToBeginVertically = verticalOverscrollBehavior == OverscrollBehavior::Auto;
-#endif
+        [scrollView _wk_setTransfersHorizontalScrollingToParent:horizontalOverscrollBehavior == OverscrollBehavior::Auto];
+        [scrollView _wk_setTransfersVerticalScrollingToParent:verticalOverscrollBehavior == OverscrollBehavior::Auto];
     }
 }
 
@@ -326,23 +325,25 @@ bool ScrollingTreeScrollingNodeDelegateIOS::startAnimatedScrollToPosition(FloatP
 void ScrollingTreeScrollingNodeDelegateIOS::stopAnimatedScroll()
 {
     BEGIN_BLOCK_OBJC_EXCEPTIONS
-    [scrollView() _stopScrollingAndZoomingAnimations];
+    [scrollView() _wk_stopScrollingAndZooming];
     END_BLOCK_OBJC_EXCEPTIONS
 }
 
 #if HAVE(UISCROLLVIEW_ASYNCHRONOUS_SCROLL_EVENT_HANDLING)
 void ScrollingTreeScrollingNodeDelegateIOS::handleAsynchronousCancelableScrollEvent(UIScrollView *scrollView, UIScrollEvent *scrollEvent, void (^completion)(BOOL handled))
 {
-    auto& scrollingCoordinatorProxy = downcast<WebKit::RemoteScrollingTree>(scrollingTree()).scrollingCoordinatorProxy();
-    scrollingCoordinatorProxy.webPageProxy().pageClient().handleAsynchronousCancelableScrollEvent(scrollView, scrollEvent, completion);
+    auto* scrollingCoordinatorProxy = downcast<WebKit::RemoteScrollingTree>(scrollingTree()).scrollingCoordinatorProxy();
+    if (scrollingCoordinatorProxy)
+        scrollingCoordinatorProxy->webPageProxy().pageClient().handleAsynchronousCancelableScrollEvent(scrollView, scrollEvent, completion);
 }
 #endif
 
 void ScrollingTreeScrollingNodeDelegateIOS::repositionScrollingLayers()
 {
     BEGIN_BLOCK_OBJC_EXCEPTIONS
-
-    if ([scrollView() _isAnimatingScroll])
+ALLOW_DEPRECATED_DECLARATIONS_BEGIN
+    if (scrollView()._wk_isScrollAnimating)
+ALLOW_DEPRECATED_DECLARATIONS_END
         return;
 
     [scrollView() setContentOffset:scrollingNode().currentScrollOffset()];
@@ -392,10 +393,13 @@ UIScrollView *ScrollingTreeScrollingNodeDelegateIOS::findActingScrollParent(UISc
 {
     ASSERT(scrollView == this->scrollView());
 
-    auto& scrollingCoordinatorProxy = downcast<RemoteScrollingTree>(scrollingTree()).scrollingCoordinatorProxy();
-    auto host = scrollingCoordinatorProxy.layerTreeHost();
+    auto* scrollingCoordinatorProxy = downcast<RemoteScrollingTree>(scrollingTree()).scrollingCoordinatorProxy();
+    if (!scrollingCoordinatorProxy)
+        return nil;
+
+    auto host = scrollingCoordinatorProxy->layerTreeHost();
     if (!host)
-        return nullptr;
+        return nil;
     
     return WebKit::findActingScrollParent(scrollView, *host);
 }
@@ -412,7 +416,11 @@ void ScrollingTreeScrollingNodeDelegateIOS::computeActiveTouchActionsForGestureR
 
 void ScrollingTreeScrollingNodeDelegateIOS::cancelPointersForGestureRecognizer(UIGestureRecognizer* gestureRecognizer)
 {
-    downcast<RemoteScrollingTree>(scrollingTree()).scrollingCoordinatorProxy().webPageProxy().pageClient().cancelPointersForGestureRecognizer(gestureRecognizer);
+    auto* scrollingCoordinatorProxy = downcast<RemoteScrollingTree>(scrollingTree()).scrollingCoordinatorProxy();
+    if (!scrollingCoordinatorProxy)
+        return;
+
+    scrollingCoordinatorProxy->webPageProxy().pageClient().cancelPointersForGestureRecognizer(gestureRecognizer);
 }
 
 } // namespace WebKit

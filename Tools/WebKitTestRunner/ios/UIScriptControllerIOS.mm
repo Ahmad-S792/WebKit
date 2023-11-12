@@ -28,13 +28,14 @@
 
 #if PLATFORM(IOS_FAMILY)
 
+#import "CocoaColorSerialization.h"
 #import "HIDEventGenerator.h"
 #import "PlatformViewHelpers.h"
 #import "PlatformWebView.h"
 #import "StringFunctions.h"
 #import "TestController.h"
 #import "TestRunnerWKWebView.h"
-#import "UIKitSPI.h"
+#import "UIKitSPIForTesting.h"
 #import "UIScriptContext.h"
 #import <JavaScriptCore/JavaScriptCore.h>
 #import <JavaScriptCore/OpaqueJSString.h>
@@ -56,9 +57,24 @@ SOFT_LINK_CLASS(UIKit, UIPhysicalKeyboardEvent)
 
 @interface UIPhysicalKeyboardEvent (UIPhysicalKeyboardEventHack)
 @property (nonatomic, assign) NSInteger _modifierFlags;
+// FIXME: <rdar://107768498> Replace this declaration with a "setter=" above, once the setter is available everywhere we need.
+- (void)_setModifierFlags:(NSInteger)modifierFlags;
 @end
 
 namespace WTR {
+
+#if HAVE(UI_TEXT_SELECTION_DISPLAY_INTERACTION)
+
+static bool isHiddenOrHasHiddenAncestor(UIView *view)
+{
+    for (auto currentAncestor = view; currentAncestor; currentAncestor = currentAncestor.superview) {
+        if (currentAncestor.hidden)
+            return true;
+    }
+    return false;
+}
+
+#endif // HAVE(UI_TEXT_SELECTION_DISPLAY_INTERACTION)
 
 static BOOL returnYes()
 {
@@ -88,6 +104,46 @@ static NSDictionary *toNSDictionary(UIEdgeInsets insets)
         @"bottom" : @(insets.bottom),
         @"right" : @(insets.right)
     };
+}
+
+static RetainPtr<NSDictionary> toNSDictionary(CGPathRef path)
+{
+    auto pathElementTypeToString = [](CGPathElementType type) {
+        switch (type) {
+        case kCGPathElementMoveToPoint:
+            return @"MoveToPoint";
+
+        case kCGPathElementAddLineToPoint:
+            return @"AddLineToPoint";
+
+        case kCGPathElementAddQuadCurveToPoint:
+            return @"AddQuadCurveToPoint";
+
+        case kCGPathElementAddCurveToPoint:
+            return @"AddCurveToPoint";
+
+        case kCGPathElementCloseSubpath:
+            return @"CloseSubpath";
+
+        default:
+            return @"Unknown";
+        }
+    };
+
+    auto attributes = adoptNS([[NSMutableDictionary alloc] init]);
+
+    CGPathApplyWithBlock(path, ^(const CGPathElement *element) {
+        if (!element)
+            return;
+
+        NSString *typeString = pathElementTypeToString(element->type);
+        [attributes setObject:@{
+            @"x": @(element->points->x),
+            @"y": @(element->points->y),
+        } forKey:typeString];
+    });
+
+    return attributes;
 }
 
 static Vector<String> parseModifierArray(JSContextRef context, JSValueRef arrayValue)
@@ -209,6 +265,11 @@ void UIScriptControllerIOS::simulateAccessibilitySettingsChangeNotification(JSVa
 double UIScriptControllerIOS::zoomScale() const
 {
     return webView().scrollView.zoomScale;
+}
+
+bool UIScriptControllerIOS::isZoomingOrScrolling() const
+{
+    return webView().zoomingOrScrolling;
 }
 
 static CGPoint globalToContentCoordinates(TestRunnerWKWebView *webView, long x, long y)
@@ -540,11 +601,22 @@ void UIScriptControllerIOS::typeCharacterUsingHardwareKeyboard(JSStringRef chara
     }).get()];
 }
 
-static UIPhysicalKeyboardEvent *createUIPhysicalKeyboardEvent(NSString *hidInputString, NSString *uiEventInputString, UIKeyModifierFlags modifierFlags, UIKeyboardInputFlags inputFlags, bool isKeyDown)
+static void setModifierFlagsForUIPhysicalKeyboardEvent(UIPhysicalKeyboardEvent *keyboardEvent, UIKeyModifierFlags modifierFlags)
+{
+    // FIXME: <rdar://107768498> Remove the respondsToSelector check once the method is available everywhere we need.
+    if ([keyboardEvent respondsToSelector:@selector(_setModifierFlags:)])
+        [keyboardEvent _setModifierFlags:modifierFlags];
+    else
+        keyboardEvent._modifierFlags = modifierFlags;
+}
+
+enum class IsKeyDown : bool { No, Yes };
+
+static UIPhysicalKeyboardEvent *createUIPhysicalKeyboardEvent(NSString *hidInputString, NSString *uiEventInputString, UIKeyModifierFlags modifierFlags, UIKeyboardInputFlags inputFlags, IsKeyDown isKeyDown)
 {
     auto* keyboardEvent = [getUIPhysicalKeyboardEventClass() _eventWithInput:uiEventInputString inputFlags:inputFlags];
-    keyboardEvent._modifierFlags = modifierFlags;
-    auto hidEvent = createHIDKeyEvent(hidInputString, keyboardEvent.timestamp, isKeyDown);
+    setModifierFlagsForUIPhysicalKeyboardEvent(keyboardEvent, modifierFlags);
+    auto hidEvent = createHIDKeyEvent(hidInputString, keyboardEvent.timestamp, isKeyDown == IsKeyDown::Yes);
     [keyboardEvent _setHIDEvent:hidEvent.get() keyboard:nullptr];
     return keyboardEvent;
 }
@@ -763,8 +835,8 @@ void UIScriptControllerIOS::applyAutocorrection(JSStringRef newString, JSStringR
 {
     unsigned callbackID = m_context->prepareForAsyncTask(callback, CallbackTypeNonPersistent);
 
-    TestRunnerWKWebView *webView = this->webView();
-    [webView applyAutocorrection:toWTFString(newString) toString:toWTFString(oldString) withCompletionHandler:makeBlockPtr([this, strongThis = Ref { *this }, callbackID] {
+    auto contentView = static_cast<id<UIWKInteractionViewProtocol>>(platformContentView());
+    [contentView applyAutocorrection:toWTFString(newString) toString:toWTFString(oldString) shouldUnderline:NO withCompletionHandler:makeBlockPtr([this, strongThis = Ref { *this }, callbackID](UIWKAutocorrectionRects *) {
         dispatch_async(dispatch_get_main_queue(), makeBlockPtr([this, strongThis = Ref { *this }, callbackID] {
             // applyAutocorrection can call its completion handler synchronously,
             // which makes UIScriptController unhappy (see bug 172884).
@@ -811,21 +883,6 @@ JSObjectRef UIScriptControllerIOS::contentVisibleRect() const
     return m_context->objectFromRect(rect);
 }
 
-JSObjectRef UIScriptControllerIOS::textSelectionRangeRects() const
-{
-    auto selectionRects = adoptNS([[NSMutableArray alloc] init]);
-    NSArray *rects = webView()._uiTextSelectionRects;
-    for (NSValue *rect in rects)
-        [selectionRects addObject:toNSDictionary(rect.CGRectValue)];
-
-    return JSValueToObject(m_context->jsContext(), [JSValue valueWithObject:selectionRects.get() inContext:[JSContext contextWithJSGlobalContextRef:m_context->jsContext()]].JSValueRef, nullptr);
-}
-
-JSObjectRef UIScriptControllerIOS::textSelectionCaretRect() const
-{
-    return JSValueToObject(m_context->jsContext(), [JSValue valueWithObject:toNSDictionary(webView()._uiTextCaretRect) inContext:[JSContext contextWithJSGlobalContextRef:m_context->jsContext()]].JSValueRef, nullptr);
-}
-
 static void clipSelectionViewRectToContentView(CGRect& rect, UIView *contentView)
 {
     rect = CGRectIntersection(contentView.bounds, rect);
@@ -839,8 +896,16 @@ static void clipSelectionViewRectToContentView(CGRect& rect, UIView *contentView
 JSObjectRef UIScriptControllerIOS::selectionStartGrabberViewRect() const
 {
     UIView *contentView = platformContentView();
-    UIView *selectionRangeView = [contentView valueForKeyPath:@"interactionAssistant.selectionView.rangeView"];
-    auto frameInContentViewCoordinates = [selectionRangeView convertRect:[[selectionRangeView valueForKeyPath:@"startGrabber"] frame] toView:contentView];
+    UIView *handleView = nil;
+
+#if HAVE(UI_TEXT_SELECTION_DISPLAY_INTERACTION)
+    if (auto view = textSelectionDisplayInteraction().handleViews.firstObject; !isHiddenOrHasHiddenAncestor(view))
+        handleView = view;
+#else
+    handleView = [contentView valueForKeyPath:@"interactionAssistant.selectionView.rangeView.startGrabber"];
+#endif
+
+    auto frameInContentViewCoordinates = [handleView convertRect:handleView.bounds toView:contentView];
     clipSelectionViewRectToContentView(frameInContentViewCoordinates, contentView);
     auto jsContext = m_context->jsContext();
     return JSValueToObject(jsContext, [JSValue valueWithObject:toNSDictionary(frameInContentViewCoordinates) inContext:[JSContext contextWithJSGlobalContextRef:jsContext]].JSValueRef, nullptr);
@@ -849,31 +914,86 @@ JSObjectRef UIScriptControllerIOS::selectionStartGrabberViewRect() const
 JSObjectRef UIScriptControllerIOS::selectionEndGrabberViewRect() const
 {
     UIView *contentView = platformContentView();
-    UIView *selectionRangeView = [contentView valueForKeyPath:@"interactionAssistant.selectionView.rangeView"];
-    auto frameInContentViewCoordinates = [selectionRangeView convertRect:[[selectionRangeView valueForKeyPath:@"endGrabber"] frame] toView:contentView];
+    UIView *handleView = nil;
+
+#if HAVE(UI_TEXT_SELECTION_DISPLAY_INTERACTION)
+    if (auto view = textSelectionDisplayInteraction().handleViews.lastObject; !isHiddenOrHasHiddenAncestor(view))
+        handleView = view;
+#else
+    handleView = [contentView valueForKeyPath:@"interactionAssistant.selectionView.rangeView.endGrabber"];
+#endif
+
+    auto frameInContentViewCoordinates = [handleView convertRect:handleView.bounds toView:contentView];
     clipSelectionViewRectToContentView(frameInContentViewCoordinates, contentView);
     auto jsContext = m_context->jsContext();
     return JSValueToObject(jsContext, [JSValue valueWithObject:toNSDictionary(frameInContentViewCoordinates) inContext:[JSContext contextWithJSGlobalContextRef:jsContext]].JSValueRef, nullptr);
 }
 
-JSObjectRef UIScriptControllerIOS::selectionCaretViewRect() const
+JSObjectRef UIScriptControllerIOS::selectionEndGrabberViewShapePathDescription() const
+{
+    UIView *handleView = nil;
+
+#if HAVE(UI_TEXT_SELECTION_DISPLAY_INTERACTION)
+    if (auto view = textSelectionDisplayInteraction().handleViews.lastObject; !isHiddenOrHasHiddenAncestor(view))
+        handleView = view;
+#else
+    UIView *contentView = platformContentView();
+    handleView = [contentView valueForKeyPath:@"interactionAssistant.selectionView.rangeView.endGrabber"];
+#endif
+
+    return JSValueToObject(m_context->jsContext(), [JSValue valueWithObject:toNSDictionary((CGPathRef)[handleView valueForKeyPath:@"stemView.shapeLayer.path"]).get() inContext:[JSContext contextWithJSGlobalContextRef:m_context->jsContext()]].JSValueRef, nullptr);
+}
+
+JSObjectRef UIScriptControllerIOS::selectionCaretViewRect(id<UICoordinateSpace> coordinateSpace) const
 {
     UIView *contentView = platformContentView();
-    UIView *caretView = [contentView valueForKeyPath:@"interactionAssistant.selectionView.caretView"];
-    auto rectInContentViewCoordinates = CGRectIntersection([caretView convertRect:caretView.bounds toView:contentView], contentView.bounds);
-    clipSelectionViewRectToContentView(rectInContentViewCoordinates, contentView);
-    return JSValueToObject(m_context->jsContext(), [JSValue valueWithObject:toNSDictionary(rectInContentViewCoordinates) inContext:[JSContext contextWithJSGlobalContextRef:m_context->jsContext()]].JSValueRef, nullptr);
+    UIView *caretView = nil;
+
+#if HAVE(UI_TEXT_SELECTION_DISPLAY_INTERACTION)
+    if (auto view = textSelectionDisplayInteraction().cursorView; !isHiddenOrHasHiddenAncestor(view))
+        caretView = view;
+#else
+    caretView = [contentView valueForKeyPath:@"interactionAssistant.selectionView.caretView"];
+#endif
+
+    auto contentRect = CGRectIntersection([caretView convertRect:caretView.bounds toView:contentView], contentView.bounds);
+    clipSelectionViewRectToContentView(contentRect, contentView);
+    if (coordinateSpace != contentView)
+        contentRect = [coordinateSpace convertRect:contentRect fromCoordinateSpace:contentView];
+    return JSValueToObject(m_context->jsContext(), [JSValue valueWithObject:toNSDictionary(contentRect) inContext:[JSContext contextWithJSGlobalContextRef:m_context->jsContext()]].JSValueRef, nullptr);
+}
+
+JSObjectRef UIScriptControllerIOS::selectionCaretViewRect() const
+{
+    return selectionCaretViewRect(platformContentView());
+}
+
+JSObjectRef UIScriptControllerIOS::selectionCaretViewRectInGlobalCoordinates() const
+{
+    return selectionCaretViewRect(webView());
 }
 
 JSObjectRef UIScriptControllerIOS::selectionRangeViewRects() const
 {
     UIView *contentView = platformContentView();
-    UIView *rangeView = [contentView valueForKeyPath:@"interactionAssistant.selectionView.rangeView"];
+    UIView *rangeView = nil;
     auto rectsAsDictionaries = adoptNS([[NSMutableArray alloc] init]);
-    NSArray *textRectInfoArray = [rangeView valueForKeyPath:@"rects"];
-    for (id textRectInfo in textRectInfoArray) {
-        NSValue *rectValue = [textRectInfo valueForKeyPath:@"rect"];
-        auto rangeRectInContentViewCoordinates = [rangeView convertRect:rectValue.CGRectValue toView:contentView];
+    NSArray<UITextSelectionRect *> *textRectInfoArray = nil;
+
+#if HAVE(UI_TEXT_SELECTION_DISPLAY_INTERACTION)
+    if (!textRectInfoArray) {
+        if (auto view = textSelectionDisplayInteraction().highlightView; !isHiddenOrHasHiddenAncestor(view)) {
+            rangeView = view;
+            textRectInfoArray = view.selectionRects;
+        }
+    }
+#else
+    rangeView = [contentView valueForKeyPath:@"interactionAssistant.selectionView.rangeView"];
+    textRectInfoArray = [rangeView valueForKeyPath:@"rects"];
+#endif
+
+    for (UITextSelectionRect *textRectInfo in textRectInfoArray) {
+        auto rangeRectInContentViewCoordinates = [rangeView convertRect:textRectInfo.rect toView:contentView];
         clipSelectionViewRectToContentView(rangeRectInContentViewCoordinates, contentView);
         [rectsAsDictionaries addObject:toNSDictionary(CGRectIntersection(rangeRectInContentViewCoordinates, contentView.bounds))];
     }
@@ -1078,6 +1198,11 @@ bool UIScriptControllerIOS::isShowingPopover() const
     return webView().showingPopover;
 }
 
+bool UIScriptControllerIOS::isShowingFormValidationBubble() const
+{
+    return webView().showingFormValidationBubble;
+}
+
 void UIScriptControllerIOS::setWillPresentPopoverCallback(JSValueRef callback)
 {
     UIScriptController::setWillPresentPopoverCallback(callback);
@@ -1112,20 +1237,6 @@ WebCore::FloatRect UIScriptControllerIOS::rectForMenuAction(CFStringRef action) 
 {
     UIView *viewForAction = nil;
 
-    if (UIView *calloutBar = UICalloutBar.activeCalloutBar; calloutBar.window) {
-        for (UIButton *button in findAllViewsInHierarchyOfType(calloutBar, UIButton.class)) {
-            NSString *buttonTitle = [button titleForState:UIControlStateNormal];
-            if (!buttonTitle.length)
-                continue;
-
-            if (![buttonTitle isEqualToString:(__bridge NSString *)action])
-                continue;
-
-            viewForAction = button;
-            break;
-        }
-    }
-
     auto searchForLabel = [&](UIWindow *window) -> UILabel * {
         for (UILabel *label in findAllViewsInHierarchyOfType(window, UILabel.class)) {
             if ([label.text isEqualToString:(__bridge NSString *)action])
@@ -1146,11 +1257,7 @@ WebCore::FloatRect UIScriptControllerIOS::rectForMenuAction(CFStringRef action) 
 
 JSObjectRef UIScriptControllerIOS::menuRect() const
 {
-    UIView *containerView = nil;
-    if (auto *calloutBar = UICalloutBar.activeCalloutBar; calloutBar.window)
-        containerView = calloutBar;
-    else
-        containerView = findAllViewsInHierarchyOfType(webView().textEffectsWindow, internalClassNamed(@"_UIEditMenuListView")).firstObject;
+    auto containerView = findAllViewsInHierarchyOfType(webView().textEffectsWindow, internalClassNamed(@"_UIEditMenuListView")).firstObject;
     return containerView ? toObject([containerView convertRect:containerView.bounds toView:platformContentView()]) : nullptr;
 }
 
@@ -1261,15 +1368,26 @@ void UIScriptControllerIOS::setKeyboardInputModeIdentifier(JSStringRef identifie
 void UIScriptControllerIOS::toggleCapsLock(JSValueRef callback)
 {
     m_capsLockOn = !m_capsLockOn;
-    auto *keyboardEvent = createUIPhysicalKeyboardEvent(@"capsLock", [NSString string], m_capsLockOn ? UIKeyModifierAlphaShift : 0,
-        kUIKeyboardInputModifierFlagsChanged, m_capsLockOn);
-    [[UIApplication sharedApplication] handleKeyUIEvent:keyboardEvent];
+    auto uiKeyModifierFlag = m_capsLockOn ? UIKeyModifierAlphaShift : 0;
+    auto *keyboardEventDown = createUIPhysicalKeyboardEvent(@"capsLock", @"", uiKeyModifierFlag, kUIKeyboardInputModifierFlagsChanged, IsKeyDown::Yes);
+    auto *keyboardEventUp = createUIPhysicalKeyboardEvent(@"capsLock", @"", uiKeyModifierFlag, kUIKeyboardInputModifierFlagsChanged, IsKeyDown::No);
+    auto *pressInfo = [[UIApplication sharedApplication] _pressInfoForPhysicalKeyboardEvent:keyboardEventDown];
+    auto press = adoptNS([[UIPress alloc] init]);
+    [press _loadStateFromPressInfo:pressInfo];
+    auto *presses = [NSSet setWithObject:press.get()];
+    [platformContentView() pressesBegan:presses withEvent:keyboardEventDown];
+    [platformContentView() pressesEnded:presses withEvent:keyboardEventUp];
     doAsyncTask(callback);
 }
 
 bool UIScriptControllerIOS::keyboardIsAutomaticallyShifted() const
 {
     return UIKeyboardImpl.activeInstance.isAutoShifted;
+}
+
+unsigned UIScriptControllerIOS::keyboardWillHideCount() const
+{
+    return static_cast<unsigned>(webView().keyboardWillHideCount);
 }
 
 bool UIScriptControllerIOS::isAnimatingDragCancel() const
@@ -1279,11 +1397,20 @@ bool UIScriptControllerIOS::isAnimatingDragCancel() const
 
 JSRetainPtr<JSStringRef> UIScriptControllerIOS::selectionCaretBackgroundColor() const
 {
-    NSString *serializedColor = webView()._serializedSelectionCaretBackgroundColorForTesting;
-    if (!serializedColor)
-        return { };
+    UIColor *backgroundColor = nil;
+#if HAVE(UI_TEXT_SELECTION_DISPLAY_INTERACTION)
+    if (auto view = textSelectionDisplayInteraction().cursorView; !isHiddenOrHasHiddenAncestor(view))
+        backgroundColor = view.tintColor;
+#else
+    auto contentView = platformContentView();
+    backgroundColor = [contentView valueForKeyPath:@"textInteractionAssistant.selectionView.caretView.backgroundColor"];
+#endif
 
-    return adopt(JSStringCreateWithCFString((__bridge CFStringRef)serializedColor));
+    if (!backgroundColor)
+        return nil;
+
+    auto serialization = WebCoreTestSupport::serializationForCSS(backgroundColor).createCFString();
+    return adopt(JSStringCreateWithCFString(serialization.get()));
 }
 
 JSObjectRef UIScriptControllerIOS::tapHighlightViewRect() const
@@ -1419,6 +1546,15 @@ void UIScriptControllerIOS::resignFirstResponder()
 {
     [webView() resignFirstResponder];
 }
+
+#if HAVE(UI_TEXT_SELECTION_DISPLAY_INTERACTION)
+
+UITextSelectionDisplayInteraction *UIScriptControllerIOS::textSelectionDisplayInteraction() const
+{
+    return dynamic_objc_cast<UITextSelectionDisplayInteraction>([platformContentView() valueForKeyPath:@"interactionAssistant._selectionViewManager"]);
+}
+
+#endif
 
 }
 

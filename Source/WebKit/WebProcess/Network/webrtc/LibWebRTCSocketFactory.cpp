@@ -41,7 +41,7 @@ using namespace WebCore;
 
 static inline rtc::SocketAddress prepareSocketAddress(const rtc::SocketAddress& address, bool disableNonLocalhostConnections)
 {
-    auto result = RTCNetwork::isolatedCopy(address);
+    auto result = RTC::Network::SocketAddress::isolatedCopy(address);
     if (disableNonLocalhostConnections)
         result.SetIP("127.0.0.1");
     return result;
@@ -50,15 +50,15 @@ static inline rtc::SocketAddress prepareSocketAddress(const rtc::SocketAddress& 
 void LibWebRTCSocketFactory::setConnection(RefPtr<IPC::Connection>&& connection)
 {
     ASSERT(!WTF::isMainRunLoop());
-    m_connection = WTFMove(connection);
+    m_connection = connection.copyRef();
     if (!m_connection)
         return;
 
-    m_connection->send(Messages::NetworkRTCProvider::SetPlatformTCPSocketsEnabled(DeprecatedGlobalSettings::webRTCPlatformTCPSocketsEnabled()), 0);
-    m_connection->send(Messages::NetworkRTCProvider::SetPlatformUDPSocketsEnabled(DeprecatedGlobalSettings::webRTCPlatformUDPSocketsEnabled()), 0);
+    connection->send(Messages::NetworkRTCProvider::SetPlatformTCPSocketsEnabled(DeprecatedGlobalSettings::webRTCPlatformTCPSocketsEnabled()), 0);
+    connection->send(Messages::NetworkRTCProvider::SetPlatformUDPSocketsEnabled(DeprecatedGlobalSettings::webRTCPlatformUDPSocketsEnabled()), 0);
 
     while (!m_pendingMessageTasks.isEmpty())
-        m_pendingMessageTasks.takeFirst()(*m_connection);
+        m_pendingMessageTasks.takeFirst()(*connection);
 }
 
 IPC::Connection* LibWebRTCSocketFactory::connection()
@@ -67,10 +67,10 @@ IPC::Connection* LibWebRTCSocketFactory::connection()
     return m_connection.get();
 }
 
-rtc::AsyncPacketSocket* LibWebRTCSocketFactory::createUdpSocket(const void* socketGroup, const rtc::SocketAddress& address, uint16_t minPort, uint16_t maxPort, WebPageProxyIdentifier pageIdentifier, bool isFirstParty, bool isRelayDisabled, const WebCore::RegistrableDomain& domain)
+rtc::AsyncPacketSocket* LibWebRTCSocketFactory::createUdpSocket(WebCore::ScriptExecutionContextIdentifier contextIdentifier, const rtc::SocketAddress& address, uint16_t minPort, uint16_t maxPort, WebPageProxyIdentifier pageIdentifier, bool isFirstParty, bool isRelayDisabled, const WebCore::RegistrableDomain& domain)
 {
     ASSERT(!WTF::isMainRunLoop());
-    auto socket = makeUnique<LibWebRTCSocket>(*this, socketGroup, LibWebRTCSocket::Type::UDP, address, rtc::SocketAddress());
+    auto socket = makeUnique<LibWebRTCSocket>(*this, contextIdentifier, LibWebRTCSocket::Type::UDP, address, rtc::SocketAddress());
 
     if (m_connection)
         m_connection->send(Messages::NetworkRTCProvider::CreateUDPSocket(socket->identifier(), RTCNetwork::SocketAddress(address), minPort, maxPort, pageIdentifier, isFirstParty, isRelayDisabled, domain), 0);
@@ -86,11 +86,11 @@ rtc::AsyncPacketSocket* LibWebRTCSocketFactory::createUdpSocket(const void* sock
     return socket.release();
 }
 
-rtc::AsyncPacketSocket* LibWebRTCSocketFactory::createClientTcpSocket(const void* socketGroup, const rtc::SocketAddress& localAddress, const rtc::SocketAddress& remoteAddress, String&& userAgent, const rtc::PacketSocketTcpOptions& options, WebPageProxyIdentifier pageIdentifier, bool isFirstParty, bool isRelayDisabled, const WebCore::RegistrableDomain& domain)
+rtc::AsyncPacketSocket* LibWebRTCSocketFactory::createClientTcpSocket(WebCore::ScriptExecutionContextIdentifier contextIdentifier, const rtc::SocketAddress& localAddress, const rtc::SocketAddress& remoteAddress, String&& userAgent, const rtc::PacketSocketTcpOptions& options, WebPageProxyIdentifier pageIdentifier, bool isFirstParty, bool isRelayDisabled, const WebCore::RegistrableDomain& domain)
 {
     ASSERT(!WTF::isMainRunLoop());
 
-    auto socket = makeUnique<LibWebRTCSocket>(*this, socketGroup, LibWebRTCSocket::Type::ClientTCP, localAddress, remoteAddress);
+    auto socket = makeUnique<LibWebRTCSocket>(*this, contextIdentifier, LibWebRTCSocket::Type::ClientTCP, localAddress, remoteAddress);
     socket->setState(LibWebRTCSocket::STATE_CONNECTING);
 
     // FIXME: We only transfer options.opts but should also handle other members.
@@ -117,7 +117,7 @@ rtc::AsyncPacketSocket* LibWebRTCSocketFactory::createNewConnectionSocket(LibWeb
         return nullptr;
     }
 
-    auto socket = makeUnique<LibWebRTCSocket>(*this, serverSocket.socketGroup(), LibWebRTCSocket::Type::ServerConnectionTCP, serverSocket.localAddress(), remoteAddress);
+    auto socket = makeUnique<LibWebRTCSocket>(*this, serverSocket.contextIdentifier(), LibWebRTCSocket::Type::ServerConnectionTCP, serverSocket.localAddress(), remoteAddress);
     socket->setState(LibWebRTCSocket::STATE_CONNECTED);
 
     m_connection->send(Messages::NetworkRTCProvider::WrapNewTCPConnection(socket->identifier(), newConnectionSocketIdentifier), 0);
@@ -139,11 +139,11 @@ void LibWebRTCSocketFactory::removeSocket(LibWebRTCSocket& socket)
     m_sockets.remove(socket.identifier());
 }
 
-void LibWebRTCSocketFactory::forSocketInGroup(const void* socketGroup, const Function<void(LibWebRTCSocket&)>& callback)
+void LibWebRTCSocketFactory::forSocketInGroup(ScriptExecutionContextIdentifier contextIdentifier, const Function<void(LibWebRTCSocket&)>& callback)
 {
     ASSERT(!WTF::isMainRunLoop());
-    for (auto* socket : m_sockets.values()) {
-        if (socket->socketGroup() == socketGroup)
+    for (auto& socket : m_sockets.values()) {
+        if (socket->contextIdentifier() == contextIdentifier)
             callback(*socket);
     }
 }

@@ -31,6 +31,7 @@
 #include "RemoteCompositorIntegrationMessages.h"
 #include "RemoteGPUProxy.h"
 #include "WebGPUConvertToBackingContext.h"
+#include <WebCore/ImageBuffer.h>
 
 namespace WebKit::WebGPU {
 
@@ -41,17 +42,21 @@ RemoteCompositorIntegrationProxy::RemoteCompositorIntegrationProxy(RemoteGPUProx
 {
 }
 
-RemoteCompositorIntegrationProxy::~RemoteCompositorIntegrationProxy() = default;
+RemoteCompositorIntegrationProxy::~RemoteCompositorIntegrationProxy()
+{
+    auto sendResult = send(Messages::RemoteCompositorIntegration::Destruct());
+    UNUSED_VARIABLE(sendResult);
+}
 
 #if PLATFORM(COCOA)
 Vector<MachSendRight> RemoteCompositorIntegrationProxy::recreateRenderBuffers(int height, int width)
 {
     auto sendResult = sendSync(Messages::RemoteCompositorIntegration::RecreateRenderBuffers(height, width));
-    if (!sendResult)
+    if (!sendResult.succeeded())
         return { };
 
     auto [renderBuffers] = sendResult.takeReply();
-    return renderBuffers;
+    return WTFMove(renderBuffers);
 }
 #endif
 
@@ -63,6 +68,18 @@ void RemoteCompositorIntegrationProxy::prepareForDisplay(CompletionHandler<void(
     m_presentationContext->present();
 
     completionHandler();
+}
+
+void RemoteCompositorIntegrationProxy::paintCompositedResultsToCanvas(WebCore::ImageBuffer& buffer, uint32_t bufferIndex)
+{
+    buffer.flushDrawingContext();
+    auto sendResult = sendSync(Messages::RemoteCompositorIntegration::PaintCompositedResultsToCanvas(buffer.renderingResourceIdentifier(), bufferIndex));
+    UNUSED_VARIABLE(sendResult);
+}
+
+void RemoteCompositorIntegrationProxy::withDisplayBufferAsNativeImage(uint32_t, Function<void(WebCore::NativeImage&)>)
+{
+    RELEASE_ASSERT_NOT_REACHED();
 }
 
 } // namespace WebKit::WebGPU

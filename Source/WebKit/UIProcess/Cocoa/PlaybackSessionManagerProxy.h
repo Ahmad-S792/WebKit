@@ -29,9 +29,8 @@
 
 #include "MessageReceiver.h"
 #include "PlaybackSessionContextIdentifier.h"
-#include <WebCore/GraphicsLayer.h>
 #include <WebCore/MediaSelectionOption.h>
-#include <WebCore/PlatformView.h>
+#include <WebCore/PlatformPlaybackSessionInterface.h>
 #include <WebCore/PlaybackSessionModel.h>
 #include <WebCore/TimeRanges.h>
 #include <wtf/HashCountedSet.h>
@@ -39,18 +38,7 @@
 #include <wtf/HashSet.h>
 #include <wtf/RefCounted.h>
 #include <wtf/RefPtr.h>
-
-#if PLATFORM(IOS_FAMILY)
-#include <WebCore/PlaybackSessionInterfaceAVKit.h>
-#else
-#include <WebCore/PlaybackSessionInterfaceMac.h>
-#endif
-
-#if PLATFORM(IOS_FAMILY)
-typedef WebCore::PlaybackSessionInterfaceAVKit PlatformPlaybackSessionInterface;
-#else
-typedef WebCore::PlaybackSessionInterfaceMac PlatformPlaybackSessionInterface;
-#endif
+#include <wtf/WeakHashSet.h>
 
 namespace WebKit {
 
@@ -64,8 +52,6 @@ public:
         return adoptRef(*new PlaybackSessionModelContext(manager, contextId));
     }
     virtual ~PlaybackSessionModelContext() { }
-
-    void invalidate() { m_manager = nullptr; }
 
     // PlaybackSessionModel
     void addClient(WebCore::PlaybackSessionModelClient&) final;
@@ -93,13 +79,9 @@ public:
 
 private:
     friend class PlaybackSessionManagerProxy;
-    friend class VideoFullscreenModelContext;
+    friend class VideoPresentationModelContext;
 
-    PlaybackSessionModelContext(PlaybackSessionManagerProxy& manager, PlaybackSessionContextIdentifier contextId)
-        : m_manager(&manager)
-        , m_contextId(contextId)
-    {
-    }
+    PlaybackSessionModelContext(PlaybackSessionManagerProxy&, PlaybackSessionContextIdentifier);
 
     // PlaybackSessionModel
     void play() final;
@@ -148,9 +130,18 @@ private:
     bool isPictureInPictureSupported() const final { return m_pictureInPictureSupported; }
     bool isPictureInPictureActive() const final { return m_pictureInPictureActive; }
 
-    PlaybackSessionManagerProxy* m_manager;
+#if !RELEASE_LOG_DISABLED
+    void setLogIdentifier(const void* identifier) { m_logIdentifier = identifier; }
+    const void* logIdentifier() const final { return m_logIdentifier; }
+    const Logger* loggerPtr() const;
+
+    const char* logClassName() const { return "PlaybackSessionModelContext"; };
+    WTFLogChannel& logChannel() const;
+#endif
+
+    WeakPtr<PlaybackSessionManagerProxy> m_manager;
     PlaybackSessionContextIdentifier m_contextId;
-    HashSet<WebCore::PlaybackSessionModelClient*> m_clients;
+    WeakHashSet<WebCore::PlaybackSessionModelClient> m_clients;
     double m_playbackStartedTime { 0 };
     bool m_playbackStartedTimeNeedsUpdate { false };
     double m_duration { 0 };
@@ -176,16 +167,27 @@ private:
     double m_volume { 0 };
     bool m_pictureInPictureSupported { false };
     bool m_pictureInPictureActive { false };
+
+#if !RELEASE_LOG_DISABLED
+    const void* m_logIdentifier { nullptr };
+#endif
 };
 
-class PlaybackSessionManagerProxy : public RefCounted<PlaybackSessionManagerProxy>, private IPC::MessageReceiver {
+class PlaybackSessionManagerProxy
+    : public RefCounted<PlaybackSessionManagerProxy>
+    , public CanMakeWeakPtr<PlaybackSessionManagerProxy>
+    , private IPC::MessageReceiver {
 public:
+    using CanMakeWeakPtr<PlaybackSessionManagerProxy>::WeakPtrImplType;
+    using CanMakeWeakPtr<PlaybackSessionManagerProxy>::WeakValueType;
+    using CanMakeWeakPtr<PlaybackSessionManagerProxy>::weakPtrFactory;
+
     static Ref<PlaybackSessionManagerProxy> create(WebPageProxy&);
     virtual ~PlaybackSessionManagerProxy();
 
     void invalidate();
 
-    PlatformPlaybackSessionInterface* controlsManagerInterface();
+    WebCore::PlatformPlaybackSessionInterface* controlsManagerInterface();
     void requestControlledElementID();
 
     bool isPaused(PlaybackSessionContextIdentifier) const;
@@ -195,16 +197,16 @@ public:
 
 private:
     friend class PlaybackSessionModelContext;
-    friend class VideoFullscreenManagerProxy;
+    friend class VideoPresentationManagerProxy;
 
     explicit PlaybackSessionManagerProxy(WebPageProxy&);
     void didReceiveMessage(IPC::Connection&, IPC::Decoder&) final;
 
-    typedef std::tuple<RefPtr<PlaybackSessionModelContext>, RefPtr<PlatformPlaybackSessionInterface>> ModelInterfaceTuple;
+    typedef std::tuple<RefPtr<PlaybackSessionModelContext>, RefPtr<WebCore::PlatformPlaybackSessionInterface>> ModelInterfaceTuple;
     ModelInterfaceTuple createModelAndInterface(PlaybackSessionContextIdentifier);
     ModelInterfaceTuple& ensureModelAndInterface(PlaybackSessionContextIdentifier);
     PlaybackSessionModelContext& ensureModel(PlaybackSessionContextIdentifier);
-    PlatformPlaybackSessionInterface& ensureInterface(PlaybackSessionContextIdentifier);
+    WebCore::PlatformPlaybackSessionInterface& ensureInterface(PlaybackSessionContextIdentifier);
     void addClientForContext(PlaybackSessionContextIdentifier);
     void removeClientForContext(PlaybackSessionContextIdentifier);
 
@@ -253,10 +255,24 @@ private:
     void setPlayingOnSecondScreen(PlaybackSessionContextIdentifier, bool);
     void sendRemoteCommand(PlaybackSessionContextIdentifier, WebCore::PlatformMediaSession::RemoteControlCommandType, const WebCore::PlatformMediaSession::RemoteCommandArgument&);
 
-    WebPageProxy* m_page;
+#if !RELEASE_LOG_DISABLED
+    void setLogIdentifier(PlaybackSessionContextIdentifier, uint64_t);
+
+    const Logger& logger() const { return m_logger; }
+    const void* logIdentifier() const { return m_logIdentifier; }
+    const char* logClassName() const { return "VideoPresentationManagerProxy"; }
+    WTFLogChannel& logChannel() const;
+#endif
+
+    WeakPtr<WebPageProxy> m_page;
     HashMap<PlaybackSessionContextIdentifier, ModelInterfaceTuple> m_contextMap;
     PlaybackSessionContextIdentifier m_controlsManagerContextId;
     HashCountedSet<PlaybackSessionContextIdentifier> m_clientCounts;
+
+#if !RELEASE_LOG_DISABLED
+    Ref<const Logger> m_logger;
+    const void* m_logIdentifier;
+#endif
 };
 
 } // namespace WebKit

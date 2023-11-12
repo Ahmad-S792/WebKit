@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2021 Apple Inc. All rights reserved.
+ * Copyright (C) 2021-2023 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -28,8 +28,10 @@
 #if ENABLE(IPC_TESTING_API) || !LOG_DISABLED
 
 #include "AudioMediaStreamTrackRendererInternalUnitIdentifier.h"
+#include "Connection.h"
 #include "ContentWorldShared.h"
 #include "DataTaskIdentifier.h"
+#include "DownloadID.h"
 #include "GeolocationIdentifier.h"
 #include "GraphicsContextGLIdentifier.h"
 #include "IPCConnectionTesterIdentifier.h"
@@ -38,7 +40,6 @@
 #include "JSIPCBinding.h"
 #include "LegacyCustomProtocolID.h"
 #include "LibWebRTCResolverIdentifier.h"
-#include "MDNSRegisterIdentifier.h"
 #include "MarkSurfacesAsVolatileRequestIdentifier.h"
 #include "MediaRecorderIdentifier.h"
 #include "NetworkResourceLoadIdentifier.h"
@@ -47,19 +48,33 @@
 #include "QuotaIncreaseRequestIdentifier.h"
 #include "RemoteAudioDestinationIdentifier.h"
 #include "RemoteAudioHardwareListenerIdentifier.h"
+#if ENABLE(GPU_PROCESS) && USE(AUDIO_SESSION)
 #include "RemoteAudioSessionIdentifier.h"
+#endif
+#if ENABLE(GPU_PROCESS) && ENABLE(ENCRYPTED_MEDIA)
 #include "RemoteCDMIdentifier.h"
+#endif
+#if ENABLE(GPU_PROCESS) && ENABLE(ENCRYPTED_MEDIA)
 #include "RemoteCDMInstanceIdentifier.h"
+#endif
+#if ENABLE(GPU_PROCESS) && ENABLE(ENCRYPTED_MEDIA)
 #include "RemoteCDMInstanceSessionIdentifier.h"
+#endif
+#if ENABLE(GPU_PROCESS) && ENABLE(LEGACY_ENCRYPTED_MEDIA)
 #include "RemoteLegacyCDMIdentifier.h"
+#endif
+#if ENABLE(GPU_PROCESS) && ENABLE(LEGACY_ENCRYPTED_MEDIA)
 #include "RemoteLegacyCDMSessionIdentifier.h"
+#endif
 #include "RemoteMediaResourceIdentifier.h"
 #include "RemoteRemoteCommandListenerIdentifier.h"
 #include "RemoteSerializedImageBufferIdentifier.h"
 #include "RemoteVideoFrameIdentifier.h"
 #include "RenderingBackendIdentifier.h"
 #include "RenderingUpdateID.h"
+#include "RetrieveRecordResponseBodyCallbackIdentifier.h"
 #include "SampleBufferDisplayLayerIdentifier.h"
+#include "ShapeDetectionIdentifier.h"
 #include "StorageAreaIdentifier.h"
 #include "StorageAreaImplIdentifier.h"
 #include "StorageAreaMapIdentifier.h"
@@ -71,13 +86,17 @@
 #include "VideoEncoderIdentifier.h"
 #include "WebExtensionContextIdentifier.h"
 #include "WebExtensionControllerIdentifier.h"
+#include "WebExtensionFrameIdentifier.h"
+#include "WebExtensionPortChannelIdentifier.h"
+#include "WebExtensionTabIdentifier.h"
+#include "WebExtensionWindowIdentifier.h"
 #include "WebGPUIdentifier.h"
 #include "WebPageProxyIdentifier.h"
+#include "WebTransportSession.h"
 #include "WebURLSchemeHandlerIdentifier.h"
+#include <WebCore/BackgroundFetchRecordIdentifier.h>
 #include <WebCore/BroadcastChannelIdentifier.h>
-#include <WebCore/DOMCacheIdentifier.h>
 #include <WebCore/DictationContext.h>
-#include <WebCore/DisplayList.h>
 #include <WebCore/ElementIdentifier.h>
 #include <WebCore/FetchIdentifier.h>
 #include <WebCore/FileSystemHandleIdentifier.h>
@@ -89,19 +108,24 @@
 #include <WebCore/MediaPlayerIdentifier.h>
 #include <WebCore/MediaSessionIdentifier.h>
 #include <WebCore/PageIdentifier.h>
+#if ENABLE(WIRELESS_PLAYBACK_TARGET)
 #include <WebCore/PlaybackTargetClientContextIdentifier.h>
+#endif
 #include <WebCore/PortIdentifier.h>
 #include <WebCore/ProcessIdentifier.h>
 #include <WebCore/PushSubscriptionIdentifier.h>
+#include <WebCore/RTCDataChannelLocalIdentifier.h>
 #include <WebCore/RealtimeMediaSourceIdentifier.h>
 #include <WebCore/RenderingResourceIdentifier.h>
 #include <WebCore/ResourceLoaderIdentifier.h>
+#include <WebCore/SecurityOriginData.h>
 #include <WebCore/ServiceWorkerIdentifier.h>
 #include <WebCore/ServiceWorkerTypes.h>
 #include <WebCore/SharedWorkerIdentifier.h>
 #include <WebCore/SleepDisablerIdentifier.h>
 #include <WebCore/SpeechRecognitionConnectionClientIdentifier.h>
 #include <WebCore/TextCheckingRequestIdentifier.h>
+#include <WebCore/TextManipulationItemIdentifier.h>
 #include <WebCore/TextManipulationToken.h>
 #include <WebCore/UserMediaRequestIdentifier.h>
 #include <WebCore/WebSocketIdentifier.h>
@@ -112,6 +136,7 @@
 #if (ENABLE(WEBKIT2) && (NESTED_MASTER_CONDITION || MASTER_OR && MASTER_AND))
 #include "TestWithoutAttributesMessages.h" // NOLINT
 #endif
+#include "TestWithoutUsingIPCConnectionMessages.h" // NOLINT
 #include "TestWithIfMessageMessages.h" // NOLINT
 #include "TestWithSemaphoreMessages.h" // NOLINT
 #include "TestWithImageDataMessages.h" // NOLINT
@@ -119,6 +144,8 @@
 #include "TestWithStreamBatchedMessages.h" // NOLINT
 #include "TestWithStreamBufferMessages.h" // NOLINT
 #include "TestWithCVPixelBufferMessages.h" // NOLINT
+#include "TestWithStreamServerConnectionHandleMessages.h" // NOLINT
+#include "TestWithEnabledIfMessages.h" // NOLINT
 
 namespace IPC {
 
@@ -263,6 +290,18 @@ std::optional<JSC::JSValue> jsValueForArguments(JSC::JSGlobalObject* globalObjec
         return jsValueForDecodedMessage<MessageName::TestWithoutAttributes_ExperimentalOperation>(globalObject, decoder);
 #endif
 #endif
+    case MessageName::TestWithoutUsingIPCConnection_MessageWithoutArgument:
+        return jsValueForDecodedMessage<MessageName::TestWithoutUsingIPCConnection_MessageWithoutArgument>(globalObject, decoder);
+    case MessageName::TestWithoutUsingIPCConnection_MessageWithoutArgumentAndEmptyReply:
+        return jsValueForDecodedMessage<MessageName::TestWithoutUsingIPCConnection_MessageWithoutArgumentAndEmptyReply>(globalObject, decoder);
+    case MessageName::TestWithoutUsingIPCConnection_MessageWithoutArgumentAndReplyWithArgument:
+        return jsValueForDecodedMessage<MessageName::TestWithoutUsingIPCConnection_MessageWithoutArgumentAndReplyWithArgument>(globalObject, decoder);
+    case MessageName::TestWithoutUsingIPCConnection_MessageWithArgument:
+        return jsValueForDecodedMessage<MessageName::TestWithoutUsingIPCConnection_MessageWithArgument>(globalObject, decoder);
+    case MessageName::TestWithoutUsingIPCConnection_MessageWithArgumentAndEmptyReply:
+        return jsValueForDecodedMessage<MessageName::TestWithoutUsingIPCConnection_MessageWithArgumentAndEmptyReply>(globalObject, decoder);
+    case MessageName::TestWithoutUsingIPCConnection_MessageWithArgumentAndReplyWithArgument:
+        return jsValueForDecodedMessage<MessageName::TestWithoutUsingIPCConnection_MessageWithArgumentAndReplyWithArgument>(globalObject, decoder);
 #if PLATFORM(COCOA)
     case MessageName::TestWithIfMessage_LoadURL:
         return jsValueForDecodedMessage<MessageName::TestWithIfMessage_LoadURL>(globalObject, decoder);
@@ -285,6 +324,8 @@ std::optional<JSC::JSValue> jsValueForArguments(JSC::JSGlobalObject* globalObjec
         return jsValueForDecodedMessage<MessageName::TestWithStream_SendStringAsync>(globalObject, decoder);
     case MessageName::TestWithStream_SendStringSync:
         return jsValueForDecodedMessage<MessageName::TestWithStream_SendStringSync>(globalObject, decoder);
+    case MessageName::TestWithStream_CallWithIdentifier:
+        return jsValueForDecodedMessage<MessageName::TestWithStream_CallWithIdentifier>(globalObject, decoder);
 #if PLATFORM(COCOA)
     case MessageName::TestWithStream_SendMachSendRight:
         return jsValueForDecodedMessage<MessageName::TestWithStream_SendMachSendRight>(globalObject, decoder);
@@ -303,6 +344,12 @@ std::optional<JSC::JSValue> jsValueForArguments(JSC::JSGlobalObject* globalObjec
     case MessageName::TestWithCVPixelBuffer_ReceiveCVPixelBuffer:
         return jsValueForDecodedMessage<MessageName::TestWithCVPixelBuffer_ReceiveCVPixelBuffer>(globalObject, decoder);
 #endif
+    case MessageName::TestWithStreamServerConnectionHandle_SendStreamServerConnection:
+        return jsValueForDecodedMessage<MessageName::TestWithStreamServerConnectionHandle_SendStreamServerConnection>(globalObject, decoder);
+    case MessageName::TestWithEnabledIf_AlwaysEnabled:
+        return jsValueForDecodedMessage<MessageName::TestWithEnabledIf_AlwaysEnabled>(globalObject, decoder);
+    case MessageName::TestWithEnabledIf_OnlyEnabledIfFeatureEnabled:
+        return jsValueForDecodedMessage<MessageName::TestWithEnabledIf_OnlyEnabledIfFeatureEnabled>(globalObject, decoder);
     default:
         break;
     }
@@ -358,6 +405,14 @@ std::optional<JSC::JSValue> jsValueForReplyArguments(JSC::JSGlobalObject* global
         return jsValueForDecodedMessageReply<MessageName::TestWithoutAttributes_InterpretKeyEvent>(globalObject, decoder);
 #endif
 #endif
+    case MessageName::TestWithoutUsingIPCConnection_MessageWithoutArgumentAndEmptyReply:
+        return jsValueForDecodedMessageReply<MessageName::TestWithoutUsingIPCConnection_MessageWithoutArgumentAndEmptyReply>(globalObject, decoder);
+    case MessageName::TestWithoutUsingIPCConnection_MessageWithoutArgumentAndReplyWithArgument:
+        return jsValueForDecodedMessageReply<MessageName::TestWithoutUsingIPCConnection_MessageWithoutArgumentAndReplyWithArgument>(globalObject, decoder);
+    case MessageName::TestWithoutUsingIPCConnection_MessageWithArgumentAndEmptyReply:
+        return jsValueForDecodedMessageReply<MessageName::TestWithoutUsingIPCConnection_MessageWithArgumentAndEmptyReply>(globalObject, decoder);
+    case MessageName::TestWithoutUsingIPCConnection_MessageWithArgumentAndReplyWithArgument:
+        return jsValueForDecodedMessageReply<MessageName::TestWithoutUsingIPCConnection_MessageWithArgumentAndReplyWithArgument>(globalObject, decoder);
     case MessageName::TestWithSemaphore_ReceiveSemaphore:
         return jsValueForDecodedMessageReply<MessageName::TestWithSemaphore_ReceiveSemaphore>(globalObject, decoder);
     case MessageName::TestWithImageData_ReceiveImageData:
@@ -366,6 +421,8 @@ std::optional<JSC::JSValue> jsValueForReplyArguments(JSC::JSGlobalObject* global
         return jsValueForDecodedMessageReply<MessageName::TestWithStream_SendStringAsync>(globalObject, decoder);
     case MessageName::TestWithStream_SendStringSync:
         return jsValueForDecodedMessageReply<MessageName::TestWithStream_SendStringSync>(globalObject, decoder);
+    case MessageName::TestWithStream_CallWithIdentifier:
+        return jsValueForDecodedMessageReply<MessageName::TestWithStream_CallWithIdentifier>(globalObject, decoder);
 #if PLATFORM(COCOA)
     case MessageName::TestWithStream_ReceiveMachSendRight:
         return jsValueForDecodedMessageReply<MessageName::TestWithStream_ReceiveMachSendRight>(globalObject, decoder);
@@ -384,10 +441,10 @@ std::optional<JSC::JSValue> jsValueForReplyArguments(JSC::JSGlobalObject* global
 
 Vector<ASCIILiteral> serializedIdentifiers()
 {
+    static_assert(sizeof(uint64_t) == sizeof(IPC::AsyncReplyID));
+    static_assert(sizeof(uint64_t) == sizeof(WebCore::BackgroundFetchRecordIdentifier));
     static_assert(sizeof(uint64_t) == sizeof(WebCore::BroadcastChannelIdentifier));
-    static_assert(sizeof(uint64_t) == sizeof(WebCore::DOMCacheIdentifier));
     static_assert(sizeof(uint64_t) == sizeof(WebCore::DictationContext));
-    static_assert(sizeof(uint64_t) == sizeof(WebCore::DisplayList::ItemBufferIdentifier));
     static_assert(sizeof(uint64_t) == sizeof(WebCore::ElementIdentifier));
     static_assert(sizeof(uint64_t) == sizeof(WebCore::FetchIdentifier));
     static_assert(sizeof(uint64_t) == sizeof(WebCore::FileSystemHandleIdentifier));
@@ -398,11 +455,15 @@ Vector<ASCIILiteral> serializedIdentifiers()
     static_assert(sizeof(uint64_t) == sizeof(WebCore::MediaKeySystemRequestIdentifier));
     static_assert(sizeof(uint64_t) == sizeof(WebCore::MediaPlayerIdentifier));
     static_assert(sizeof(uint64_t) == sizeof(WebCore::MediaSessionIdentifier));
+    static_assert(sizeof(uint64_t) == sizeof(WebCore::OpaqueOriginIdentifier));
     static_assert(sizeof(uint64_t) == sizeof(WebCore::PageIdentifier));
+#if ENABLE(WIRELESS_PLAYBACK_TARGET)
     static_assert(sizeof(uint64_t) == sizeof(WebCore::PlaybackTargetClientContextIdentifier));
-    static_assert(sizeof(uint64_t) == sizeof(WebCore::PushSubscriptionIdentifier));
+#endif
     static_assert(sizeof(uint64_t) == sizeof(WebCore::PortIdentifier));
     static_assert(sizeof(uint64_t) == sizeof(WebCore::ProcessIdentifier));
+    static_assert(sizeof(uint64_t) == sizeof(WebCore::PushSubscriptionIdentifier));
+    static_assert(sizeof(uint64_t) == sizeof(WebCore::RTCDataChannelLocalIdentifier));
     static_assert(sizeof(uint64_t) == sizeof(WebCore::RealtimeMediaSourceIdentifier));
     static_assert(sizeof(uint64_t) == sizeof(WebCore::RenderingResourceIdentifier));
     static_assert(sizeof(uint64_t) == sizeof(WebCore::ResourceLoaderIdentifier));
@@ -414,6 +475,7 @@ Vector<ASCIILiteral> serializedIdentifiers()
     static_assert(sizeof(uint64_t) == sizeof(WebCore::SleepDisablerIdentifier));
     static_assert(sizeof(uint64_t) == sizeof(WebCore::SpeechRecognitionConnectionClientIdentifier));
     static_assert(sizeof(uint64_t) == sizeof(WebCore::TextCheckingRequestIdentifier));
+    static_assert(sizeof(uint64_t) == sizeof(WebCore::TextManipulationItemIdentifier));
     static_assert(sizeof(uint64_t) == sizeof(WebCore::TextManipulationTokenIdentifier));
     static_assert(sizeof(uint64_t) == sizeof(WebCore::UserMediaRequestIdentifier));
     static_assert(sizeof(uint64_t) == sizeof(WebCore::WebSocketIdentifier));
@@ -421,14 +483,13 @@ Vector<ASCIILiteral> serializedIdentifiers()
     static_assert(sizeof(uint64_t) == sizeof(WebKit::AuthenticationChallengeIdentifier));
     static_assert(sizeof(uint64_t) == sizeof(WebKit::ContentWorldIdentifier));
     static_assert(sizeof(uint64_t) == sizeof(WebKit::DataTaskIdentifier));
-    static_assert(sizeof(uint64_t) == sizeof(WebKit::FormSubmitListenerIdentifier));
+    static_assert(sizeof(uint64_t) == sizeof(WebKit::DownloadID));
     static_assert(sizeof(uint64_t) == sizeof(WebKit::GeolocationIdentifier));
     static_assert(sizeof(uint64_t) == sizeof(WebKit::GraphicsContextGLIdentifier));
     static_assert(sizeof(uint64_t) == sizeof(WebKit::IPCConnectionTesterIdentifier));
     static_assert(sizeof(uint64_t) == sizeof(WebKit::IPCStreamTesterIdentifier));
     static_assert(sizeof(uint64_t) == sizeof(WebKit::LegacyCustomProtocolID));
     static_assert(sizeof(uint64_t) == sizeof(WebKit::LibWebRTCResolverIdentifier));
-    static_assert(sizeof(uint64_t) == sizeof(WebKit::MDNSRegisterIdentifier));
     static_assert(sizeof(uint64_t) == sizeof(WebKit::MarkSurfacesAsVolatileRequestIdentifier));
     static_assert(sizeof(uint64_t) == sizeof(WebKit::MediaRecorderIdentifier));
     static_assert(sizeof(uint64_t) == sizeof(WebKit::NetworkResourceLoadIdentifier));
@@ -438,19 +499,33 @@ Vector<ASCIILiteral> serializedIdentifiers()
     static_assert(sizeof(uint64_t) == sizeof(WebKit::QuotaIncreaseRequestIdentifier));
     static_assert(sizeof(uint64_t) == sizeof(WebKit::RemoteAudioDestinationIdentifier));
     static_assert(sizeof(uint64_t) == sizeof(WebKit::RemoteAudioHardwareListenerIdentifier));
+#if ENABLE(GPU_PROCESS) && USE(AUDIO_SESSION)
     static_assert(sizeof(uint64_t) == sizeof(WebKit::RemoteAudioSessionIdentifier));
+#endif
+#if ENABLE(GPU_PROCESS) && ENABLE(ENCRYPTED_MEDIA)
     static_assert(sizeof(uint64_t) == sizeof(WebKit::RemoteCDMIdentifier));
+#endif
+#if ENABLE(GPU_PROCESS) && ENABLE(ENCRYPTED_MEDIA)
     static_assert(sizeof(uint64_t) == sizeof(WebKit::RemoteCDMInstanceIdentifier));
+#endif
+#if ENABLE(GPU_PROCESS) && ENABLE(ENCRYPTED_MEDIA)
     static_assert(sizeof(uint64_t) == sizeof(WebKit::RemoteCDMInstanceSessionIdentifier));
+#endif
+#if ENABLE(GPU_PROCESS) && ENABLE(LEGACY_ENCRYPTED_MEDIA)
     static_assert(sizeof(uint64_t) == sizeof(WebKit::RemoteLegacyCDMIdentifier));
+#endif
+#if ENABLE(GPU_PROCESS) && ENABLE(LEGACY_ENCRYPTED_MEDIA)
     static_assert(sizeof(uint64_t) == sizeof(WebKit::RemoteLegacyCDMSessionIdentifier));
+#endif
     static_assert(sizeof(uint64_t) == sizeof(WebKit::RemoteMediaResourceIdentifier));
+    static_assert(sizeof(uint64_t) == sizeof(WebKit::RemoteRemoteCommandListenerIdentifier));
     static_assert(sizeof(uint64_t) == sizeof(WebKit::RemoteSerializedImageBufferIdentifier));
     static_assert(sizeof(uint64_t) == sizeof(WebKit::RemoteVideoFrameIdentifier));
-    static_assert(sizeof(uint64_t) == sizeof(WebKit::RemoteRemoteCommandListenerIdentifier));
     static_assert(sizeof(uint64_t) == sizeof(WebKit::RenderingBackendIdentifier));
     static_assert(sizeof(uint64_t) == sizeof(WebKit::RenderingUpdateID));
+    static_assert(sizeof(uint64_t) == sizeof(WebKit::RetrieveRecordResponseBodyCallbackIdentifier));
     static_assert(sizeof(uint64_t) == sizeof(WebKit::SampleBufferDisplayLayerIdentifier));
+    static_assert(sizeof(uint64_t) == sizeof(WebKit::ShapeDetectionIdentifier));
     static_assert(sizeof(uint64_t) == sizeof(WebKit::StorageAreaIdentifier));
     static_assert(sizeof(uint64_t) == sizeof(WebKit::StorageAreaImplIdentifier));
     static_assert(sizeof(uint64_t) == sizeof(WebKit::StorageAreaMapIdentifier));
@@ -463,14 +538,20 @@ Vector<ASCIILiteral> serializedIdentifiers()
     static_assert(sizeof(uint64_t) == sizeof(WebKit::VideoEncoderIdentifier));
     static_assert(sizeof(uint64_t) == sizeof(WebKit::WebExtensionContextIdentifier));
     static_assert(sizeof(uint64_t) == sizeof(WebKit::WebExtensionControllerIdentifier));
+    static_assert(sizeof(uint64_t) == sizeof(WebKit::WebExtensionFrameIdentifier));
+    static_assert(sizeof(uint64_t) == sizeof(WebKit::WebExtensionPortChannelIdentifier));
+    static_assert(sizeof(uint64_t) == sizeof(WebKit::WebExtensionTabIdentifier));
+    static_assert(sizeof(uint64_t) == sizeof(WebKit::WebExtensionWindowIdentifier));
     static_assert(sizeof(uint64_t) == sizeof(WebKit::WebGPUIdentifier));
     static_assert(sizeof(uint64_t) == sizeof(WebKit::WebPageProxyIdentifier));
+    static_assert(sizeof(uint64_t) == sizeof(WebKit::WebTransportSessionIdentifier));
+    static_assert(sizeof(uint64_t) == sizeof(WebKit::WebTransportStreamIdentifier));
     static_assert(sizeof(uint64_t) == sizeof(WebKit::WebURLSchemeHandlerIdentifier));
     return {
+        "IPC::AsyncReplyID"_s,
+        "WebCore::BackgroundFetchRecordIdentifier"_s,
         "WebCore::BroadcastChannelIdentifier"_s,
-        "WebCore::DOMCacheIdentifier"_s,
         "WebCore::DictationContext"_s,
-        "WebCore::DisplayList::ItemBufferIdentifier"_s,
         "WebCore::ElementIdentifier"_s,
         "WebCore::FetchIdentifier"_s,
         "WebCore::FileSystemHandleIdentifier"_s,
@@ -481,11 +562,15 @@ Vector<ASCIILiteral> serializedIdentifiers()
         "WebCore::MediaKeySystemRequestIdentifier"_s,
         "WebCore::MediaPlayerIdentifier"_s,
         "WebCore::MediaSessionIdentifier"_s,
+        "WebCore::OpaqueOriginIdentifier"_s,
         "WebCore::PageIdentifier"_s,
+#if ENABLE(WIRELESS_PLAYBACK_TARGET)
         "WebCore::PlaybackTargetClientContextIdentifier"_s,
-        "WebCore::PushSubscriptionIdentifier"_s,
+#endif
         "WebCore::PortIdentifier"_s,
         "WebCore::ProcessIdentifier"_s,
+        "WebCore::PushSubscriptionIdentifier"_s,
+        "WebCore::RTCDataChannelLocalIdentifier"_s,
         "WebCore::RealtimeMediaSourceIdentifier"_s,
         "WebCore::RenderingResourceIdentifier"_s,
         "WebCore::ResourceLoaderIdentifier"_s,
@@ -497,6 +582,7 @@ Vector<ASCIILiteral> serializedIdentifiers()
         "WebCore::SleepDisablerIdentifier"_s,
         "WebCore::SpeechRecognitionConnectionClientIdentifier"_s,
         "WebCore::TextCheckingRequestIdentifier"_s,
+        "WebCore::TextManipulationItemIdentifier"_s,
         "WebCore::TextManipulationTokenIdentifier"_s,
         "WebCore::UserMediaRequestIdentifier"_s,
         "WebCore::WebSocketIdentifier"_s,
@@ -504,14 +590,13 @@ Vector<ASCIILiteral> serializedIdentifiers()
         "WebKit::AuthenticationChallengeIdentifier"_s,
         "WebKit::ContentWorldIdentifier"_s,
         "WebKit::DataTaskIdentifier"_s,
-        "WebKit::FormSubmitListenerIdentifier"_s,
+        "WebKit::DownloadID"_s,
         "WebKit::GeolocationIdentifier"_s,
         "WebKit::GraphicsContextGLIdentifier"_s,
         "WebKit::IPCConnectionTesterIdentifier"_s,
         "WebKit::IPCStreamTesterIdentifier"_s,
         "WebKit::LegacyCustomProtocolID"_s,
         "WebKit::LibWebRTCResolverIdentifier"_s,
-        "WebKit::MDNSRegisterIdentifier"_s,
         "WebKit::MarkSurfacesAsVolatileRequestIdentifier"_s,
         "WebKit::MediaRecorderIdentifier"_s,
         "WebKit::NetworkResourceLoadIdentifier"_s,
@@ -521,19 +606,33 @@ Vector<ASCIILiteral> serializedIdentifiers()
         "WebKit::QuotaIncreaseRequestIdentifier"_s,
         "WebKit::RemoteAudioDestinationIdentifier"_s,
         "WebKit::RemoteAudioHardwareListenerIdentifier"_s,
+#if ENABLE(GPU_PROCESS) && USE(AUDIO_SESSION)
         "WebKit::RemoteAudioSessionIdentifier"_s,
+#endif
+#if ENABLE(GPU_PROCESS) && ENABLE(ENCRYPTED_MEDIA)
         "WebKit::RemoteCDMIdentifier"_s,
+#endif
+#if ENABLE(GPU_PROCESS) && ENABLE(ENCRYPTED_MEDIA)
         "WebKit::RemoteCDMInstanceIdentifier"_s,
+#endif
+#if ENABLE(GPU_PROCESS) && ENABLE(ENCRYPTED_MEDIA)
         "WebKit::RemoteCDMInstanceSessionIdentifier"_s,
+#endif
+#if ENABLE(GPU_PROCESS) && ENABLE(LEGACY_ENCRYPTED_MEDIA)
         "WebKit::RemoteLegacyCDMIdentifier"_s,
+#endif
+#if ENABLE(GPU_PROCESS) && ENABLE(LEGACY_ENCRYPTED_MEDIA)
         "WebKit::RemoteLegacyCDMSessionIdentifier"_s,
+#endif
         "WebKit::RemoteMediaResourceIdentifier"_s,
+        "WebKit::RemoteRemoteCommandListenerIdentifier"_s,
         "WebKit::RemoteSerializedImageBufferIdentifier"_s,
         "WebKit::RemoteVideoFrameIdentifier"_s,
-        "WebKit::RemoteRemoteCommandListenerIdentifier"_s,
         "WebKit::RenderingBackendIdentifier"_s,
         "WebKit::RenderingUpdateID"_s,
+        "WebKit::RetrieveRecordResponseBodyCallbackIdentifier"_s,
         "WebKit::SampleBufferDisplayLayerIdentifier"_s,
+        "WebKit::ShapeDetectionIdentifier"_s,
         "WebKit::StorageAreaIdentifier"_s,
         "WebKit::StorageAreaImplIdentifier"_s,
         "WebKit::StorageAreaMapIdentifier"_s,
@@ -546,8 +645,14 @@ Vector<ASCIILiteral> serializedIdentifiers()
         "WebKit::VideoEncoderIdentifier"_s,
         "WebKit::WebExtensionContextIdentifier"_s,
         "WebKit::WebExtensionControllerIdentifier"_s,
+        "WebKit::WebExtensionFrameIdentifier"_s,
+        "WebKit::WebExtensionPortChannelIdentifier"_s,
+        "WebKit::WebExtensionTabIdentifier"_s,
+        "WebKit::WebExtensionWindowIdentifier"_s,
         "WebKit::WebGPUIdentifier"_s,
         "WebKit::WebPageProxyIdentifier"_s,
+        "WebKit::WebTransportSessionIdentifier"_s,
+        "WebKit::WebTransportStreamIdentifier"_s,
         "WebKit::WebURLSchemeHandlerIdentifier"_s,
     };
 }
@@ -666,7 +771,7 @@ std::optional<Vector<ArgumentDescription>> messageArgumentDescriptions(MessageNa
         };
     case MessageName::TestWithLegacyReceiver_SetVideoLayerID:
         return Vector<ArgumentDescription> {
-            { "videoLayerID", "WebCore::GraphicsLayer::PlatformLayerID", nullptr, false },
+            { "videoLayerID", "WebCore::PlatformLayerIdentifier", nullptr, false },
         };
 #if PLATFORM(MAC)
     case MessageName::TestWithLegacyReceiver_DidCreateWebProcessConnection:
@@ -775,7 +880,7 @@ std::optional<Vector<ArgumentDescription>> messageArgumentDescriptions(MessageNa
         };
     case MessageName::TestWithoutAttributes_SetVideoLayerID:
         return Vector<ArgumentDescription> {
-            { "videoLayerID", "WebCore::GraphicsLayer::PlatformLayerID", nullptr, false },
+            { "videoLayerID", "WebCore::PlatformLayerIdentifier", nullptr, false },
         };
 #if PLATFORM(MAC)
     case MessageName::TestWithoutAttributes_DidCreateWebProcessConnection:
@@ -801,6 +906,24 @@ std::optional<Vector<ArgumentDescription>> messageArgumentDescriptions(MessageNa
         };
 #endif
 #endif
+    case MessageName::TestWithoutUsingIPCConnection_MessageWithoutArgument:
+        return Vector<ArgumentDescription> { };
+    case MessageName::TestWithoutUsingIPCConnection_MessageWithoutArgumentAndEmptyReply:
+        return Vector<ArgumentDescription> { };
+    case MessageName::TestWithoutUsingIPCConnection_MessageWithoutArgumentAndReplyWithArgument:
+        return Vector<ArgumentDescription> { };
+    case MessageName::TestWithoutUsingIPCConnection_MessageWithArgument:
+        return Vector<ArgumentDescription> {
+            { "argument", "String", nullptr, false },
+        };
+    case MessageName::TestWithoutUsingIPCConnection_MessageWithArgumentAndEmptyReply:
+        return Vector<ArgumentDescription> {
+            { "argument", "String", nullptr, false },
+        };
+    case MessageName::TestWithoutUsingIPCConnection_MessageWithArgumentAndReplyWithArgument:
+        return Vector<ArgumentDescription> {
+            { "argument", "String", nullptr, false },
+        };
 #if PLATFORM(COCOA)
     case MessageName::TestWithIfMessage_LoadURL:
         return Vector<ArgumentDescription> {
@@ -838,6 +961,8 @@ std::optional<Vector<ArgumentDescription>> messageArgumentDescriptions(MessageNa
         return Vector<ArgumentDescription> {
             { "url", "String", nullptr, false },
         };
+    case MessageName::TestWithStream_CallWithIdentifier:
+        return Vector<ArgumentDescription> { };
 #if PLATFORM(COCOA)
     case MessageName::TestWithStream_SendMachSendRight:
         return Vector<ArgumentDescription> {
@@ -866,6 +991,18 @@ std::optional<Vector<ArgumentDescription>> messageArgumentDescriptions(MessageNa
     case MessageName::TestWithCVPixelBuffer_ReceiveCVPixelBuffer:
         return Vector<ArgumentDescription> { };
 #endif
+    case MessageName::TestWithStreamServerConnectionHandle_SendStreamServerConnection:
+        return Vector<ArgumentDescription> {
+            { "handle", "IPC::StreamServerConnection::Handle", nullptr, false },
+        };
+    case MessageName::TestWithEnabledIf_AlwaysEnabled:
+        return Vector<ArgumentDescription> {
+            { "url", "String", nullptr, false },
+        };
+    case MessageName::TestWithEnabledIf_OnlyEnabledIfFeatureEnabled:
+        return Vector<ArgumentDescription> {
+            { "url", "String", nullptr, false },
+        };
     default:
         break;
     }
@@ -948,6 +1085,18 @@ std::optional<Vector<ArgumentDescription>> messageReplyArgumentDescriptions(Mess
         };
 #endif
 #endif
+    case MessageName::TestWithoutUsingIPCConnection_MessageWithoutArgumentAndEmptyReply:
+        return Vector<ArgumentDescription> { };
+    case MessageName::TestWithoutUsingIPCConnection_MessageWithoutArgumentAndReplyWithArgument:
+        return Vector<ArgumentDescription> {
+            { "reply", "String", nullptr, false },
+        };
+    case MessageName::TestWithoutUsingIPCConnection_MessageWithArgumentAndEmptyReply:
+        return Vector<ArgumentDescription> { };
+    case MessageName::TestWithoutUsingIPCConnection_MessageWithArgumentAndReplyWithArgument:
+        return Vector<ArgumentDescription> {
+            { "reply", "String", nullptr, false },
+        };
     case MessageName::TestWithSemaphore_ReceiveSemaphore:
         return Vector<ArgumentDescription> {
             { "r0", "IPC::Semaphore", nullptr, false },
@@ -964,6 +1113,8 @@ std::optional<Vector<ArgumentDescription>> messageReplyArgumentDescriptions(Mess
         return Vector<ArgumentDescription> {
             { "returnValue", "int64_t", nullptr, false },
         };
+    case MessageName::TestWithStream_CallWithIdentifier:
+        return Vector<ArgumentDescription> { };
 #if PLATFORM(COCOA)
     case MessageName::TestWithStream_ReceiveMachSendRight:
         return Vector<ArgumentDescription> {

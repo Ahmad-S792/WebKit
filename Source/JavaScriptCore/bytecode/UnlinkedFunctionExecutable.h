@@ -32,6 +32,7 @@
 #include "ExpressionRangeInfo.h"
 #include "Identifier.h"
 #include "ImplementationVisibility.h"
+#include "InlineAttribute.h"
 #include "Intrinsic.h"
 #include "JSCast.h"
 #include "ParserModes.h"
@@ -72,10 +73,10 @@ public:
         return &vm.unlinkedFunctionExecutableSpace();
     }
 
-    static UnlinkedFunctionExecutable* create(VM& vm, const SourceCode& source, FunctionMetadataNode* node, UnlinkedFunctionKind unlinkedFunctionKind, ConstructAbility constructAbility, JSParserScriptMode scriptMode, RefPtr<TDZEnvironmentLink> parentScopeTDZVariables, std::optional<PrivateNameEnvironment> parentPrivateNameEnvironment, DerivedContextType derivedContextType, NeedsClassFieldInitializer needsClassFieldInitializer, PrivateBrandRequirement privateBrandRequirement, bool isBuiltinDefaultClassConstructor = false)
+    static UnlinkedFunctionExecutable* create(VM& vm, const SourceCode& source, FunctionMetadataNode* node, UnlinkedFunctionKind unlinkedFunctionKind, ConstructAbility constructAbility, InlineAttribute inlineAttribute, JSParserScriptMode scriptMode, RefPtr<TDZEnvironmentLink> parentScopeTDZVariables, std::optional<PrivateNameEnvironment> parentPrivateNameEnvironment, DerivedContextType derivedContextType, NeedsClassFieldInitializer needsClassFieldInitializer, PrivateBrandRequirement privateBrandRequirement, bool isBuiltinDefaultClassConstructor = false)
     {
         UnlinkedFunctionExecutable* instance = new (NotNull, allocateCell<UnlinkedFunctionExecutable>(vm))
-            UnlinkedFunctionExecutable(vm, vm.unlinkedFunctionExecutableStructure.get(), source, node, unlinkedFunctionKind, constructAbility, scriptMode, WTFMove(parentScopeTDZVariables), WTFMove(parentPrivateNameEnvironment), derivedContextType, needsClassFieldInitializer, privateBrandRequirement, isBuiltinDefaultClassConstructor);
+            UnlinkedFunctionExecutable(vm, vm.unlinkedFunctionExecutableStructure.get(), source, node, unlinkedFunctionKind, constructAbility, inlineAttribute, scriptMode, WTFMove(parentScopeTDZVariables), WTFMove(parentPrivateNameEnvironment), derivedContextType, needsClassFieldInitializer, privateBrandRequirement, isBuiltinDefaultClassConstructor);
         instance->finishCreation(vm);
         return instance;
     }
@@ -108,15 +109,13 @@ public:
     unsigned linkedStartColumn(unsigned parentStartColumn) const { return m_unlinkedBodyStartColumn + (!m_firstLineOffset ? parentStartColumn : 1); }
     unsigned linkedEndColumn(unsigned startColumn) const { return m_unlinkedBodyEndColumn + (!m_lineCount ? startColumn : 1); }
 
-    unsigned unlinkedFunctionNameStart() const { return m_unlinkedFunctionNameStart; }
+    unsigned unlinkedFunctionStart() const { return m_unlinkedFunctionStart; }
+    unsigned unlinkedFunctionEnd() const { return m_unlinkedFunctionEnd; }
     unsigned unlinkedBodyStartColumn() const { return m_unlinkedBodyStartColumn; }
     unsigned unlinkedBodyEndColumn() const { return m_unlinkedBodyEndColumn; }
     unsigned startOffset() const { return m_startOffset; }
     unsigned sourceLength() { return m_sourceLength; }
     unsigned parametersStartOffset() const { return m_parametersStartOffset; }
-    unsigned typeProfilingStartOffset() const { return m_typeProfilingStartOffset; }
-    unsigned typeProfilingEndOffset() const { return m_typeProfilingEndOffset; }
-    void setInvalidTypeProfilingOffsets();
 
     UnlinkedFunctionCodeBlock* unlinkedCodeBlockFor(
         VM&, const SourceCode&, CodeSpecializationKind, OptionSet<CodeGenerationMode>,
@@ -194,6 +193,8 @@ public:
 
     JSC::DerivedContextType derivedContextType() const {return static_cast<JSC::DerivedContextType>(m_derivedContextType); }
 
+    InlineAttribute inlineAttribute() const { return static_cast<InlineAttribute>(m_inlineAttribute); }
+
     String sourceURLDirective() const
     {
         if (m_rareData)
@@ -215,7 +216,7 @@ public:
         ensureRareData().m_sourceMappingURLDirective = sourceMappingURL;
     }
 
-    void finalizeUnconditionally(VM&);
+    void finalizeUnconditionally(VM&, CollectionScope);
 
     struct RareData {
         WTF_MAKE_STRUCT_FAST_ALLOCATED;
@@ -245,7 +246,7 @@ public:
     }
 
 private:
-    UnlinkedFunctionExecutable(VM&, Structure*, const SourceCode&, FunctionMetadataNode*, UnlinkedFunctionKind, ConstructAbility, JSParserScriptMode, RefPtr<TDZEnvironmentLink>, std::optional<PrivateNameEnvironment>, JSC::DerivedContextType, JSC::NeedsClassFieldInitializer, PrivateBrandRequirement, bool isBuiltinDefaultClassConstructor);
+    UnlinkedFunctionExecutable(VM&, Structure*, const SourceCode&, FunctionMetadataNode*, UnlinkedFunctionKind, ConstructAbility, InlineAttribute, JSParserScriptMode, RefPtr<TDZEnvironmentLink>, std::optional<PrivateNameEnvironment>, JSC::DerivedContextType, JSC::NeedsClassFieldInitializer, PrivateBrandRequirement, bool isBuiltinDefaultClassConstructor);
     UnlinkedFunctionExecutable(Decoder&, const CachedFunctionExecutable&);
 
     DECLARE_VISIT_CHILDREN;
@@ -263,7 +264,7 @@ private:
     unsigned m_isGeneratedFromCache : 1;
     unsigned m_lineCount : 31;
     unsigned m_hasCapturedVariables : 1;
-    unsigned m_unlinkedFunctionNameStart : 31;
+    unsigned m_unlinkedFunctionStart: 31;
     unsigned m_isBuiltinFunction : 1;
     unsigned m_unlinkedBodyStartColumn : 31;
     unsigned m_isBuiltinDefaultClassConstructor : 1;
@@ -275,18 +276,18 @@ private:
     unsigned m_superBinding : 1;
     unsigned m_parametersStartOffset : 31;
     unsigned m_isCached : 1;
-    unsigned m_typeProfilingStartOffset : 31;
+    unsigned m_unlinkedFunctionEnd : 31;
     unsigned m_needsClassFieldInitializer : 1;
-    unsigned m_typeProfilingEndOffset;
     unsigned m_parameterCount : 31;
     unsigned m_privateBrandRequirement : 1;
-    unsigned m_features : bitWidthOfCodeFeatures;
-    unsigned m_constructorKind : 2;
+    CodeFeatures m_features : bitWidthOfCodeFeatures;
+    uint16_t m_constructorKind : 2;
     SourceParseMode m_sourceParseMode;
-    unsigned m_implementationVisibility : bitWidthOfImplementationVisibility;
-    unsigned m_lexicalScopeFeatures : bitWidthOfLexicalScopeFeatures;
-    unsigned m_functionMode : 2; // FunctionMode
-    unsigned m_derivedContextType: 2;
+    uint8_t m_implementationVisibility : bitWidthOfImplementationVisibility;
+    uint8_t m_lexicalScopeFeatures : bitWidthOfLexicalScopeFeatures;
+    uint8_t m_functionMode : 2; // FunctionMode
+    uint8_t m_derivedContextType : 2;
+    uint8_t m_inlineAttribute : 1;
 
     union {
         WriteBarrier<UnlinkedFunctionCodeBlock> m_unlinkedCodeBlockForCall;
@@ -315,15 +316,12 @@ private:
     std::unique_ptr<RareData> m_rareData;
 
 public:
-    static Structure* createStructure(VM& vm, JSGlobalObject* globalObject, JSValue proto)
-    {
-        return Structure::create(vm, globalObject, proto, TypeInfo(UnlinkedFunctionExecutableType, StructureFlags), info());
-    }
+    inline static Structure* createStructure(VM&, JSGlobalObject*, JSValue);
 
     DECLARE_EXPORT_INFO;
 };
 
-#if COMPILER(CLANG) && !ASSERT_ENABLED
+#if !ASSERT_ENABLED
 static_assert(sizeof(UnlinkedFunctionExecutable) <= 96, "UnlinkedFunctionExecutable needs to be small");
 #endif
 

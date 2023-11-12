@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2016-2021 Apple Inc. All rights reserved.
+ * Copyright (C) 2016-2023 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -58,6 +58,19 @@ SourceID StackFrame::sourceID() const
     return m_codeBlock->ownerExecutable()->sourceID();
 }
 
+static String processSourceURL(VM& vm, const JSC::StackFrame& frame, const String& sourceURL)
+{
+    if (vm.clientData && !sourceURL.startsWithIgnoringASCIICase("http"_s)) {
+        String overrideURL = vm.clientData->overrideSourceURL(frame, sourceURL);
+        if (!overrideURL.isNull())
+            return overrideURL;
+    }
+
+    if (!sourceURL.isNull())
+        return sourceURL;
+    return emptyString();
+}
+
 String StackFrame::sourceURL(VM& vm) const
 {
     if (m_isWasmFrame)
@@ -66,17 +79,18 @@ String StackFrame::sourceURL(VM& vm) const
     if (!m_codeBlock)
         return "[native code]"_s;
 
-    String sourceURL = m_codeBlock->ownerExecutable()->sourceURL();
+    return processSourceURL(vm, *this, m_codeBlock->ownerExecutable()->sourceURL());
+}
 
-    if (vm.clientData && !sourceURL.startsWithIgnoringASCIICase("http"_s)) {
-        String overrideURL = vm.clientData->overrideSourceURL(*this, sourceURL);
-        if (!overrideURL.isNull())
-            return overrideURL;
-    }
+String StackFrame::sourceURLStripped(VM& vm) const
+{
+    if (m_isWasmFrame)
+        return "[wasm code]"_s;
 
-    if (!sourceURL.isNull())
-        return sourceURL;
-    return emptyString();
+    if (!m_codeBlock)
+        return "[native code]"_s;
+
+    return processSourceURL(vm, *this, m_codeBlock->ownerExecutable()->sourceURLStripped());
 }
 
 String StackFrame::functionName(VM& vm) const
@@ -116,9 +130,9 @@ void StackFrame::computeLineAndColumn(unsigned& line, unsigned& column) const
         return;
     }
 
-    int divot = 0;
-    int unusedStartOffset = 0;
-    int unusedEndOffset = 0;
+    unsigned divot = 0;
+    unsigned unusedStartOffset = 0;
+    unsigned unusedEndOffset = 0;
     m_codeBlock->expressionRangeForBytecodeIndex(m_bytecodeIndex, divot, unusedStartOffset, unusedEndOffset, line, column);
 
     ScriptExecutable* executable = m_codeBlock->ownerExecutable();
@@ -129,7 +143,7 @@ void StackFrame::computeLineAndColumn(unsigned& line, unsigned& column) const
 String StackFrame::toString(VM& vm) const
 {
     String functionName = this->functionName(vm);
-    String sourceURL = this->sourceURL(vm);
+    String sourceURL = this->sourceURLStripped(vm);
 
     if (sourceURL.isEmpty() || !hasLineAndColumnInfo())
         return makeString(functionName, '@', sourceURL);

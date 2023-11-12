@@ -41,11 +41,11 @@
 #include <WebCore/NetworkLoadMetrics.h>
 #include <WebCore/NetworkStorageSession.h>
 #include <WebCore/NotImplemented.h>
+#include <WebCore/OriginAccessPatterns.h>
 #include <WebCore/ResourceError.h>
 #include <WebCore/SameSiteInfo.h>
 #include <WebCore/SharedBuffer.h>
 #include <WebCore/ShouldRelaxThirdPartyCookieBlocking.h>
-#include <WebCore/SynchronousLoaderClient.h>
 #include <WebCore/TimingAllowOrigin.h>
 #include <pal/text/TextEncoding.h>
 #include <wtf/FileSystem.h>
@@ -61,8 +61,6 @@ NetworkDataTaskCurl::NetworkDataTaskCurl(NetworkSession& session, NetworkDataTas
     , m_shouldRelaxThirdPartyCookieBlocking(parameters.shouldRelaxThirdPartyCookieBlocking)
     , m_sourceOrigin(parameters.sourceOrigin)
 {
-    m_session->registerNetworkDataTask(*this);
-
     auto request = parameters.request;
     if (request.url().protocolIsInHTTPFamily()) {
         if (m_storedCredentialsPolicy == StoredCredentialsPolicy::Use) {
@@ -74,7 +72,7 @@ NetworkDataTaskCurl::NetworkDataTaskCurl(NetworkSession& session, NetworkDataTas
             if (m_user.isEmpty() && m_password.isEmpty())
                 m_initialCredential = m_session->networkStorageSession()->credentialStorage().get(m_partition, request.url());
             else
-                m_session->networkStorageSession()->credentialStorage().set(m_partition, Credential(m_user, m_password, CredentialPersistenceNone), request.url());
+                m_session->networkStorageSession()->credentialStorage().set(m_partition, Credential(m_user, m_password, CredentialPersistence::None), request.url());
         }
     }
 
@@ -89,7 +87,6 @@ NetworkDataTaskCurl::NetworkDataTaskCurl(NetworkSession& session, NetworkDataTas
         m_curlRequest->setUserPass(m_initialCredential.user(), m_initialCredential.password());
         m_curlRequest->setAuthenticationScheme(ProtectionSpace::AuthenticationScheme::HTTPBasic);
     }
-    m_curlRequest->start();
 }
 
 NetworkDataTaskCurl::~NetworkDataTaskCurl()
@@ -144,7 +141,7 @@ Ref<CurlRequest> NetworkDataTaskCurl::createCurlRequest(ResourceRequest&& reques
     // Creates a CurlRequest in suspended state.
     // Then, NetworkDataTaskCurl::resume() will be called and communication resumes.
     const auto captureMetrics = shouldCaptureExtraNetworkLoadMetrics() ? CurlRequest::CaptureNetworkLoadMetrics::Extended : CurlRequest::CaptureNetworkLoadMetrics::Basic;
-    return CurlRequest::create(request, *this, CurlRequest::ShouldSuspend::Yes, CurlRequest::EnableMultipart::No, captureMetrics);
+    return CurlRequest::create(request, *this, captureMetrics);
 }
 
 void NetworkDataTaskCurl::curlDidSendData(CurlRequest&, unsigned long long totalBytesSent, unsigned long long totalBytesExpectedToSend)
@@ -169,7 +166,7 @@ void NetworkDataTaskCurl::curlDidReceiveResponse(CurlRequest& request, CurlRespo
 
     handleCookieHeaders(request.resourceRequest(), receivedResponse);
 
-    if (m_response.shouldRedirect()) {
+    if (shouldStartHTTPRedirection()) {
         willPerformHTTPRedirection();
         return;
     }
@@ -188,7 +185,7 @@ void NetworkDataTaskCurl::curlDidReceiveResponse(CurlRequest& request, CurlRespo
     invokeDidReceiveResponse();
 }
 
-void NetworkDataTaskCurl::curlDidReceiveData(CurlRequest&, const SharedBuffer& buffer)
+void NetworkDataTaskCurl::curlDidReceiveData(CurlRequest&, Ref<SharedBuffer>&& buffer)
 {
     Ref protectedThis { *this };
     if (state() == State::Canceling || state() == State::Completed || (!m_client && !isDownload()))
@@ -198,7 +195,7 @@ void NetworkDataTaskCurl::curlDidReceiveData(CurlRequest&, const SharedBuffer& b
         auto* download = m_session->networkProcess().downloadManager().download(m_pendingDownloadID);
         RELEASE_ASSERT(download);
         uint64_t bytesWritten = 0;
-        for (auto& segment : buffer) {
+        for (auto& segment : buffer.get()) {
             if (-1 == FileSystem::writeToFile(m_downloadDestinationFile, segment.segment->data(), segment.segment->size())) {
                 download->didFail(ResourceError(CURLE_WRITE_ERROR, m_response.url()), IPC::DataReference());
                 invalidateAndCancel();
@@ -211,7 +208,7 @@ void NetworkDataTaskCurl::curlDidReceiveData(CurlRequest&, const SharedBuffer& b
         return;
     }
 
-    m_client->didReceiveData(buffer);
+    m_client->didReceiveData(buffer.get());
 }
 
 void NetworkDataTaskCurl::curlDidComplete(CurlRequest&, NetworkLoadMetrics&& networkLoadMetrics)
@@ -233,15 +230,6 @@ void NetworkDataTaskCurl::curlDidComplete(CurlRequest&, NetworkLoadMetrics&& net
     m_client->didCompleteWithError({ }, WTFMove(networkLoadMetrics));
 }
 
-void NetworkDataTaskCurl::deleteDownloadFile()
-{
-    if (FileSystem::isHandleValid(m_downloadDestinationFile)) {
-        FileSystem::closeFile(m_downloadDestinationFile);
-        FileSystem::deleteFile(m_pendingDownloadLocation);
-        m_downloadDestinationFile = FileSystem::invalidPlatformFileHandle;
-    }
-}
-
 void NetworkDataTaskCurl::curlDidFailWithError(CurlRequest& request, ResourceError&& resourceError, CertificateInfo&& certificateInfo)
 {
     if (state() == State::Canceling || state() == State::Completed || (!m_client && !isDownload()))
@@ -261,6 +249,22 @@ void NetworkDataTaskCurl::curlDidFailWithError(CurlRequest& request, ResourceErr
     }
 
     m_client->didCompleteWithError(resourceError);
+}
+
+bool NetworkDataTaskCurl::shouldStartHTTPRedirection()
+{
+    auto statusCode = m_response.httpStatusCode();
+    if (statusCode < 300 || statusCode >= 400)
+        return false;
+
+    // Some 3xx status codes aren't actually redirects.
+    if (statusCode == 300 || statusCode == 304 || statusCode == 305 || statusCode == 306)
+        return false;
+
+    if (m_response.httpHeaderField(HTTPHeaderName::Location).isEmpty())
+        return false;
+
+    return true;
 }
 
 bool NetworkDataTaskCurl::shouldRedirectAsGET(const ResourceRequest& request, bool crossOrigin)
@@ -298,7 +302,7 @@ void NetworkDataTaskCurl::invokeDidReceiveResponse()
             invalidateAndCancel();
             break;
         case PolicyAction::Download: {
-            m_downloadDestinationFile = FileSystem::openFile(m_pendingDownloadLocation, FileSystem::FileOpenMode::Truncate);
+            m_downloadDestinationFile = FileSystem::openFile(m_pendingDownloadLocation, FileSystem::FileOpenMode::Truncate, FileSystem::FileAccessPermission::All, !m_allowOverwriteDownload);
             if (!FileSystem::isHandleValid(m_downloadDestinationFile)) {
                 if (m_client)
                     m_client->didCompleteWithError(ResourceError(CURLE_WRITE_ERROR, m_response.url()));
@@ -331,13 +335,18 @@ void NetworkDataTaskCurl::willPerformHTTPRedirection()
         return;
     }
 
-    ResourceRequest request = m_firstRequest;
     URL redirectedURL = URL(m_response.url(), m_response.httpHeaderField(HTTPHeaderName::Location));
+    if (redirectedURL.protocolIsFile()) {
+        m_client->didCompleteWithError(ResourceError(CURLE_FILE_COULDNT_READ_FILE, m_response.url()));
+        return;
+    }
+
+    ResourceRequest request = m_firstRequest;
     if (!redirectedURL.hasFragmentIdentifier() && request.url().hasFragmentIdentifier())
         redirectedURL.setFragmentIdentifier(request.url().fragmentIdentifier());
     request.setURL(redirectedURL);
 
-    m_hasCrossOriginRedirect = m_hasCrossOriginRedirect || !SecurityOrigin::create(m_response.url())->canRequest(request.url());
+    m_hasCrossOriginRedirect = m_hasCrossOriginRedirect || !SecurityOrigin::create(m_response.url())->canRequest(request.url(), WebCore::EmptyOriginAccessPatterns::singleton());
 
     // Should not set Referer after a redirect from a secure resource to non-secure one.
     if (m_shouldClearReferrerOnHTTPSToHTTPRedirect && !request.url().protocolIs("https"_s) && protocolIs(request.httpReferrer(), "https"_s))
@@ -396,7 +405,6 @@ void NetworkDataTaskCurl::willPerformHTTPRedirection()
             m_curlRequest->setUserPass(m_initialCredential.user(), m_initialCredential.password());
             m_curlRequest->setAuthenticationScheme(ProtectionSpace::AuthenticationScheme::HTTPBasic);
         }
-        m_curlRequest->start();
 
         if (m_state != State::Suspended) {
             m_state = State::Suspended;
@@ -408,7 +416,7 @@ void NetworkDataTaskCurl::willPerformHTTPRedirection()
 void NetworkDataTaskCurl::tryHttpAuthentication(AuthenticationChallenge&& challenge)
 {
     if (!m_user.isNull() && !m_password.isNull()) {
-        auto persistence = m_storedCredentialsPolicy == WebCore::StoredCredentialsPolicy::Use ? WebCore::CredentialPersistenceForSession : WebCore::CredentialPersistenceNone;
+        auto persistence = m_storedCredentialsPolicy == WebCore::StoredCredentialsPolicy::Use ? WebCore::CredentialPersistence::ForSession : WebCore::CredentialPersistence::None;
         restartWithCredential(challenge.protectionSpace(), Credential(m_user, m_password, persistence));
         m_user = String();
         m_password = String();
@@ -426,7 +434,7 @@ void NetworkDataTaskCurl::tryHttpAuthentication(AuthenticationChallenge&& challe
         if (!challenge.previousFailureCount()) {
             auto credential = m_session->networkStorageSession()->credentialStorage().get(m_partition, challenge.protectionSpace());
             if (!credential.isEmpty() && credential != m_initialCredential) {
-                ASSERT(credential.persistence() == CredentialPersistenceNone);
+                ASSERT(credential.persistence() == CredentialPersistence::None);
                 if (challenge.failureResponse().isUnauthorized()) {
                     // Store the credential back, possibly adding it as a default for this directory.
                     m_session->networkStorageSession()->credentialStorage().set(m_partition, credential, challenge.protectionSpace(), challenge.failureResponse().url());
@@ -449,7 +457,7 @@ void NetworkDataTaskCurl::tryHttpAuthentication(AuthenticationChallenge&& challe
 
         if (disposition == AuthenticationChallengeDisposition::UseCredential && !credential.isEmpty()) {
             if (m_storedCredentialsPolicy == StoredCredentialsPolicy::Use) {
-                if (credential.persistence() == CredentialPersistenceForSession || credential.persistence() == CredentialPersistencePermanent)
+                if (credential.persistence() == CredentialPersistence::ForSession || credential.persistence() == CredentialPersistence::Permanent)
                     m_session->networkStorageSession()->credentialStorage().set(m_partition, credential, challenge.protectionSpace(), challenge.failureResponse().url());
             }
 
@@ -477,7 +485,7 @@ void NetworkDataTaskCurl::tryProxyAuthentication(WebCore::AuthenticationChalleng
             CurlContext::singleton().setProxyUserPass(credential.user(), credential.password());
             CurlContext::singleton().setDefaultProxyAuthMethod();
 
-            auto requestCredential = m_curlRequest ? Credential(m_curlRequest->user(), m_curlRequest->password(), CredentialPersistenceNone) : Credential();
+            auto requestCredential = m_curlRequest ? Credential(m_curlRequest->user(), m_curlRequest->password(), CredentialPersistence::None) : Credential();
             restartWithCredential(challenge.protectionSpace(), requestCredential);
             return;
         }
@@ -493,7 +501,7 @@ void NetworkDataTaskCurl::tryServerTrustEvaluation(AuthenticationChallenge&& cha
             return;
 
         if (disposition == AuthenticationChallengeDisposition::UseCredential && !credential.isEmpty()) {
-            auto requestCredential = m_curlRequest ? Credential(m_curlRequest->user(), m_curlRequest->password(), CredentialPersistenceNone) : Credential();
+            auto requestCredential = m_curlRequest ? Credential(m_curlRequest->user(), m_curlRequest->password(), CredentialPersistence::None) : Credential();
             restartWithCredential(challenge.protectionSpace(), requestCredential);
             return;
         }
@@ -516,7 +524,6 @@ void NetworkDataTaskCurl::restartWithCredential(const ProtectionSpace& protectio
     m_curlRequest->setUserPass(credential.user(), credential.password());
     if (shouldDisableServerTrustEvaluation)
         m_curlRequest->disableServerTrustEvaluation();
-    m_curlRequest->start();
 
     if (m_state != State::Suspended) {
         m_state = State::Suspended;
@@ -542,18 +549,6 @@ void NetworkDataTaskCurl::handleCookieHeaders(const WebCore::ResourceRequest& re
             m_session->networkStorageSession()->setCookiesFromHTTPResponse(request.firstPartyForCookies(), response.url, setCookieString);
         }
     }
-}
-
-String NetworkDataTaskCurl::suggestedFilename() const
-{
-    if (!m_suggestedFilename.isEmpty())
-        return m_suggestedFilename;
-
-    String suggestedFilename = m_response.suggestedFilename();
-    if (!suggestedFilename.isEmpty())
-        return suggestedFilename;
-
-    return PAL::decodeURLEscapeSequences(m_response.url().lastPathComponent());
 }
 
 void NetworkDataTaskCurl::blockCookies()
@@ -604,6 +599,33 @@ void NetworkDataTaskCurl::updateNetworkLoadMetrics(WebCore::NetworkLoadMetrics& 
     networkLoadMetrics.redirectCount = m_redirectCount;
     networkLoadMetrics.failsTAOCheck = m_failsTAOCheck;
     networkLoadMetrics.hasCrossOriginRedirect = m_hasCrossOriginRedirect;
+}
+
+void NetworkDataTaskCurl::setPendingDownloadLocation(const String& filename, SandboxExtension::Handle&& sandboxExtensionHandle, bool allowOverwrite)
+{
+    NetworkDataTask::setPendingDownloadLocation(filename, WTFMove(sandboxExtensionHandle), allowOverwrite);
+    m_allowOverwriteDownload = allowOverwrite;
+}
+
+String NetworkDataTaskCurl::suggestedFilename() const
+{
+    if (!m_suggestedFilename.isEmpty())
+        return m_suggestedFilename;
+
+    String suggestedFilename = m_response.suggestedFilename();
+    if (!suggestedFilename.isEmpty())
+        return suggestedFilename;
+
+    return PAL::decodeURLEscapeSequences(m_response.url().lastPathComponent());
+}
+
+void NetworkDataTaskCurl::deleteDownloadFile()
+{
+    if (FileSystem::isHandleValid(m_downloadDestinationFile)) {
+        FileSystem::closeFile(m_downloadDestinationFile);
+        FileSystem::deleteFile(m_pendingDownloadLocation);
+        m_downloadDestinationFile = FileSystem::invalidPlatformFileHandle;
+    }
 }
 
 } // namespace WebKit

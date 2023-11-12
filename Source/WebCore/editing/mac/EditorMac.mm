@@ -40,13 +40,13 @@
 #import "EditorClient.h"
 #import "FontAttributes.h"
 #import "FontShadow.h"
-#import "Frame.h"
-#import "FrameView.h"
 #import "HTMLConverter.h"
 #import "HTMLElement.h"
 #import "HTMLNames.h"
 #import "LegacyNSPasteboardTypes.h"
 #import "LegacyWebArchive.h"
+#import "LocalFrame.h"
+#import "LocalFrameView.h"
 #import "MutableStyleProperties.h"
 #import "PagePasteboardContext.h"
 #import "Pasteboard.h"
@@ -87,13 +87,13 @@ void Editor::pasteWithPasteboard(Pasteboard* pasteboard, OptionSet<PasteOption> 
 
 void Editor::platformCopyFont()
 {
-    Pasteboard pasteboard(PagePasteboardContext::create(m_document.pageID()), NSPasteboardNameFont);
+    Pasteboard pasteboard(PagePasteboardContext::create(document().pageID()), NSPasteboardNameFont);
 
     auto fontSampleString = adoptNS([[NSAttributedString alloc] initWithString:@"x" attributes:fontAttributesAtSelectionStart().createDictionary().get()]);
     auto fontData = RetainPtr([fontSampleString RTFFromRange:NSMakeRange(0, [fontSampleString length]) documentAttributes:@{ }]);
 
     PasteboardBuffer pasteboardBuffer;
-    pasteboardBuffer.contentOrigin = m_document.originIdentifierForPasteboard();
+    pasteboardBuffer.contentOrigin = document().originIdentifierForPasteboard();
     pasteboardBuffer.type = legacyFontPasteboardType();
     pasteboardBuffer.data = SharedBuffer::create(fontData.get());
     pasteboard.write(pasteboardBuffer);
@@ -101,7 +101,7 @@ void Editor::platformCopyFont()
 
 void Editor::platformPasteFont()
 {
-    Pasteboard pasteboard(PagePasteboardContext::create(m_document.pageID()), NSPasteboardNameFont);
+    Pasteboard pasteboard(PagePasteboardContext::create(document().pageID()), NSPasteboardNameFont);
 
     client()->setInsertionPasteboard(pasteboard.name());
 
@@ -184,10 +184,10 @@ ALLOW_DEPRECATED_DECLARATIONS_BEGIN
 ALLOW_DEPRECATED_DECLARATIONS_END
 
     if (pasteboardType == String(legacyRTFDPasteboardType()))
-        return dataInRTFDFormat(attributedString(*adjustedSelectionRange()).string.get());
+        return dataInRTFDFormat(attributedString(*adjustedSelectionRange()).nsAttributedString().get());
 
     if (pasteboardType == String(legacyRTFPasteboardType())) {
-        auto string = attributedString(*adjustedSelectionRange()).string;
+        auto string = attributedString(*adjustedSelectionRange()).nsAttributedString();
         // FIXME: Why is this stripping needed here, but not in writeSelectionToPasteboard?
         if ([string containsAttachments])
             string = attributedStringByStrippingAttachmentCharacters(string.get());
@@ -216,7 +216,7 @@ static void getImage(Element& imageElement, RefPtr<Image>& image, CachedImage*& 
 
 void Editor::selectionWillChange()
 {
-    if (!hasComposition() || ignoreSelectionChanges() || m_document.selection().isNone() || !m_document.hasLivingRenderTree())
+    if (!hasComposition() || ignoreSelectionChanges() || document().selection().isNone() || !document().hasLivingRenderTree())
         return;
 
     cancelComposition();

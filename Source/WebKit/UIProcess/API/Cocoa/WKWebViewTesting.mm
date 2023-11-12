@@ -29,15 +29,19 @@
 #import "AudioSessionRoutingArbitratorProxy.h"
 #import "GPUProcessProxy.h"
 #import "MediaSessionCoordinatorProxyPrivate.h"
+#import "NetworkProcessProxy.h"
 #import "PlaybackSessionManagerProxy.h"
 #import "PrintInfo.h"
+#import "RemoteLayerTreeDrawingAreaProxy.h"
 #import "RemoteScrollingCoordinatorProxy.h"
 #import "UserMediaProcessManager.h"
 #import "ViewGestureController.h"
+#import "WKContentViewInteraction.h"
 #import "WebPageProxy.h"
 #import "WebProcessPool.h"
 #import "WebProcessProxy.h"
 #import "WebViewImpl.h"
+#import "WebsiteDataStore.h"
 #import "_WKFrameHandleInternal.h"
 #import "_WKInspectorInternal.h"
 #import <WebCore/RuntimeApplicationChecks.h>
@@ -93,10 +97,11 @@ static void dumpCALayer(TextStream& ts, CALayer *layer, bool traverse)
     };
 
 #if ENABLE(INTERACTION_REGIONS_IN_EVENT_REGION)
-    if ([layer valueForKey:@"WKInteractionRegion"])
-        ts.dumpProperty("type", "interaction");
-    if ([layer valueForKey:@"WKInteractionRegionOcclusion"])
-        ts.dumpProperty("type", "occlusion");
+    NSNumber *interactionRegionLayerType = [layer valueForKey:@"WKInteractionRegionType"];
+    if (interactionRegionLayerType) {
+        ts.dumpProperty("type", interactionRegionLayerType);
+        traverse = false;
+    }
 #endif
 
     ts.dumpProperty("layer bounds", rectToString(layer.bounds));
@@ -113,6 +118,12 @@ static void dumpCALayer(TextStream& ts, CALayer *layer, bool traverse)
     if (layer.anchorPointZ)
         ts.dumpProperty("layer anchorPointZ", makeString(layer.anchorPointZ));
 
+    if (layer.opacity != 1.0)
+        ts.dumpProperty("layer opacity", makeString(layer.opacity));
+
+    if (layer.cornerRadius != 0.0)
+        ts.dumpProperty("layer cornerRadius", makeString(layer.cornerRadius));
+    
     if (traverse && layer.sublayers.count > 0) {
         TextStream::GroupScope scope(ts);
         ts << "sublayers";
@@ -136,7 +147,7 @@ static void dumpCALayer(TextStream& ts, CALayer *layer, bool traverse)
     if (nonce)
         measurement.setEphemeralSourceNonce({ nonce });
 
-    _page->setPrivateClickMeasurement({{ WTFMove(measurement), { }, { }}});
+    _page->setPrivateClickMeasurement(WTFMove(measurement));
 }
 
 - (void)_setPageScale:(CGFloat)scale withOrigin:(CGPoint)origin
@@ -204,8 +215,23 @@ static void dumpCALayer(TextStream& ts, CALayer *layer, bool traverse)
     return coordinator->scrollingTreeAsText();
 }
 
+- (pid_t)_networkProcessIdentifier
+{
+    auto* networkProcess = _page->websiteDataStore().networkProcessIfExists();
+    RELEASE_ASSERT(networkProcess);
+    return networkProcess->processID();
+}
+
 - (void)_setScrollingUpdatesDisabledForTesting:(BOOL)disabled
 {
+}
+
+- (unsigned long)_countOfUpdatesWithLayerChanges
+{
+    if (auto* drawingAreaProxy = dynamicDowncast<WebKit::RemoteLayerTreeDrawingAreaProxy>(_page->drawingArea()))
+        return drawingAreaProxy->countOfTransactionsWithNonEmptyLayerChanges();
+
+    return 0;
 }
 
 - (void)_doAfterNextPresentationUpdateWithoutWaitingForAnimatedResizeForTesting:(void (^)(void))updateBlock
@@ -319,7 +345,7 @@ static void dumpCALayer(TextStream& ts, CALayer *layer, bool traverse)
 
 - (void)_setIndexOfGetDisplayMediaDeviceSelectedForTesting:(NSNumber *)nsIndex
 {
-#if HAVE(SCREEN_CAPTURE_KIT)
+#if ENABLE(MEDIA_STREAM)
     if (!_page)
         return;
 
@@ -328,6 +354,16 @@ static void dumpCALayer(TextStream& ts, CALayer *layer, bool traverse)
         index = nsIndex.unsignedIntValue;
 
     _page->setIndexOfGetDisplayMediaDeviceSelectedForTesting(index);
+#endif
+}
+
+- (void)_setSystemCanPromptForGetDisplayMediaForTesting:(BOOL)canPrompt
+{
+#if ENABLE(MEDIA_STREAM)
+    if (!_page)
+        return;
+
+    _page->setSystemCanPromptForGetDisplayMediaForTesting(!!canPrompt);
 #endif
 }
 
@@ -369,7 +405,14 @@ static void dumpCALayer(TextStream& ts, CALayer *layer, bool traverse)
 
 - (BOOL)_hasSleepDisabler
 {
-    return _page && _page->process().hasSleepDisabler();
+    return _page && _page->hasSleepDisabler();
+}
+
+- (NSString*)_scrollbarStateForScrollingNodeID:(uint64_t)scrollingNodeID isVertical:(bool)isVertical
+{
+    if (_page)
+        return _page->scrollbarStateForScrollingNodeID(scrollingNodeID, isVertical);
+    return @"";
 }
 
 - (WKWebViewAudioRoutingArbitrationStatus)_audioRoutingArbitrationStatus
@@ -463,6 +506,14 @@ static void dumpCALayer(TextStream& ts, CALayer *layer, bool traverse)
     // For subclasses to override.
 }
 
+- (void)_resetInteraction
+{
+#if PLATFORM(IOS_FAMILY)
+    [_contentView cleanUpInteraction];
+    [_contentView setUpInteraction];
+#endif
+}
+
 - (void)_didPresentContactPicker
 {
     // For subclasses to override.
@@ -536,6 +587,13 @@ static void dumpCALayer(TextStream& ts, CALayer *layer, bool traverse)
 #endif
 }
 
+- (void)_setSystemPreviewCompletionHandlerForLoadTesting:(void(^)(bool))completionHandler
+{
+#if USE(SYSTEM_PREVIEW)
+    _page->setSystemPreviewCompletionHandlerForLoadTesting(makeBlockPtr(completionHandler));
+#endif
+}
+
 - (void)_createMediaSessionCoordinatorForTesting:(id <_WKMediaSessionCoordinator>)privateCoordinator completionHandler:(void(^)(BOOL))completionHandler
 {
 #if ENABLE(MEDIA_SESSION_COORDINATOR)
@@ -559,9 +617,8 @@ static void dumpCALayer(TextStream& ts, CALayer *layer, bool traverse)
             : WebKit::MediaSessionCoordinatorProxyPrivate()
             , m_clientCoordinator(clientCoordinator)
         {
-            auto* delegateHelper = [[WKMediaSessionCoordinatorHelper alloc] initWithCoordinator:this];
-            [m_clientCoordinator setDelegate:delegateHelper];
-            m_coordinatorDelegate = adoptNS(delegateHelper);
+            m_coordinatorDelegate = adoptNS([[WKMediaSessionCoordinatorHelper alloc] initWithCoordinator:this]);
+            [m_clientCoordinator setDelegate:m_coordinatorDelegate.get()];
         }
 
         void seekSessionToTime(double time, CompletionHandler<void(bool)>&& callback) final
@@ -605,7 +662,7 @@ static void dumpCALayer(TextStream& ts, CALayer *layer, bool traverse)
         std::optional<WebCore::ExceptionData> result(bool success) const
         {
             if (!success)
-                return { WebCore::ExceptionData { WebCore::InvalidStateError, String() } };
+                return { WebCore::ExceptionData { WebCore::ExceptionCode::InvalidStateError, String() } };
 
             return { };
         }
@@ -619,7 +676,7 @@ static void dumpCALayer(TextStream& ts, CALayer *layer, bool traverse)
         {
             [m_clientCoordinator joinWithCompletion:makeBlockPtr([weakThis = WeakPtr { *this }, callback = WTFMove(callback)] (BOOL success) mutable {
                 if (!weakThis) {
-                    callback(WebCore::ExceptionData { WebCore::InvalidStateError, String() });
+                    callback(WebCore::ExceptionData { WebCore::ExceptionCode::InvalidStateError, String() });
                     return;
                 }
 
@@ -636,7 +693,7 @@ static void dumpCALayer(TextStream& ts, CALayer *layer, bool traverse)
         {
             [m_clientCoordinator seekTo:time withCompletion:makeBlockPtr([weakThis = WeakPtr { *this }, callback = WTFMove(callback)] (BOOL success) mutable {
                 if (!weakThis) {
-                    callback(WebCore::ExceptionData { WebCore::InvalidStateError, String() });
+                    callback(WebCore::ExceptionData { WebCore::ExceptionCode::InvalidStateError, String() });
                     return;
                 }
 
@@ -648,7 +705,7 @@ static void dumpCALayer(TextStream& ts, CALayer *layer, bool traverse)
         {
             [m_clientCoordinator playWithCompletion:makeBlockPtr([weakThis = WeakPtr { *this }, callback = WTFMove(callback)] (BOOL success) mutable {
                 if (!weakThis) {
-                    callback(WebCore::ExceptionData { WebCore::InvalidStateError, String() });
+                    callback(WebCore::ExceptionData { WebCore::ExceptionCode::InvalidStateError, String() });
                     return;
                 }
 
@@ -660,7 +717,7 @@ static void dumpCALayer(TextStream& ts, CALayer *layer, bool traverse)
         {
             [m_clientCoordinator pauseWithCompletion:makeBlockPtr([weakThis = WeakPtr { *this }, callback = WTFMove(callback)] (BOOL success) mutable {
                 if (!weakThis) {
-                    callback(WebCore::ExceptionData { WebCore::InvalidStateError, String() });
+                    callback(WebCore::ExceptionData { WebCore::ExceptionCode::InvalidStateError, String() });
                     return;
                 }
 
@@ -672,7 +729,7 @@ static void dumpCALayer(TextStream& ts, CALayer *layer, bool traverse)
         {
             [m_clientCoordinator setTrack:track withCompletion:makeBlockPtr([weakThis = WeakPtr { *this }, callback = WTFMove(callback)] (BOOL success) mutable {
                 if (!weakThis) {
-                    callback(WebCore::ExceptionData { WebCore::InvalidStateError, String() });
+                    callback(WebCore::ExceptionData { WebCore::ExceptionCode::InvalidStateError, String() });
                     return;
                 }
 

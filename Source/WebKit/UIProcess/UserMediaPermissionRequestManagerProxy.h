@@ -37,25 +37,25 @@
 
 namespace WebCore {
 class CaptureDevice;
+class SecurityOrigin;
+
+enum class PermissionName : uint8_t;
+
+struct CaptureDeviceWithCapabilities;
 struct ClientOrigin;
 struct MediaConstraints;
 struct MediaStreamRequest;
-class SecurityOrigin;
 };
 
 namespace WebKit {
 
 class WebPageProxy;
 
-enum MediaDevicePermissionRequestIdentifierType { };
+enum class MediaDevicePermissionRequestIdentifierType { };
 using MediaDevicePermissionRequestIdentifier = ObjectIdentifier<MediaDevicePermissionRequestIdentifierType>;
 
 class UserMediaPermissionRequestManagerProxy
-#if ENABLE(MEDIA_STREAM)
-    : public WebCore::AudioCaptureFactory::ExtensiveObserver
-#else
     : public CanMakeWeakPtr<UserMediaPermissionRequestManagerProxy>
-#endif
 #if !RELEASE_LOG_DISABLED
     , private LoggerHelper
 #endif
@@ -84,7 +84,7 @@ public:
     void grantRequest(UserMediaPermissionRequestProxy&);
     void denyRequest(UserMediaPermissionRequestProxy&, UserMediaPermissionRequestProxy::UserMediaAccessDenialReason, const String& invalidConstraint = { });
 
-    void enumerateMediaDevicesForFrame(WebCore::FrameIdentifier, Ref<WebCore::SecurityOrigin>&& userMediaDocumentOrigin, Ref<WebCore::SecurityOrigin>&& topLevelDocumentOrigin, CompletionHandler<void(const Vector<WebCore::CaptureDevice>&, WebCore::MediaDeviceHashSalts&&)>&&);
+    void enumerateMediaDevicesForFrame(WebCore::FrameIdentifier, Ref<WebCore::SecurityOrigin>&& userMediaDocumentOrigin, Ref<WebCore::SecurityOrigin>&& topLevelDocumentOrigin, CompletionHandler<void(const Vector<WebCore::CaptureDeviceWithCapabilities>&, WebCore::MediaDeviceHashSalts&&)>&&);
 
     void stopCapture();
     void scheduleNextRejection();
@@ -124,6 +124,8 @@ public:
     bool shouldChangePromptToGrantForCamera(const WebCore::ClientOrigin&) const;
     bool shouldChangePromptToGrantForMicrophone(const WebCore::ClientOrigin&) const;
 
+    void clearUserMediaPermissionRequestHistory(WebCore::PermissionName);
+
 private:
 #if !RELEASE_LOG_DISABLED
     const Logger& logger() const final;
@@ -147,8 +149,8 @@ private:
 
     bool wasGrantedVideoOrAudioAccess(WebCore::FrameIdentifier);
 
-    void computeFilteredDeviceList(bool revealIdsAndLabels, CompletionHandler<void(Vector<WebCore::CaptureDevice>&&)>&&);
-    void platformGetMediaStreamDevices(CompletionHandler<void(Vector<WebCore::CaptureDevice>&&)>&&);
+    void computeFilteredDeviceList(bool revealIdsAndLabels, CompletionHandler<void(Vector<WebCore::CaptureDeviceWithCapabilities>&&)>&&);
+    void platformGetMediaStreamDevices(bool revealIdsAndLabels, CompletionHandler<void(Vector<WebCore::CaptureDeviceWithCapabilities>&&)>&&);
 
     void processUserMediaPermissionRequest();
     void processUserMediaPermissionInvalidRequest(const String& invalidConstraint);

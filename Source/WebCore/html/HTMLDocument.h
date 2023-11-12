@@ -23,14 +23,15 @@
 #pragma once
 
 #include "Document.h"
+#include "TreeScopeOrderedMap.h"
 
 namespace WebCore {
 
 class HTMLDocument : public Document {
-    WTF_MAKE_ISO_ALLOCATED(HTMLDocument);
+    WTF_MAKE_ISO_ALLOCATED_EXPORT(HTMLDocument, WEBCORE_EXPORT);
 public:
-    static Ref<HTMLDocument> create(Frame*, const Settings&, const URL&, ScriptExecutionContextIdentifier = { });
-    static Ref<HTMLDocument> createSynthesizedDocument(Frame&, const URL&);
+    static Ref<HTMLDocument> create(LocalFrame*, const Settings&, const URL&, ScriptExecutionContextIdentifier = { });
+    static Ref<HTMLDocument> createSynthesizedDocument(LocalFrame&, const URL&);
     virtual ~HTMLDocument();
 
     WEBCORE_EXPORT int width();
@@ -38,23 +39,24 @@ public:
     
     std::optional<std::variant<RefPtr<WindowProxy>, RefPtr<Element>, RefPtr<HTMLCollection>>> namedItem(const AtomString&);
     Vector<AtomString> supportedPropertyNames() const;
+    bool isSupportedPropertyName(const AtomString&) const;
 
-    Element* documentNamedItem(const AtomStringImpl& name) const { return m_documentNamedItem.getElementByDocumentNamedItem(name, *this); }
-    bool hasDocumentNamedItem(const AtomStringImpl& name) const { return m_documentNamedItem.contains(name); }
-    bool documentNamedItemContainsMultipleElements(const AtomStringImpl& name) const { return m_documentNamedItem.containsMultiple(name); }
-    void addDocumentNamedItem(const AtomStringImpl&, Element&);
-    void removeDocumentNamedItem(const AtomStringImpl&, Element&);
+    RefPtr<Element> documentNamedItem(const AtomString& name) const { return m_documentNamedItem.getElementByDocumentNamedItem(name, *this); }
+    bool hasDocumentNamedItem(const AtomString& name) const { return m_documentNamedItem.contains(name); }
+    bool documentNamedItemContainsMultipleElements(const AtomString& name) const { return m_documentNamedItem.containsMultiple(name); }
+    void addDocumentNamedItem(const AtomString&, Element&);
+    void removeDocumentNamedItem(const AtomString&, Element&);
 
-    Element* windowNamedItem(const AtomStringImpl& name) const { return m_windowNamedItem.getElementByWindowNamedItem(name, *this); }
-    bool hasWindowNamedItem(const AtomStringImpl& name) const { return m_windowNamedItem.contains(name); }
-    bool windowNamedItemContainsMultipleElements(const AtomStringImpl& name) const { return m_windowNamedItem.containsMultiple(name); }
-    void addWindowNamedItem(const AtomStringImpl&, Element&);
-    void removeWindowNamedItem(const AtomStringImpl&, Element&);
+    RefPtr<Element> windowNamedItem(const AtomString& name) const { return m_windowNamedItem.getElementByWindowNamedItem(name, *this); }
+    bool hasWindowNamedItem(const AtomString& name) const { return m_windowNamedItem.contains(name); }
+    bool windowNamedItemContainsMultipleElements(const AtomString& name) const { return m_windowNamedItem.containsMultiple(name); }
+    void addWindowNamedItem(const AtomString&, Element&);
+    void removeWindowNamedItem(const AtomString&, Element&);
 
     static bool isCaseSensitiveAttribute(const QualifiedName&);
 
 protected:
-    HTMLDocument(Frame*, const Settings&, const URL&, ScriptExecutionContextIdentifier, DocumentClasses = { }, unsigned constructionFlags = 0);
+    WEBCORE_EXPORT HTMLDocument(LocalFrame*, const Settings&, const URL&, ScriptExecutionContextIdentifier, DocumentClasses = { }, OptionSet<ConstructionFlag> = { });
 
 private:
     bool isFrameSet() const final;
@@ -65,9 +67,9 @@ private:
     TreeScopeOrderedMap m_windowNamedItem;
 };
 
-inline Ref<HTMLDocument> HTMLDocument::create(Frame* frame, const Settings& settings, const URL& url, ScriptExecutionContextIdentifier identifier)
+inline Ref<HTMLDocument> HTMLDocument::create(LocalFrame* frame, const Settings& settings, const URL& url, ScriptExecutionContextIdentifier identifier)
 {
-    auto document = adoptRef(*new HTMLDocument(frame, settings, url, identifier, { DocumentClass::HTML }, 0));
+    auto document = adoptRef(*new HTMLDocument(frame, settings, url, identifier, { DocumentClass::HTML }));
     document->addToContextsMap();
     return document;
 }

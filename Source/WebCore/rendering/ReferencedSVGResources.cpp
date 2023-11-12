@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2021 Apple Inc. All rights reserved.
+ * Copyright (C) 2021-2023 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -27,9 +27,8 @@
 #include "ReferencedSVGResources.h"
 
 #include "FilterOperations.h"
+#include "LegacyRenderSVGResourceClipper.h"
 #include "PathOperation.h"
-#include "RenderSVGResourceClipper.h"
-#include "RenderSVGResourceFilter.h"
 #include "RenderStyle.h"
 #include "SVGClipPathElement.h"
 #include "SVGElementTypeHelpers.h"
@@ -71,10 +70,9 @@ ReferencedSVGResources::ReferencedSVGResources(RenderElement& renderer)
 
 ReferencedSVGResources::~ReferencedSVGResources()
 {
-    auto& document = m_renderer.document();
-    
+    auto& treeScope = m_renderer.treeScopeForSVGReferences();
     for (auto& targetID : copyToVector(m_elementClients.keys()))
-        removeClientForTarget(document, targetID);
+        removeClientForTarget(treeScope, targetID);
 }
 
 void ReferencedSVGResources::addClientForTarget(SVGElement& targetElement, const AtomString& targetID)
@@ -86,13 +84,12 @@ void ReferencedSVGResources::addClientForTarget(SVGElement& targetElement, const
     });
 }
 
-void ReferencedSVGResources::removeClientForTarget(Document& document, const AtomString& targetID)
+void ReferencedSVGResources::removeClientForTarget(TreeScope& treeScope, const AtomString& targetID)
 {
     auto client = m_elementClients.take(targetID);
 
-    auto* targetElement = document.getElementById(targetID);
-    if (is<SVGElement>(targetElement))
-        downcast<SVGElement>(*targetElement).removeReferencingCSSClient(*client);
+    if (RefPtr targetElement = dynamicDowncast<SVGElement>(treeScope.getElementById(targetID)))
+        targetElement->removeReferencingCSSClient(*client);
 }
 
 Vector<std::pair<AtomString, QualifiedName>> ReferencedSVGResources::referencedSVGResourceIDs(const RenderStyle& style)
@@ -119,14 +116,14 @@ Vector<std::pair<AtomString, QualifiedName>> ReferencedSVGResources::referencedS
     return referencedResources;
 }
 
-void ReferencedSVGResources::updateReferencedResources(Document& document, const Vector<std::pair<AtomString, QualifiedName>>& referencedResources)
+void ReferencedSVGResources::updateReferencedResources(TreeScope& treeScope, const Vector<std::pair<AtomString, QualifiedName>>& referencedResources)
 {
     HashSet<AtomString> oldKeys;
     for (auto& key : m_elementClients.keys())
         oldKeys.add(key);
 
     for (auto& [targetID, tagName] : referencedResources) {
-        auto* element = elementForResourceID(document, targetID, tagName);
+        RefPtr element = elementForResourceID(treeScope, targetID, tagName);
         if (!element)
             continue;
 
@@ -135,34 +132,49 @@ void ReferencedSVGResources::updateReferencedResources(Document& document, const
     }
     
     for (auto& targetID : oldKeys)
-        removeClientForTarget(document, targetID);
+        removeClientForTarget(treeScope, targetID);
 }
 
 // SVG code uses getRenderSVGResourceById<>, but that works in terms of renderers. We need to find resources
 // before the render tree is fully constructed, so this works on Elements.
-SVGElement* ReferencedSVGResources::elementForResourceID(Document& document, const AtomString& resourceID, const QualifiedName& tagName)
+RefPtr<SVGElement> ReferencedSVGResources::elementForResourceID(TreeScope& treeScope, const AtomString& resourceID, const QualifiedName& tagName)
 {
-    auto* element = document.getElementById(resourceID);
+    RefPtr element = treeScope.getElementById(resourceID);
     if (!element || !element->hasTagName(tagName))
         return nullptr;
 
-    return downcast<SVGElement>(element);
+    return downcast<SVGElement>(WTFMove(element));
 }
 
-SVGFilterElement* ReferencedSVGResources::referencedFilterElement(Document& document, const ReferenceFilterOperation& referenceFilter)
+RefPtr<SVGClipPathElement> ReferencedSVGResources::referencedClipPathElement(TreeScope& treeScope, const ReferencePathOperation& clipPath)
+{
+    if (clipPath.fragment().isEmpty())
+        return nullptr;
+    RefPtr element = elementForResourceID(treeScope, clipPath.fragment(), SVGNames::clipPathTag);
+    return element ? downcast<SVGClipPathElement>(WTFMove(element)) : nullptr;
+}
+
+RefPtr<SVGFilterElement> ReferencedSVGResources::referencedFilterElement(TreeScope& treeScope, const ReferenceFilterOperation& referenceFilter)
 {
     if (referenceFilter.fragment().isEmpty())
         return nullptr;
-    auto* element = elementForResourceID(document, referenceFilter.fragment(), SVGNames::filterTag);
-    return element ? downcast<SVGFilterElement>(element) : nullptr;
+    RefPtr element = elementForResourceID(treeScope, referenceFilter.fragment(), SVGNames::filterTag);
+    return element ? downcast<SVGFilterElement>(WTFMove(element)) : nullptr;
 }
 
-RenderSVGResourceClipper* ReferencedSVGResources::referencedClipperRenderer(Document& document, const ReferencePathOperation& clipPath)
+LegacyRenderSVGResourceClipper* ReferencedSVGResources::referencedClipperRenderer(TreeScope& treeScope, const ReferencePathOperation& clipPath)
 {
     if (clipPath.fragment().isEmpty())
         return nullptr;
     // For some reason, SVG stores a cache of id -> renderer, rather than just using getElementById() and renderer().
-    return getRenderSVGResourceById<RenderSVGResourceClipper>(document, clipPath.fragment());
+    return getRenderSVGResourceById<LegacyRenderSVGResourceClipper>(treeScope, clipPath.fragment());
+}
+
+LegacyRenderSVGResourceContainer* ReferencedSVGResources::referencedRenderResource(TreeScope& treeScope, const AtomString& fragment)
+{
+    if (fragment.isEmpty())
+        return nullptr;
+    return getRenderSVGResourceContainerById(treeScope, fragment);
 }
 
 } // namespace WebCore

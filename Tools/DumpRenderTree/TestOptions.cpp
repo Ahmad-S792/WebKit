@@ -71,6 +71,7 @@ const TestFeatures& TestOptions::defaults()
             { "ColorFilterEnabled", true },
             { "CustomPasteboardDataEnabled", true },
             { "DOMPasteAllowed", true },
+            { "DOMTestingAPIsEnabled", true },
             { "DeveloperExtrasEnabled", true },
             { "DirectoryUploadEnabled", true },
             { "DownloadAttributeEnabled", true },
@@ -90,16 +91,25 @@ const TestFeatures& TestOptions::defaults()
             { "MockScrollbarsEnabled", true },
             { "NeedsStorageAccessFromFileURLsQuirk", false },
             { "OfflineWebApplicationCacheEnabled", true },
+            { "PaintTimingEnabled", true },
+            { "PushAPIEnabled", true },
+            { "ReferrerPolicyAttributeEnabled", true },
+            { "RemotePlaybackEnabled", true },
             { "RequiresUserGestureForAudioPlayback", false },
             { "RequiresUserGestureForMediaPlayback", false },
             { "RequiresUserGestureForVideoPlayback", false },
             { "ScrollToTextFragmentIndicatorEnabled", false },
             { "ShouldPrintBackgrounds", true },
             { "ShrinksStandaloneImagesToFit", true },
+            { "SpeechRecognitionEnabled", true },
             { "TextAreasAreResizable", true },
             { "TextAutosizingEnabled", false },
             { "UsesBackForwardCache", false },
+            { "VisualViewportAPIEnabled", true },
             { "WebAudioEnabled", true },
+#if ENABLE(WEBGL)
+            { "WebGLUsingMetal", true },
+#endif
             { "WebSQLEnabled", true },
             { "XSSAuditorEnabled", false },
 
@@ -124,12 +134,11 @@ const TestFeatures& TestOptions::defaults()
             { "AllowFileAccessFromFileURLs", true },
             { "AllowTopNavigationToDataURLs", true },
             { "AllowUniversalAccessFromFileURLs", true },
-            { "AspectRatioEnabled", true },
             { "AsyncClipboardAPIEnabled", false },
             { "AttachmentElementEnabled", false },
+            { "AttachmentWideLayoutEnabled", false },
             { "CSSContainmentEnabled", false },
             { "CSSCounterStyleAtRuleImageSymbolsEnabled", false },
-            { "CSSCounterStyleAtRulesEnabled", false },
             { "CSSGradientInterpolationColorSpacesEnabled", true },
             { "CSSGradientPremultipliedAlphaInterpolationEnabled", true },
             { "CSSInputSecurityEnabled", true },
@@ -204,6 +213,7 @@ const std::unordered_map<std::string, TestHeaderKeyType>& TestOptions::keyTypeMa
 
         { "additionalSupportedImageTypes", TestHeaderKeyType::StringTestRunner },
         { "jscOptions", TestHeaderKeyType::StringTestRunner },
+        { "captionDisplayMode", TestHeaderKeyType::StringTestRunner },
     };
 
     return map;

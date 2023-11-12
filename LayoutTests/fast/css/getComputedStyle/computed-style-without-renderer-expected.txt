@@ -2,7 +2,7 @@ Computed style of an element whose parent's 'display' value is 'none':
 align-content: normal
 align-items: normal
 align-self: auto
-alignment-baseline: auto
+alignment-baseline: baseline
 appearance: none
 background-attachment: scroll
 background-clip: border-box
@@ -104,6 +104,7 @@ grid-template-columns: none
 grid-template-rows: none
 hanging-punctuation: none
 height: 100px
+hyphenate-character: auto
 image-rendering: auto
 justify-content: normal
 justify-items: normal
@@ -200,7 +201,6 @@ unicode-bidi: normal
 vector-effect: none
 vertical-align: baseline
 visibility: visible
-white-space: normal
 widows: auto
 width: 50%
 will-change: auto
@@ -226,22 +226,15 @@ zoom: 1
 -webkit-box-shadow: none
 -webkit-column-axis: auto
 -webkit-font-smoothing: auto
--webkit-hyphenate-character: auto
 -webkit-hyphenate-limit-after: auto
 -webkit-hyphenate-limit-before: auto
 -webkit-hyphenate-limit-lines: no-limit
--webkit-hyphens: manual
 -webkit-line-align: none
 -webkit-line-box-contain: block inline replaced
 -webkit-line-clamp: none
 -webkit-line-grid: none
 -webkit-line-snap: none
 -webkit-locale: auto
--webkit-mask-box-image-outset: 0
--webkit-mask-box-image-repeat: stretch
--webkit-mask-box-image-slice: 0 fill
--webkit-mask-box-image-source: none
--webkit-mask-box-image-width: auto
 -webkit-mask-clip: border-box
 -webkit-mask-composite: source-over
 -webkit-nbsp-mode: normal

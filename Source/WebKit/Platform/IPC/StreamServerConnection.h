@@ -39,6 +39,19 @@ namespace IPC {
 
 class StreamConnectionWorkQueue;
 
+struct StreamServerConnectionHandle {
+    WTF_MAKE_NONCOPYABLE(StreamServerConnectionHandle);
+    StreamServerConnectionHandle(Connection::Handle&& connection, StreamConnectionBuffer::Handle&& bufferHandle)
+        : outOfStreamConnection(WTFMove(connection))
+        , buffer(WTFMove(bufferHandle))
+    { }
+    StreamServerConnectionHandle(StreamServerConnectionHandle&&) = default;
+    StreamServerConnectionHandle& operator=(StreamServerConnectionHandle&&) = default;
+
+    Connection::Handle outOfStreamConnection;
+    StreamConnectionBuffer::Handle buffer;
+};
+
 // StreamServerConnection represents the connection between stream client and server, as used by the server.
 //
 // StreamServerConnection:
@@ -49,17 +62,13 @@ class StreamConnectionWorkQueue;
 //   void didReceiveStreamMessage(StreamServerConnection&, Decoder&);
 //
 // The StreamServerConnection does not trust the StreamClientConnection.
-class StreamServerConnection final : public ThreadSafeRefCounted<StreamServerConnection>, private MessageReceiveQueue {
+class StreamServerConnection final : public ThreadSafeRefCounted<StreamServerConnection>, private MessageReceiveQueue, private Connection::Client {
     WTF_MAKE_NONCOPYABLE(StreamServerConnection);
 public:
     using AsyncReplyID = Connection::AsyncReplyID;
-    struct Handle {
-        Connection::Handle outOfStreamConnection;
-        StreamConnectionBuffer::Handle buffer;
-        void encode(Encoder&) const;
-        static std::optional<Handle> decode(Decoder&);
-    };
-    static Ref<StreamServerConnection> create(Handle&&, StreamConnectionWorkQueue&);
+    using Handle = StreamServerConnectionHandle;
+
+    static RefPtr<StreamServerConnection> tryCreate(Handle&&);
     ~StreamServerConnection() final;
 
     void startReceivingMessages(StreamMessageReceiver&, ReceiverName, uint64_t destinationID);
@@ -67,6 +76,7 @@ public:
     void stopReceivingMessages(ReceiverName, uint64_t destinationID);
 
     Connection& connection() { return m_connection; }
+    Ref<Connection> protectedConnection() { return m_connection; }
 
     enum DispatchResult : bool {
         HasNoMessages,
@@ -74,9 +84,9 @@ public:
     };
     DispatchResult dispatchStreamMessages(size_t messageLimit);
 
-    void open();
+    void open(StreamConnectionWorkQueue&);
     void invalidate();
-    template<typename T, typename U> bool send(T&& message, ObjectIdentifier<U> destinationID);
+    template<typename T> Error send(T&& message, const ObjectIdentifierGenericBase& destinationID);
 
     template<typename T, typename... Arguments>
     void sendSyncReply(Connection::SyncRequestID, Arguments&&...);
@@ -87,17 +97,24 @@ public:
     Semaphore& clientWaitSemaphore() { return m_clientWaitSemaphore; }
 
 private:
-    StreamServerConnection(Ref<Connection>, StreamServerConnectionBuffer&&, StreamConnectionWorkQueue&);
+    StreamServerConnection(Ref<Connection>, StreamServerConnectionBuffer&&);
 
     // MessageReceiveQueue
     void enqueueMessage(Connection&, std::unique_ptr<Decoder>&&) final;
+
+    // Connection::Client
+    void didReceiveMessage(Connection&, Decoder&) final;
+    bool didReceiveSyncMessage(Connection&, Decoder&, UniqueRef<Encoder>&) final;
+    void didClose(Connection&) final;
+    void didReceiveInvalidMessage(Connection&, MessageName) final;
+
     bool processSetStreamDestinationID(Decoder&&, RefPtr<StreamMessageReceiver>& currentReceiver);
     bool dispatchStreamMessage(Decoder&&, StreamMessageReceiver&);
     bool dispatchOutOfStreamMessage(Decoder&&);
 
     using WakeUpClient = StreamServerConnectionBuffer::WakeUpClient;
-    Ref<IPC::Connection> m_connection;
-    StreamConnectionWorkQueue& m_workQueue;
+    const Ref<IPC::Connection> m_connection;
+    RefPtr<StreamConnectionWorkQueue> m_workQueue;
     StreamServerConnectionBuffer m_buffer;
 
     Lock m_outOfStreamMessagesLock;
@@ -109,15 +126,14 @@ private:
     ReceiversMap m_receivers WTF_GUARDED_BY_LOCK(m_receiversLock);
     uint64_t m_currentDestinationID { 0 };
     Semaphore m_clientWaitSemaphore;
-    bool m_isOpen { false };
 
     friend class StreamConnectionWorkQueue;
 };
 
-template<typename T, typename U>
-bool StreamServerConnection::send(T&& message, ObjectIdentifier<U> destinationID)
+template<typename T>
+Error StreamServerConnection::send(T&& message, const ObjectIdentifierGenericBase& destinationID)
 {
-    return m_connection->send(WTFMove(message), destinationID);
+    return m_connection->send(std::forward<T>(message), destinationID);
 }
 
 template<typename T, typename... Arguments>
@@ -146,20 +162,6 @@ void StreamServerConnection::sendAsyncReply(AsyncReplyID asyncReplyID, Arguments
     auto encoder = makeUniqueRef<Encoder>(T::asyncMessageReplyName(), asyncReplyID.toUInt64());
     (encoder.get() << ... << std::forward<Arguments>(arguments));
     m_connection->sendSyncReply(WTFMove(encoder));
-}
-
-inline void StreamServerConnection::Handle::encode(Encoder& encoder) const
-{
-    encoder << outOfStreamConnection << buffer;
-}
-
-inline std::optional<StreamServerConnection::Handle> StreamServerConnection::Handle::decode(Decoder& decoder)
-{
-    auto outOfStreamConnection = decoder.decode<Connection::Handle>();
-    auto buffer = decoder.decode<StreamConnectionBuffer::Handle>();
-    if (UNLIKELY(!decoder.isValid()))
-        return std::nullopt;
-    return Handle { WTFMove(*outOfStreamConnection), WTFMove(*buffer) };
 }
 
 }

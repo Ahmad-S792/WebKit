@@ -95,6 +95,17 @@ function testExpected(testFuncString, expected, comparison)
     }
 }
 
+function testExpectedEqualWithTolerance(testFuncString, expected, tolerance)
+{
+    try {
+        let observed = eval(testFuncString);
+        let success = Math.abs(observed - expected) <= tolerance;
+        reportExpected(success, testFuncString, '==', expected, observed)
+    } catch (ex) {
+        consoleWrite(ex);
+    }
+}
+
 function sleepFor(duration) {
     return new Promise(resolve => {
         setTimeout(resolve, duration);
@@ -102,6 +113,11 @@ function sleepFor(duration) {
 }
 
 function testExpectedEventually(testFuncString, expected, comparison, timeout)
+{
+    return testExpectedEventuallyWhileRunningBetweenTests(testFuncString, expected, comparison, timeout, null);
+}
+
+function testExpectedEventuallyWhileRunningBetweenTests(testFuncString, expected, comparison, timeout, work)
 {
     return new Promise(async resolve => {
         var success;
@@ -111,7 +127,7 @@ function testExpectedEventually(testFuncString, expected, comparison, timeout)
             comparison = '==';
         while (timeout === undefined || timeSlept < timeout) {
             try {
-                let {success, observed} = compare(testFuncString, expected, comparison);
+                ({success, observed} = compare(testFuncString, expected, comparison));
                 if (success) {
                     reportExpected(success, testFuncString, comparison, expected, observed);
                     resolve();
@@ -119,6 +135,8 @@ function testExpectedEventually(testFuncString, expected, comparison, timeout)
                 }
                 await sleepFor(1);
                 timeSlept++;
+                if (work)
+                    work();
             } catch (ex) {
                 consoleWrite(ex);
                 resolve();
@@ -128,6 +146,16 @@ function testExpectedEventually(testFuncString, expected, comparison, timeout)
         reportExpected(success, testFuncString, comparison, expected, observed, "AFTER TIMEOUT");
         resolve();
     });
+}
+
+async function runUntil(run, until, timeout) {
+    while (timeout === undefined || timeout--) {
+        run();
+        if (until())
+            return;
+        await sleepFor(1);
+    }
+    failTest("Did not end fast enough.");
 }
 
 function testArraysEqual(testFuncString, expected)

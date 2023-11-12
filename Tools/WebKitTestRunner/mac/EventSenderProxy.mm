@@ -35,6 +35,7 @@
 #import "TestRunnerWKWebView.h"
 #import "WebKitTestRunnerWindow.h"
 #import <Carbon/Carbon.h>
+#import <WebCore/PlatformMouseEvent.h>
 #import <WebKit/WKString.h>
 #import <WebKit/WKPagePrivate.h>
 #import <WebKit/WKWebView.h>
@@ -339,7 +340,7 @@ void EventSenderProxy::mouseDown(unsigned buttonNumber, WKEventModifiers modifie
                                          context:[NSGraphicsContext currentContext] 
                                      eventNumber:++m_eventNumber 
                                       clickCount:m_clickCount 
-                                        pressure:0.0];
+                                        pressure:WebCore::ForceAtClick];
 
     NSView *targetView = [m_testController->mainWebView()->platformView() hitTest:[event locationInWindow]];
     if (targetView) {
@@ -397,7 +398,7 @@ void EventSenderProxy::sendMouseDownToStartPressureEvents()
         context:[NSGraphicsContext currentContext]
         eventNumber:++m_eventNumber
         clickCount:m_clickCount
-        pressure:0.0];
+        pressure:WebCore::ForceAtClick];
 
     [NSApp sendEvent:event];
 }
@@ -811,6 +812,15 @@ void EventSenderProxy::sendWheelEvent(EventTimestamp timestamp, double windowX, 
     CGEventSetIntegerValueField(cgScrollEvent.get(), kCGScrollWheelEventIsContinuous, 1);
     CGEventSetIntegerValueField(cgScrollEvent.get(), kCGScrollWheelEventScrollPhase, cgScrollPhaseFromPhase(phase));
     CGEventSetIntegerValueField(cgScrollEvent.get(), kCGScrollWheelEventMomentumPhase, cgMomentumPhaseFromPhase(momentumPhase));
+
+    const char* markerMessage = nullptr;
+    if (phase == WheelEventPhase::Ended || phase == WheelEventPhase::Cancelled)
+        markerMessage = "SentWheelPhaseEndOrCancel";
+    else if (momentumPhase == WheelEventPhase::Ended)
+        markerMessage = "SentWheelMomentumPhaseEnd";
+
+    if (markerMessage)
+        WKPagePostMessageToInjectedBundle(m_testController->mainWebView()->page(), toWK("WheelEventMarker").get(), toWK(markerMessage).get());
 
     NSEvent* event = [NSEvent eventWithCGEvent:cgScrollEvent.get()];
     // Our event should have the correct settings:

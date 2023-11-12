@@ -25,9 +25,9 @@
 
 #pragma once
 
-#if ENABLE(PDFKIT_PLUGIN)
+#if ENABLE(LEGACY_PDFKIT_PLUGIN)
 
-#import <Quartz/Quartz.h>
+#import <PDFKit/PDFKit.h>
 
 @class PDFViewLayout;
 
@@ -86,11 +86,9 @@ typedef NS_ENUM(NSInteger, PDFLayerControllerCursorType) {
 
 - (void)snapshotInContext:(CGContextRef)context;
 
-#if ENABLE(UI_PROCESS_PDF_HUD)
 - (void)setDisplaysPDFHUDController:(BOOL)displaysController;
 - (void)zoomIn:(id)atPoint;
 - (void)zoomOut:(id)atPoint;
-#endif
 
 - (void)magnifyWithMagnification:(CGFloat)magnification atPoint:(CGPoint)point immediately:(BOOL)immediately;
 
@@ -176,4 +174,4 @@ typedef NS_ENUM(NSInteger, PDFLayerControllerCursorType) {
 - (id)accessibilityNode;
 @end
 
-#endif // ENABLE(PDFKIT_PLUGIN)
+#endif // ENABLE(LEGACY_PDFKIT_PLUGIN)

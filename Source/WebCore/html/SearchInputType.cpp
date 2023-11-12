@@ -120,11 +120,11 @@ void SearchInputType::createShadowSubtree()
 
     ASSERT(element());
     m_resultsButton = SearchFieldResultsButtonElement::create(element()->document());
-    container->insertBefore(*m_resultsButton, textWrapper.get());
+    container->insertBefore(*m_resultsButton, textWrapper.copyRef());
     updateResultButtonPseudoType(*m_resultsButton, element()->maxResults());
 
     m_cancelButton = SearchFieldCancelButtonElement::create(element()->document());
-    container->insertBefore(*m_cancelButton, textWrapper->nextSibling());
+    container->insertBefore(*m_cancelButton, textWrapper->protectedNextSibling());
 }
 
 HTMLElement* SearchInputType::resultsButtonElement() const
@@ -147,16 +147,17 @@ auto SearchInputType::handleKeydownEvent(KeyboardEvent& event) -> ShouldCallBase
     if (key == "U+001B"_s) {
         Ref<HTMLInputElement> protectedInputElement(*element());
         protectedInputElement->setValue(emptyString(), DispatchChangeEvent);
-        protectedInputElement->onSearch();
+        if (protectedInputElement->document().settings().searchInputIncrementalAttributeAndSearchEventEnabled())
+            protectedInputElement->onSearch();
         event.setDefaultHandled();
         return ShouldCallBaseEventHandler::Yes;
     }
     return TextFieldInputType::handleKeydownEvent(event);
 }
 
-void SearchInputType::destroyShadowSubtree()
+void SearchInputType::removeShadowSubtree()
 {
-    TextFieldInputType::destroyShadowSubtree();
+    TextFieldInputType::removeShadowSubtree();
     m_resultsButton = nullptr;
     m_cancelButton = nullptr;
 }
@@ -191,7 +192,8 @@ void SearchInputType::searchEventTimerFired()
 bool SearchInputType::searchEventsShouldBeDispatched() const
 {
     ASSERT(element());
-    return element()->hasAttributeWithoutSynchronization(incrementalAttr);
+    return element()->document().settings().searchInputIncrementalAttributeAndSearchEventEnabled()
+        && element()->hasAttributeWithoutSynchronization(incrementalAttr);
 }
 
 void SearchInputType::didSetValueByUserEdit()

@@ -30,6 +30,7 @@
 #include "WebPageProxy.h"
 #include "WebProcessPool.h"
 #include "WebProcessProxy.h"
+#include <WebCore/DiagnosticLoggingClient.h>
 #include <WebCore/DiagnosticLoggingKeys.h>
 
 namespace WebKit {
@@ -92,10 +93,10 @@ void PerActivityStateCPUUsageSampler::loggingTimerFired()
 
 RefPtr<WebPageProxy> PerActivityStateCPUUsageSampler::pageForLogging() const
 {
-    for (auto& webProcess : m_processPool.processes()) {
+    for (Ref webProcess : m_processPool.processes()) {
         if (!webProcess->pageCount())
             continue;
-        return webProcess->pages()[0]; // FIXME: Iterate to pick the first non-nullptr WebPageProxy?
+        return webProcess->pages()[0].ptr();
     }
     return nullptr;
 }

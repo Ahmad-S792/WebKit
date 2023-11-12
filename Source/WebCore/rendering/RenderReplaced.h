@@ -38,18 +38,7 @@ public:
 
     bool setNeedsLayoutIfNeededAfterIntrinsicSizeChange();
 
-    LayoutSize intrinsicSize() const final
-    {
-        if (shouldApplySizeContainment()) {
-            LayoutSize size;
-            if (auto width = explicitIntrinsicInnerWidth())
-                size.setWidth(width.value());
-            if (auto height = explicitIntrinsicInnerHeight())
-                size.setHeight(height.value());
-            return size;
-        }
-        return m_intrinsicSize;
-    }
+    LayoutSize intrinsicSize() const final;
     
     RoundedRect roundedContentBoxRect() const;
     
@@ -61,12 +50,11 @@ public:
     void computeIntrinsicRatioInformation(FloatSize& intrinsicSize, FloatSize& intrinsicRatio) const override;
 
 protected:
-    RenderReplaced(Element&, RenderStyle&&);
-    RenderReplaced(Element&, RenderStyle&&, const LayoutSize& intrinsicSize);
-    RenderReplaced(Document&, RenderStyle&&, const LayoutSize& intrinsicSize);
+    RenderReplaced(Type, Element&, RenderStyle&&);
+    RenderReplaced(Type, Element&, RenderStyle&&, const LayoutSize& intrinsicSize);
+    RenderReplaced(Type, Document&, RenderStyle&&, const LayoutSize& intrinsicSize);
 
     void layout() override;
-
 
     void computeIntrinsicLogicalWidths(LayoutUnit& minLogicalWidth, LayoutUnit& maxLogicalWidth) const final;
 
@@ -110,7 +98,7 @@ private:
     virtual bool shouldDrawSelectionTint() const;
     
     Color calculateHighlightColor() const;
-    bool isHighlighted(HighlightState, const HighlightData&) const;
+    bool isHighlighted(HighlightState, const RenderHighlight&) const;
 
     bool hasReplacedLogicalHeight() const;
 

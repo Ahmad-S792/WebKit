@@ -257,7 +257,7 @@ void QueuedVideoOutput::configureNextImageTimeObserver()
 
     auto nextImageTime = iter->first;
 
-    m_nextImageTimebaseObserver = [m_player addBoundaryTimeObserverForTimes:@[[NSValue valueWithCMTime:PAL::toCMTime(currentTime)]] queue:globalOutputDelegateQueue() usingBlock:[weakThis = WeakPtr { *this }, protectedDelegate = m_delegate, protectedOutput = m_videoOutput] () mutable {
+    m_nextImageTimebaseObserver = [m_player addBoundaryTimeObserverForTimes:@[[NSValue valueWithCMTime:PAL::toCMTime(nextImageTime)]] queue:globalOutputDelegateQueue() usingBlock:[weakThis = WeakPtr { *this }, protectedDelegate = m_delegate, protectedOutput = m_videoOutput] () mutable {
         callOnMainRunLoop([weakThis = WTFMove(weakThis)] {
             if (weakThis)
                 weakThis->nextImageTimeReached();
@@ -305,7 +305,10 @@ void QueuedVideoOutput::addVideoFrameEntries(Vector<VideoFrameEntry>&& videoFram
 void QueuedVideoOutput::purgeVideoFrameEntries()
 {
     cancelNextImageTimeObserver();
-    m_videoFrames.clear();
+    if (!m_paused)
+        m_videoFrames.clear();
+    else if (m_videoFrames.size() >= 1)
+        m_videoFrames.erase(m_videoFrames.begin(), --m_videoFrames.end());
 }
 
 void QueuedVideoOutput::purgeImagesBeforeTime(const MediaTime& time)

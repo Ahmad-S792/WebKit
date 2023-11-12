@@ -12,6 +12,7 @@ class Manifest {
         Platform.clearStaticMap();
         PlatformGroup.clearStaticMap();
         Repository.clearStaticMap();
+        TestParameter.clearStaticMap();
         CommitSet.clearStaticMap();
         Test.clearStaticMap();
         TestGroup.clearStaticMap();
@@ -36,7 +37,7 @@ class Manifest {
             return await RemoteAPI.getJSON('/data/manifest.json');
         } catch(error) {
             if (error != 404)
-                throw `Failed to fetch manifest.json with ${error}`
+                throw `Failed to fetch manifest.json with ${error}`;
             return await RemoteAPI.getJSON('/api/manifest/');
         }
     }
@@ -73,6 +74,7 @@ class Manifest {
         });
         buildObjectsFromIdMap(rawResponse.builders, Builder);
         buildObjectsFromIdMap(rawResponse.repositories, Repository);
+        buildObjectsFromIdMap(rawResponse.testParameters, TestParameter);
         buildObjectsFromIdMap(rawResponse.bugTrackers, BugTracker, (raw) => {
             if (raw.repositories)
                 raw.repositories = raw.repositories.map((id) => { return Repository.findById(id); });
@@ -88,8 +90,9 @@ class Manifest {
                 return TriggerableRepositoryGroup.ensureSingleton(group.id, group);
             });
             raw.configurations = raw.configurations.map((configuration) => {
-                const [testId, platformId, supportedRepetitionTypes] = configuration;
-                return {test: Test.findById(testId), platform: Platform.findById(platformId), supportedRepetitionTypes};
+                const [testId, platformId, supportedRepetitionTypes, testParameterIds] = configuration;
+                const testParameters = testParameterIds.map(id => TestParameter.findById(id));
+                return {test: Test.findById(testId), platform: Platform.findById(platformId), supportedRepetitionTypes, testParameters};
             });
         });
 

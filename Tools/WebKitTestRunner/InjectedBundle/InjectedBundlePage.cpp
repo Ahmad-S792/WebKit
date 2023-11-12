@@ -55,11 +55,8 @@
 #include <wtf/unicode/CharacterNames.h>
 
 #if USE(CF)
-#include <wtf/text/cf/StringConcatenateCF.h>
-#endif
-
-#if USE(CF) && !PLATFORM(WIN_CAIRO)
 #include "WebArchiveDumpSupport.h"
+#include <wtf/text/cf/StringConcatenateCF.h>
 #endif
 
 using namespace std;
@@ -669,7 +666,7 @@ static void dumpFrameScrollPosition(WKBundleFrameRef frame, StringBuilder& strin
 {
     double x = numericWindowProperty(frame, "pageXOffset");
     double y = numericWindowProperty(frame, "pageYOffset");
-    if (fabs(x) <= 0.00000001 && fabs(y) <= 0.00000001)
+    if (std::abs(x) <= 0.00000001 && std::abs(y) <= 0.00000001)
         return;
     if (shouldIncludeFrameName)
         stringBuilder.append("frame '", adoptWK(WKBundleFrameCopyName(frame)).get(), "' ");
@@ -678,7 +675,9 @@ static void dumpFrameScrollPosition(WKBundleFrameRef frame, StringBuilder& strin
 
 static void dumpDescendantFrameScrollPositions(WKBundleFrameRef frame, StringBuilder& stringBuilder)
 {
+    ALLOW_DEPRECATED_DECLARATIONS_BEGIN
     auto childFrames = adoptWK(WKBundleFrameCopyChildFrames(frame));
+    ALLOW_DEPRECATED_DECLARATIONS_END
     size_t size = WKArrayGetSize(childFrames.get());
     for (size_t i = 0; i < size; ++i) {
         WKBundleFrameRef subframe = static_cast<WKBundleFrameRef>(WKArrayGetItemAtIndex(childFrames.get(), i));
@@ -720,7 +719,9 @@ static void dumpFrameText(WKBundleFrameRef frame, StringBuilder& builder)
 
 static void dumpDescendantFramesText(WKBundleFrameRef frame, StringBuilder& stringBuilder)
 {
+    ALLOW_DEPRECATED_DECLARATIONS_BEGIN
     auto childFrames = adoptWK(WKBundleFrameCopyChildFrames(frame));
+    ALLOW_DEPRECATED_DECLARATIONS_END
     size_t size = WKArrayGetSize(childFrames.get());
     for (size_t i = 0; i < size; ++i) {
         WKBundleFrameRef subframe = static_cast<WKBundleFrameRef>(WKArrayGetItemAtIndex(childFrames.get(), i));
@@ -747,7 +748,7 @@ void InjectedBundlePage::dumpAllFramesText(StringBuilder& stringBuilder)
 
 void InjectedBundlePage::dumpDOMAsWebArchive(WKBundleFrameRef frame, StringBuilder& stringBuilder)
 {
-#if USE(CF) && !PLATFORM(WIN_CAIRO)
+#if USE(CF)
     auto wkData = adoptWK(WKBundleFrameCopyWebArchive(frame));
     auto cfData = adoptCF(CFDataCreate(0, WKDataGetBytes(wkData.get()), WKDataGetSize(wkData.get())));
     stringBuilder.append(WebCoreTestSupport::createXMLStringFromWebArchiveData(cfData.get()).get());
@@ -765,6 +766,8 @@ void InjectedBundlePage::dump()
 
     WKBundleFrameRef frame = WKBundlePageGetMainFrame(m_page);
     auto urlRef = adoptWK(WKBundleFrameCopyURL(frame));
+    if (!urlRef)
+        return;
     String url = toWTFString(adoptWK(WKURLCopyString(urlRef.get())));
     auto mimeType = adoptWK(WKBundleFrameCopyMIMETypeForResourceWithURL(frame, urlRef.get()));
     if (url.find("dumpAsText/"_s) != notFound || WKStringIsEqualToUTF8CString(mimeType.get(), "text/plain"))

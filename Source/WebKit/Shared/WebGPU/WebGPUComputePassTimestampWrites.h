@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2021 Apple Inc. All rights reserved.
+ * Copyright (C) 2021-2023 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -28,21 +28,19 @@
 #if ENABLE(GPU_PROCESS)
 
 #include "WebGPUIdentifier.h"
+#include <WebCore/WebGPUComputePassTimestampLocation.h>
+#include <WebCore/WebGPUIntegralTypes.h>
 #include <optional>
-#include <pal/graphics/WebGPU/WebGPUComputePassTimestampLocation.h>
-#include <pal/graphics/WebGPU/WebGPUIntegralTypes.h>
 #include <wtf/Ref.h>
 #include <wtf/Vector.h>
 
 namespace WebKit::WebGPU {
 
-struct ComputePassTimestampWrite {
+struct ComputePassTimestampWrites {
     WebGPUIdentifier querySet;
-    PAL::WebGPU::Size32 queryIndex { 0 };
-    PAL::WebGPU::ComputePassTimestampLocation location { PAL::WebGPU::ComputePassTimestampLocation::Beginning };
+    WebCore::WebGPU::Size32 beginningOfPassWriteIndex { 0 };
+    WebCore::WebGPU::Size32 endOfPassWriteIndex { 0 };
 };
-
-using ComputePassTimestampWrites = Vector<ComputePassTimestampWrite>;
 
 } // namespace WebKit::WebGPU
 

@@ -4,7 +4,8 @@
  *           (C) 1998 Waldo Bastian (bastian@kde.org)
  *           (C) 1999 Lars Knoll (knoll@kde.org)
  *           (C) 1999 Antti Koivisto (koivisto@kde.org)
- * Copyright (C) 2003, 2004, 2005, 2006, 2007, 2010 Apple Inc. All rights reserved.
+ * Copyright (C) 2003-2023 Apple Inc. All rights reserved.
+ * Copyright (C) 2014 Google Inc. All rights reserved.
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Library General Public
@@ -114,17 +115,17 @@ int HTMLTableRowElement::sectionRowIndex() const
 ExceptionOr<Ref<HTMLTableCellElement>> HTMLTableRowElement::insertCell(int index)
 {
     if (index < -1)
-        return Exception { IndexSizeError };
+        return Exception { ExceptionCode::IndexSizeError };
     auto children = cells();
     int numCells = children->length();
     if (index > numCells)
-        return Exception { IndexSizeError };
+        return Exception { ExceptionCode::IndexSizeError };
     auto cell = HTMLTableCellElement::create(tdTag, document());
     ExceptionOr<void> result;
-    if (index < 0 || index >= numCells)
+    if (numCells == index || index == -1)
         result = appendChild(cell);
     else
-        result = insertBefore(cell, index < 1 ? firstChild() : children->item(index));
+        result = insertBefore(cell, children->item(index));
     if (result.hasException())
         return result.releaseException();
     return cell;
@@ -140,13 +141,13 @@ ExceptionOr<void> HTMLTableRowElement::deleteCell(int index)
         index = numCells - 1;
     }
     if (index < 0 || index >= numCells)
-        return Exception { IndexSizeError };
+        return Exception { ExceptionCode::IndexSizeError };
     return removeChild(*children->item(index));
 }
 
 Ref<HTMLCollection> HTMLTableRowElement::cells()
 {
-    return ensureRareData().ensureNodeLists().addCachedCollection<GenericCachedHTMLCollection<CollectionTypeTraits<TRCells>::traversalType>>(*this, TRCells);
+    return ensureRareData().ensureNodeLists().addCachedCollection<GenericCachedHTMLCollection<CollectionTypeTraits<CollectionType::TRCells>::traversalType>>(*this, CollectionType::TRCells);
 }
 
 }

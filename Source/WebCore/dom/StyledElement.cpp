@@ -69,11 +69,7 @@ void StyledElement::synchronizeStyleAttributeInternalImpl()
         setSynchronizedLazyAttribute(styleAttr, inlineStyle->asTextAtom());
 }
 
-StyledElement::~StyledElement()
-{
-    if (PropertySetCSSStyleDeclaration* cssomWrapper = inlineStyleCSSOMWrapper())
-        cssomWrapper->clearParentElement();
-}
+StyledElement::~StyledElement() = default;
 
 CSSStyleDeclaration& StyledElement::cssomStyle()
 {
@@ -99,16 +95,15 @@ MutableStyleProperties& StyledElement::ensureMutableInlineStyle()
 
 void StyledElement::attributeChanged(const QualifiedName& name, const AtomString& oldValue, const AtomString& newValue, AttributeModificationReason reason)
 {
+    Element::attributeChanged(name, oldValue, newValue, reason);
     if (oldValue != newValue) {
         if (name == styleAttr)
             styleAttributeChanged(newValue, reason);
         else if (hasPresentationalHintsForAttribute(name)) {
             elementData()->setPresentationalHintStyleIsDirty(true);
-            invalidateStyle();
+            invalidateStyleInternal();
         }
     }
-
-    Element::attributeChanged(name, oldValue, newValue, reason);
 }
 
 PropertySetCSSStyleDeclaration* StyledElement::inlineStyleCSSOMWrapper()
@@ -141,26 +136,27 @@ void StyledElement::setInlineStyleFromString(const AtomString& newStyleString)
     if (!inlineStyle)
         inlineStyle = CSSParser::parseInlineStyleDeclaration(newStyleString, this);
     else
-        downcast<MutableStyleProperties>(*inlineStyle).parseDeclaration(newStyleString, document());
+        Ref { downcast<MutableStyleProperties>(*inlineStyle) }->parseDeclaration(newStyleString, document());
 
     if (usesStyleBasedEditability(*inlineStyle))
-        document().setHasElementUsingStyleBasedEditability();
+        protectedDocument()->setHasElementUsingStyleBasedEditability();
 }
 
 void StyledElement::styleAttributeChanged(const AtomString& newStyleString, AttributeModificationReason reason)
 {
+    Ref document = this->document();
     auto startLineNumber = OrdinalNumber::beforeFirst();
-    if (document().scriptableDocumentParser() && !document().isInDocumentWrite())
-        startLineNumber = document().scriptableDocumentParser()->textPosition().m_line;
+    if (document->scriptableDocumentParser() && !document->isInDocumentWrite())
+        startLineNumber = document->scriptableDocumentParser()->textPosition().m_line;
 
     if (newStyleString.isNull())
         ensureMutableInlineStyle().clear();
-    else if (reason == ModifiedByCloning || document().contentSecurityPolicy()->allowInlineStyle(document().url().string(), startLineNumber, newStyleString.string(), CheckUnsafeHashes::Yes, *this, nonce(), isInUserAgentShadowTree()))
+    else if (reason == AttributeModificationReason::ByCloning || document->checkedContentSecurityPolicy()->allowInlineStyle(document->url().string(), startLineNumber, newStyleString.string(), CheckUnsafeHashes::Yes, *this, nonce(), isInUserAgentShadowTree()))
         setInlineStyleFromString(newStyleString);
 
     elementData()->setStyleAttributeIsDirty(false);
 
-    invalidateStyle();
+    invalidateStyleInternal();
     InspectorInstrumentation::didInvalidateStyleAttr(*this);
 }
 
@@ -168,11 +164,11 @@ void StyledElement::invalidateStyleAttribute()
 {
     if (auto* inlineStyle = this->inlineStyle()) {
         if (usesStyleBasedEditability(*inlineStyle))
-            document().setHasElementUsingStyleBasedEditability();
+            protectedDocument()->setHasElementUsingStyleBasedEditability();
     }
 
     elementData()->setStyleAttributeIsDirty(true);
-    invalidateStyle();
+    invalidateStyleInternal();
 
     // In the rare case of selectors like "[style] ~ div" we need to synchronize immediately to invalidate.
     if (styleResolver().ruleSets().hasComplexSelectorsForStyleAttribute()) {
@@ -272,7 +268,7 @@ void StyledElement::removeAllInlineStyleProperties()
 
 void StyledElement::addSubresourceAttributeURLs(ListHashSet<URL>& urls) const
 {
-    auto* inlineStyle = this->inlineStyle();
+    RefPtr inlineStyle = this->inlineStyle();
     if (!inlineStyle)
         return;
     inlineStyle->traverseSubresources([&] (auto& resource) {
@@ -281,23 +277,51 @@ void StyledElement::addSubresourceAttributeURLs(ListHashSet<URL>& urls) const
     });
 }
 
+Attribute StyledElement::replaceURLsInAttributeValue(const Attribute& attribute, const HashMap<String, String>& replacementURLStrings) const
+{
+    if (replacementURLStrings.isEmpty())
+        return attribute;
+
+    if (attribute.name() != styleAttr)
+        return attribute;
+
+    RefPtr properties = this->inlineStyle();
+    if (!properties)
+        return attribute;
+
+    auto mutableProperties = properties->mutableCopy();
+    mutableProperties->setReplacementURLForSubresources(replacementURLStrings);
+    auto inlineStyleString = mutableProperties->asText();
+    mutableProperties->clearReplacementURLForSubresources();
+    return Attribute { styleAttr, AtomString { inlineStyleString } };
+}
+
+const ImmutableStyleProperties* StyledElement::presentationalHintStyle() const
+{
+    if (!elementData())
+        return nullptr;
+    if (elementData()->presentationalHintStyleIsDirty())
+        const_cast<StyledElement&>(*this).rebuildPresentationalHintStyle();
+    return elementData()->presentationalHintStyle();
+}
+
 void StyledElement::rebuildPresentationalHintStyle()
 {
     auto style = MutableStyleProperties::create(isSVGElement() ? SVGAttributeMode : HTMLQuirksMode);
-    for (const Attribute& attribute : attributesIterator())
+    for (auto& attribute : attributesIterator())
         collectPresentationalHintsForAttribute(attribute.name(), attribute.value(), style);
 
-    if (is<HTMLImageElement>(*this))
-        collectExtraStyleForPresentationalHints(style);
+    if (auto* imageElement = dynamicDowncast<HTMLImageElement>(*this))
+        imageElement->collectExtraStyleForPresentationalHints(style);
 
     // ShareableElementData doesn't store presentation attribute style, so make sure we have a UniqueElementData.
-    UniqueElementData& elementData = ensureUniqueElementData();
+    auto& elementData = ensureUniqueElementData();
 
     elementData.setPresentationalHintStyleIsDirty(false);
     if (style->isEmpty())
         elementData.m_presentationalHintStyle = nullptr;
     else
-        elementData.m_presentationalHintStyle = WTFMove(style);
+        elementData.m_presentationalHintStyle = style->immutableCopy();
 }
 
 void StyledElement::addPropertyToPresentationalHintStyle(MutableStyleProperties& style, CSSPropertyID propertyID, CSSValueID identifier)

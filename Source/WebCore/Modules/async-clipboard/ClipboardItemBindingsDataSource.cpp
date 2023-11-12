@@ -34,12 +34,12 @@
 #include "Document.h"
 #include "ExceptionCode.h"
 #include "FileReaderLoader.h"
-#include "Frame.h"
 #include "GraphicsContext.h"
 #include "ImageBuffer.h"
 #include "JSBlob.h"
 #include "JSDOMPromise.h"
 #include "JSDOMPromiseDeferred.h"
+#include "LocalFrame.h"
 #include "Page.h"
 #include "PasteboardCustomData.h"
 #include "SharedBuffer.h"
@@ -89,20 +89,20 @@ void ClipboardItemBindingsDataSource::getType(const String& type, Ref<DeferredPr
     });
 
     if (matchIndex == notFound) {
-        promise->reject(NotFoundError);
+        promise->reject(ExceptionCode::NotFoundError);
         return;
     }
 
     auto itemPromise = m_itemPromises[matchIndex].value;
     itemPromise->whenSettled([itemPromise, promise = WTFMove(promise), type] () mutable {
         if (itemPromise->status() != DOMPromise::Status::Fulfilled) {
-            promise->reject(AbortError);
+            promise->reject(ExceptionCode::AbortError);
             return;
         }
 
         auto result = itemPromise->result();
         if (!result) {
-            promise->reject(TypeError);
+            promise->reject(ExceptionCode::TypeError);
             return;
         }
 
@@ -114,20 +114,28 @@ void ClipboardItemBindingsDataSource::getType(const String& type, Ref<DeferredPr
         }
 
         if (!result.isObject()) {
-            promise->reject(TypeError);
+            promise->reject(ExceptionCode::TypeError);
             return;
         }
 
         if (auto blob = JSBlob::toWrapped(result.getObject()->vm(), result.getObject()))
             promise->resolve<IDLInterface<Blob>>(*blob);
         else
-            promise->reject(TypeError);
+            promise->reject(ExceptionCode::TypeError);
     });
+}
+
+void ClipboardItemBindingsDataSource::clearItemTypeLoaders()
+{
+    for (auto& itemTypeLoader : m_itemTypeLoaders)
+        itemTypeLoader->invokeCompletionHandler();
+
+    m_itemTypeLoaders.clear();
 }
 
 void ClipboardItemBindingsDataSource::collectDataForWriting(Clipboard& destination, CompletionHandler<void(std::optional<PasteboardCustomData>)>&& completion)
 {
-    m_itemTypeLoaders.clear();
+    clearItemTypeLoaders();
     ASSERT(!m_completionHandler);
     m_completionHandler = WTFMove(completion);
     m_writingDestination = destination;
@@ -148,7 +156,7 @@ void ClipboardItemBindingsDataSource::collectDataForWriting(Clipboard& destinati
                 return;
 
             Ref itemTypeLoader { *weakItemTypeLoader };
-#if !COMPILER(MSVC)
+#if !(COMPILER(MSVC) && !COMPILER(CLANG))
             ASSERT_UNUSED(this, notFound != m_itemTypeLoaders.findIf([&] (auto& loader) { return loader.ptr() == itemTypeLoader.ptr(); }));
 #endif
 
@@ -241,8 +249,8 @@ ClipboardItemBindingsDataSource::ClipboardItemTypeLoader::~ClipboardItemTypeLoad
 {
     if (m_blobLoader)
         m_blobLoader->cancel();
-
-    invokeCompletionHandler();
+    
+    ASSERT(!m_completionHandler);
 }
 
 void ClipboardItemBindingsDataSource::ClipboardItemTypeLoader::didFinishLoading()
@@ -292,7 +300,7 @@ void ClipboardItemBindingsDataSource::ClipboardItemTypeLoader::sanitizeDataIfNee
         if (urlStringToSanitize.isEmpty())
             return;
 
-        m_data = { page->sanitizeLookalikeCharacters(urlStringToSanitize, LookalikeCharacterSanitizationTrigger::Copy) };
+        m_data = { page->applyLinkDecorationFiltering(urlStringToSanitize, LinkDecorationFilteringTrigger::Copy) };
     }
 
     if (m_type == "text/html"_s) {

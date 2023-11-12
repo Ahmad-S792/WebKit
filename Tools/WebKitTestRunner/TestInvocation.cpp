@@ -145,6 +145,9 @@ WKRetainPtr<WKMutableDictionaryRef> TestInvocation::createTestSettingsDictionary
     for (auto& host : TestController::singleton().allowedHosts())
         WKArrayAppendItem(allowedHostsValue.get(), toWK(host.c_str()).get());
     setValue(beginTestMessageBody, "AllowedHosts", allowedHostsValue);
+#if ENABLE(VIDEO)
+    setValue(beginTestMessageBody, "CaptionDisplayMode", options().captionDisplayMode().c_str());
+#endif
     return beginTestMessageBody;
 }
 
@@ -443,8 +446,13 @@ void TestInvocation::didReceiveMessageFromInjectedBundle(WKStringRef messageName
         return;
     }
 
-    if (WKStringIsEqualToUTF8CString(messageName, "SetUserMediaPermission")) {
-        TestController::singleton().setUserMediaPermission(booleanValue(messageBody));
+    if (WKStringIsEqualToUTF8CString(messageName, "SetCameraPermission")) {
+        TestController::singleton().setCameraPermission(booleanValue(messageBody));
+        return;
+    }
+
+    if (WKStringIsEqualToUTF8CString(messageName, "SetMicrophonePermission")) {
+        TestController::singleton().setMicrophonePermission(booleanValue(messageBody));
         return;
     }
 
@@ -555,8 +563,18 @@ void TestInvocation::didReceiveMessageFromInjectedBundle(WKStringRef messageName
         return;
     }
 
+    if (WKStringIsEqualToUTF8CString(messageName, "SetShouldDownloadContentDispositionAttachments")) {
+        TestController::singleton().setShouldDownloadContentDispositionAttachments(booleanValue(messageBody));
+        return;
+    }
+
     if (WKStringIsEqualToUTF8CString(messageName, "SetShouldLogDownloadSize")) {
         TestController::singleton().setShouldLogDownloadSize(booleanValue(messageBody));
+        return;
+    }
+
+    if (WKStringIsEqualToUTF8CString(messageName, "SetShouldLogDownloadExpectedSize")) {
+        TestController::singleton().setShouldLogDownloadExpectedSize(booleanValue(messageBody));
         return;
     }
 
@@ -947,7 +965,42 @@ WKRetainPtr<WKTypeRef> TestInvocation::didReceiveSynchronousMessageFromInjectedB
         TestController::singleton().setAllowsAnySSLCertificate(booleanValue(messageBody));
         return nullptr;
     }
-    
+
+    if (WKStringIsEqualToUTF8CString(messageName, "SetBackgroundFetchPermission")) {
+        TestController::singleton().setBackgroundFetchPermission(booleanValue(messageBody));
+        return nullptr;
+    }
+    if (WKStringIsEqualToUTF8CString(messageName, "GetBackgroundFetchIdentifier"))
+        return TestController::singleton().getBackgroundFetchIdentifier();
+
+    if (WKStringIsEqualToUTF8CString(messageName, "AbortBackgroundFetch")) {
+        TestController::singleton().abortBackgroundFetch(stringValue(messageBody));
+        return nullptr;
+    }
+
+    if (WKStringIsEqualToUTF8CString(messageName, "PauseBackgroundFetch")) {
+        TestController::singleton().pauseBackgroundFetch(stringValue(messageBody));
+        return nullptr;
+    }
+
+    if (WKStringIsEqualToUTF8CString(messageName, "ResumeBackgroundFetch")) {
+        TestController::singleton().resumeBackgroundFetch(stringValue(messageBody));
+        return nullptr;
+    }
+
+    if (WKStringIsEqualToUTF8CString(messageName, "SimulateClickBackgroundFetch")) {
+        TestController::singleton().simulateClickBackgroundFetch(stringValue(messageBody));
+        return nullptr;
+    }
+    if (WKStringIsEqualToUTF8CString(messageName, "LastAddedBackgroundFetchIdentifier"))
+        return TestController::singleton().lastAddedBackgroundFetchIdentifier();
+    if (WKStringIsEqualToUTF8CString(messageName, "LastRemovedBackgroundFetchIdentifier"))
+        return TestController::singleton().lastRemovedBackgroundFetchIdentifier();
+    if (WKStringIsEqualToUTF8CString(messageName, "LastUpdatedBackgroundFetchIdentifier"))
+        return TestController::singleton().lastUpdatedBackgroundFetchIdentifier();
+    if (WKStringIsEqualToUTF8CString(messageName, "BackgroundFetchState"))
+        return TestController::singleton().backgroundFetchState(stringValue(messageBody));
+
     if (WKStringIsEqualToUTF8CString(messageName, "SetShouldSwapToEphemeralSessionOnNextNavigation")) {
         TestController::singleton().setShouldSwapToEphemeralSessionOnNextNavigation(booleanValue(messageBody));
         return nullptr;
@@ -971,7 +1024,8 @@ WKRetainPtr<WKTypeRef> TestInvocation::didReceiveSynchronousMessageFromInjectedB
         auto persistentID = stringValue(messageBodyDictionary, "PersistentID");
         auto label = stringValue(messageBodyDictionary, "Label");
         auto type = stringValue(messageBodyDictionary, "Type");
-        TestController::singleton().addMockMediaDevice(persistentID, label, type);
+        auto properties = dictionaryValue(value(messageBodyDictionary, "Properties"));
+        TestController::singleton().addMockMediaDevice(persistentID, label, type, properties);
         return nullptr;
     }
 
@@ -1014,8 +1068,11 @@ WKRetainPtr<WKTypeRef> TestInvocation::didReceiveSynchronousMessageFromInjectedB
         return nullptr;
     }
     
-    if (WKStringIsEqualToUTF8CString(messageName, "TriggerMockMicrophoneConfigurationChange")) {
-        TestController::singleton().triggerMockMicrophoneConfigurationChange();
+    if (WKStringIsEqualToUTF8CString(messageName, "TriggerMockCaptureConfigurationChange")) {
+        auto messageBodyDictionary = dictionaryValue(messageBody);
+        bool forMicrophone = booleanValue(messageBodyDictionary, "microphone");
+        bool forDisplay = booleanValue(messageBodyDictionary, "display");
+        TestController::singleton().triggerMockCaptureConfigurationChange(forMicrophone, forDisplay);
         return nullptr;
     }
 
@@ -1083,7 +1140,7 @@ WKRetainPtr<WKTypeRef> TestInvocation::didReceiveSynchronousMessageFromInjectedB
 
     if (WKStringIsEqualToUTF8CString(messageName, "IsDoingMediaCapture"))
         return adoptWK(WKBooleanCreate(TestController::singleton().isDoingMediaCapture()));
-    
+
     if (WKStringIsEqualToUTF8CString(messageName, "ClearStatisticsDataForDomain")) {
         TestController::singleton().clearStatisticsDataForDomain(stringValue(messageBody));
         return nullptr;
@@ -1247,6 +1304,11 @@ WKRetainPtr<WKTypeRef> TestInvocation::didReceiveSynchronousMessageFromInjectedB
         return nullptr;
     }
 
+    if (WKStringIsEqualToUTF8CString(messageName, "StatisticsSetTimeAdvanceForTesting")) {
+        TestController::singleton().setStatisticsTimeAdvanceForTesting(doubleValue(messageBody));
+        return nullptr;
+    }
+
     if (WKStringIsEqualToUTF8CString(messageName, "StatisticsSetIsRunningTest")) {
         TestController::singleton().setStatisticsIsRunningTest(booleanValue(messageBody));
         return nullptr;
@@ -1337,13 +1399,13 @@ WKRetainPtr<WKTypeRef> TestInvocation::didReceiveSynchronousMessageFromInjectedB
         return nullptr;
     }
 
-    if (WKStringIsEqualToUTF8CString(messageName, "InjectUserScript")) {
-        TestController::singleton().injectUserScript(stringValue(messageBody));
+    if (WKStringIsEqualToUTF8CString(messageName, "SetOriginQuotaRatioEnabled")) {
+        TestController::singleton().setOriginQuotaRatioEnabled(booleanValue(messageBody));
         return nullptr;
     }
 
-    if (WKStringIsEqualToUTF8CString(messageName, "SendDisplayConfigurationChangedMessageForTesting")) {
-        TestController::singleton().sendDisplayConfigurationChangedMessageForTesting();
+    if (WKStringIsEqualToUTF8CString(messageName, "InjectUserScript")) {
+        TestController::singleton().injectUserScript(stringValue(messageBody));
         return nullptr;
     }
 
@@ -1720,10 +1782,10 @@ void TestInvocation::dumpPrivateClickMeasurement()
 
 void TestInvocation::initializeWaitToDumpWatchdogTimerIfNeeded()
 {
-    if (m_waitToDumpWatchdogTimer.isActive())
+    if (m_waitToDumpWatchdogTimer.isActive() || m_timeout == TestController::noTimeout)
         return;
 
-    m_waitToDumpWatchdogTimer.startOneShot(m_timeout);
+    m_waitToDumpWatchdogTimer.startOneShot(m_timeout > 0_s ? m_timeout : TestController::defaultShortTimeout);
 }
 
 void TestInvocation::invalidateWaitToDumpWatchdogTimer()

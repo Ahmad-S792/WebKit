@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2022 Apple Inc. All Rights Reserved.
+ * Copyright (C) 2022-2023 Apple Inc. All Rights Reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -29,15 +29,20 @@
 #if PLATFORM(MAC)
 
 #import "ColorCocoa.h"
+#import "ControlFactoryMac.h"
 #import "FloatRoundedRect.h"
 #import "GraphicsContextCG.h"
 #import "LocalCurrentGraphicsContext.h"
 #import "LocalDefaultSystemAppearance.h"
+#import "RuntimeApplicationChecks.h"
 #import "WebControlView.h"
 #import <pal/spi/cocoa/NSButtonCellSPI.h>
 #import <pal/spi/mac/CoreUISPI.h>
 #import <pal/spi/mac/NSAppearanceSPI.h>
+#import <pal/spi/mac/NSCellSPI.h>
 #import <pal/spi/mac/NSGraphicsSPI.h>
+#import <pal/spi/mac/NSViewSPI.h>
+#import <wtf/BlockObjCExceptions.h>
 
 namespace WebCore {
 
@@ -50,6 +55,11 @@ ControlMac::ControlMac(ControlPart& owningPart, ControlFactoryMac& controlFactor
 bool ControlMac::userPrefersContrast()
 {
     return [[NSWorkspace sharedWorkspace] accessibilityDisplayShouldIncreaseContrast];
+}
+
+bool ControlMac::userPrefersWithoutColorDifferentiation()
+{
+    return [[NSWorkspace sharedWorkspace] accessibilityDisplayShouldDifferentiateWithoutColor];
 }
 
 FloatRect ControlMac::inflatedRect(const FloatRect& bounds, const FloatSize& size, const IntOutsets& outsets, const ControlStyle& style)
@@ -176,10 +186,129 @@ void ControlMac::updateCellStates(const FloatRect&, const ControlStyle& style)
     [WebControlWindow setHasKeyAppearance:style.states.contains(ControlStyle::State::WindowActive)];
 }
 
-static void drawFocusRing(NSRect cellFrame, NSCell *cell, NSView *view)
+static bool supportsViewlessCells()
 {
-    CGContextRef cgContext = [[NSGraphicsContext currentContext] CGContext];
+    static std::optional<BOOL> supportsViewlessCells;
+    if (!supportsViewlessCells) {
+        // FIXME: rdar://105249508 - Remove the GPUP check when the viewless focus ring an be drawn without a problem.
+#if ENABLE(GPU_PROCESS)
+        supportsViewlessCells = isInGPUProcess() && [NSCell instancesRespondToSelector:@selector(_setFallbackBackingScaleFactor:)];
+#else
+        supportsViewlessCells = [NSCell instancesRespondToSelector:@selector(_setFallbackBackingScaleFactor:)];
+#endif
+    }
+    return *supportsViewlessCells;
+}
 
+static void applyViewlessCellSettings(float deviceScaleFactor, const ControlStyle& style, NSCell *cell)
+{
+    ASSERT(supportsViewlessCells());
+
+    [cell _setFallbackBackingScaleFactor:deviceScaleFactor];
+
+#if USE(NSVIEW_SEMANTICCONTEXT)
+    if (style.states.contains(ControlStyle::State::FormSemanticContext))
+        [cell _setFallbackSemanticContext:NSViewSemanticContextForm];
+#else
+    UNUSED_PARAM(style);
+#endif
+}
+
+static void performDrawingWithUnflippedContext(GraphicsContext& context, const FloatRect& rect, Function<void(const FloatRect&)>&& draw)
+{
+    auto adjustedRect = rect;
+
+    CGContextRef cgContext = context.platformContext();
+    CGContextStateSaver stateSaver(cgContext);
+
+    // Move the coordinates origin to topleft of rect.
+    CGContextTranslateCTM(cgContext, adjustedRect.x(), adjustedRect.y());
+    adjustedRect.setLocation(FloatPoint::zero());
+
+    // Un-flip the coordinates.
+    CGContextTranslateCTM(cgContext, 0, adjustedRect.height());
+    CGContextScaleCTM(cgContext, 1, -1);
+
+    LocalCurrentGraphicsContext localContext(context, false);
+    draw(adjustedRect);
+}
+
+static void drawSliderCell(GraphicsContext& context, const FloatRect& rect, NSSliderCell *sliderCell)
+{
+    LocalCurrentGraphicsContext localContext(context);
+    [sliderCell drawKnob:rect];
+}
+
+static void drawViewlessCell(GraphicsContext& context, const FloatRect& rect, float deviceScaleFactor, const ControlStyle& style, NSCell *cell)
+{
+    applyViewlessCellSettings(deviceScaleFactor, style, cell);
+
+    // FIXME: rdar://106067079 - Remove un-flipping the flipped coordinates.
+    performDrawingWithUnflippedContext(context, rect, [&](const FloatRect& adjustedRect) {
+        // FIXME: rdar://105250010 - Needs a nullable version of [NSCell drawFocusRingMaskWithFrame].
+        IGNORE_NULL_CHECK_WARNINGS_BEGIN
+        [cell drawWithFrame:adjustedRect inView:nil];
+        IGNORE_NULL_CHECK_WARNINGS_END
+    });
+}
+
+static void drawCellInView(GraphicsContext& context, const FloatRect& rect, NSCell *cell, NSView *view)
+{
+    LocalCurrentGraphicsContext localContext(context);
+    [cell drawWithFrame:rect inView:view];
+    [cell setControlView:nil];
+}
+
+void ControlMac::drawCellInternal(GraphicsContext& context, const FloatRect& rect, float deviceScaleFactor, const ControlStyle& style, NSCell *cell)
+{
+    // For slider cells, draw only the knob.
+    if ([cell isKindOfClass:[NSSliderCell class]]) {
+        drawSliderCell(context, rect, (NSSliderCell *)cell);
+        return;
+    }
+
+    if (supportsViewlessCells()) {
+        drawViewlessCell(context, rect, deviceScaleFactor, style, cell);
+        return;
+    }
+
+    auto *view = m_controlFactory.drawingView(rect, style);
+    drawCellInView(context, rect, cell, view);
+}
+
+static void drawViewlessCellFocusRing(GraphicsContext& context, const FloatRect& rect, float deviceScaleFactor, const ControlStyle& style, NSCell *cell)
+{
+    applyViewlessCellSettings(deviceScaleFactor, style, cell);
+
+    // FIXME: rdar://106067079 - Remove un-flipping the flipped coordinates.
+    performDrawingWithUnflippedContext(context, rect, [&](const FloatRect& adjustedRect) {
+        // FIXME: rdar://105250010 - Needs a nullable version of [NSCell drawFocusRingMaskWithFrame].
+IGNORE_NULL_CHECK_WARNINGS_BEGIN
+        [cell drawFocusRingMaskWithFrame:adjustedRect inView:nil];
+IGNORE_NULL_CHECK_WARNINGS_END
+    });
+}
+
+static void drawCellFocusRingInView(GraphicsContext& context, const FloatRect& rect, NSCell *cell, NSView *view)
+{
+    LocalCurrentGraphicsContext localContext(context);
+    [cell drawFocusRingMaskWithFrame:rect inView:view];
+}
+
+void ControlMac::drawCellFocusRingInternal(GraphicsContext& context, const FloatRect& rect, float deviceScaleFactor, const ControlStyle& style, NSCell *cell)
+{
+    if (supportsViewlessCells()) {
+        drawViewlessCellFocusRing(context, rect, deviceScaleFactor, style, cell);
+        return;
+    }
+
+    auto *view = m_controlFactory.drawingView(rect, style);
+    drawCellFocusRingInView(context, rect, cell, view);
+}
+
+void ControlMac::drawCellFocusRing(GraphicsContext& context, const FloatRect& rect, float deviceScaleFactor, const ControlStyle& style, NSCell *cell)
+{
+    CGContextRef cgContext = context.platformContext();
     CGContextStateSaver stateSaver(cgContext);
 
     CGFocusRingStyle focusRingStyle;
@@ -194,40 +323,35 @@ static void drawFocusRing(NSRect cellFrame, NSCell *cell, NSView *view)
     // FIXME: This color should be shared with RenderThemeMac. For now just use the same NSColor color.
     // The color is expected to be opaque, since CoreGraphics will apply opacity when drawing (because opacity is normally animated).
     auto color = colorFromCocoaColor([NSColor keyboardFocusIndicatorColor]).opaqueColor();
-    auto style = adoptCF(CGStyleCreateFocusRingWithColor(&focusRingStyle, cachedCGColor(color).get()));
-    CGContextSetStyle(cgContext, style.get());
+    auto cgStyle = adoptCF(CGStyleCreateFocusRingWithColor(&focusRingStyle, cachedCGColor(color).get()));
+    CGContextSetStyle(cgContext, cgStyle.get());
 
-    CGContextBeginTransparencyLayerWithRect(cgContext, NSRectToCGRect(cellFrame), nullptr);
-    [cell drawFocusRingMaskWithFrame:cellFrame inView:view];
+    CGContextBeginTransparencyLayerWithRect(cgContext, rect, nullptr);
+    drawCellFocusRingInternal(context, rect, deviceScaleFactor, style, cell);
     CGContextEndTransparencyLayer(cgContext);
 }
 
-static void drawCellOrFocusRing(GraphicsContext& context, const FloatRect& rect, const ControlStyle& style, NSCell *cell, NSView *view, bool drawCell)
+void ControlMac::drawCellOrFocusRing(GraphicsContext& context, const FloatRect& rect, float deviceScaleFactor, const ControlStyle& style, NSCell *cell, bool drawCell)
 {
-    LocalCurrentGraphicsContext localContext(context);
+    BEGIN_BLOCK_OBJC_EXCEPTIONS
 
-    if (drawCell) {
-        if ([cell isKindOfClass:[NSSliderCell class]]) {
-            // For slider cells, draw only the knob.
-            [(NSSliderCell *)cell drawKnob:rect];
-        } else {
-            [cell drawWithFrame:rect inView:view];
-            [cell setControlView:nil];
-        }
-    }
+    if (drawCell)
+        drawCellInternal(context, rect, deviceScaleFactor, style, cell);
 
     if (style.states.contains(ControlStyle::State::Focused))
-        drawFocusRing(rect, cell, view);
+        drawCellFocusRing(context, rect, deviceScaleFactor, style, cell);
+
+    END_BLOCK_OBJC_EXCEPTIONS
 }
 
-void ControlMac::drawCell(GraphicsContext& context, const FloatRect& rect, float deviceScaleFactor, const ControlStyle& style, NSCell *cell, NSView *view, bool drawCell)
+void ControlMac::drawCell(GraphicsContext& context, const FloatRect& rect, float deviceScaleFactor, const ControlStyle& style, NSCell *cell, bool drawCell)
 {
     auto platformContext = context.platformContext();
     auto userCTM = AffineTransform(CGAffineTransformConcat(CGContextGetCTM(platformContext), CGAffineTransformInvert(CGContextGetBaseCTM(platformContext))));
     bool useImageBuffer = userCTM.xScale() != 1.0 || userCTM.yScale() != 1.0;
 
     if (!useImageBuffer) {
-        drawCellOrFocusRing(context, rect, style, cell, view, drawCell);
+        drawCellOrFocusRing(context, rect, deviceScaleFactor, style, cell, drawCell);
         return;
     }
 
@@ -241,7 +365,7 @@ void ControlMac::drawCell(GraphicsContext& context, const FloatRect& rect, float
     if (!imageBuffer)
         return;
 
-    drawCellOrFocusRing(imageBuffer->context(), cellDrawingRect, style, cell, view, drawCell);
+    drawCellOrFocusRing(imageBuffer->context(), cellDrawingRect, deviceScaleFactor, style, cell, drawCell);
     context.drawConsumingImageBuffer(WTFMove(imageBuffer), rect.location() - focusRingPadding);
 }
 
@@ -252,7 +376,6 @@ void ControlMac::drawListButton(GraphicsContext& context, const FloatRect& rect,
         return;
 
     // We can't paint an NSComboBoxCell since they are not height-resizable.
-    LocalDefaultSystemAppearance localAppearance(style.states.contains(ControlStyle::State::DarkAppearance), style.accentColor);
 
     const FloatSize comboBoxSize { 40, 19 };
     const FloatSize comboBoxButtonSize { 16, 16 };
@@ -266,8 +389,7 @@ void ControlMac::drawListButton(GraphicsContext& context, const FloatRect& rect,
     if (!comboBoxImageBuffer)
         return;
 
-    ContextContainer cgContextContainer(comboBoxImageBuffer->context());
-    CGContextRef cgContext = cgContextContainer.context();
+    CGContextRef cgContext = comboBoxImageBuffer->context().platformContext();
 
     NSString *coreUIState;
     if (style.states.containsAny({ ControlStyle::State::Presenting, ControlStyle::State::ListButtonPressed }))
@@ -292,14 +414,21 @@ void ControlMac::drawListButton(GraphicsContext& context, const FloatRect& rect,
     comboBoxButtonContext.translate(comboBoxButtonInset.scaled(-1));
     comboBoxButtonContext.drawConsumingImageBuffer(WTFMove(comboBoxImageBuffer), FloatPoint::zero(), ImagePaintingOptions { ImageOrientation::Orientation::OriginBottomRight });
 
-    FloatPoint listButtonLocation;
-    float listButtonY = rect.center().y() - desiredComboBoxButtonSize.height() / 2;
-    if (style.states.contains(ControlStyle::State::RightToLeft))
-        listButtonLocation = { rect.x() + desiredComboBoxInset, listButtonY };
-    else
-        listButtonLocation = { rect.maxX() - desiredComboBoxButtonSize.width() - desiredComboBoxInset, listButtonY };
+    auto isVerticalWritingMode = style.states.contains(ControlStyle::State::VerticalWritingMode);
 
-    GraphicsContextStateSaver stateSaver(context);
+    auto logicalRect = isVerticalWritingMode ? rect.transposedRect() : rect;
+    auto desiredComboBoxButtonLogicalSize = isVerticalWritingMode ? desiredComboBoxButtonSize.transposedSize() : desiredComboBoxButtonSize;
+
+    FloatPoint listButtonLocation;
+    float listButtonLogicalTop = logicalRect.center().y() - desiredComboBoxButtonLogicalSize.height() / 2;
+    if (style.states.contains(ControlStyle::State::RightToLeft))
+        listButtonLocation = { logicalRect.x() + desiredComboBoxInset, listButtonLogicalTop };
+    else
+        listButtonLocation = { logicalRect.maxX() - desiredComboBoxButtonLogicalSize.width() - desiredComboBoxInset, listButtonLogicalTop };
+
+    if (isVerticalWritingMode)
+        listButtonLocation = listButtonLocation.transposedPoint();
+
     context.drawConsumingImageBuffer(WTFMove(comboBoxButtonImageBuffer), listButtonLocation);
 }
 #endif

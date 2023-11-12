@@ -29,6 +29,12 @@
 #import "APIConversions.h"
 #import "BindGroupLayout.h"
 #import "Device.h"
+#import "Pipeline.h"
+
+// FIXME: remove after radar://104903411 or after we place the mask into the last buffer
+@interface NSObject ()
+- (void)setSampleMask:(NSUInteger)mask;
+@end
 
 namespace WebGPU {
 
@@ -155,9 +161,9 @@ static MTLPrimitiveTopologyClass topologyType(WGPUPrimitiveTopology topology)
     case WGPUPrimitiveTopology_PointList:
         return MTLPrimitiveTopologyClassPoint;
     case WGPUPrimitiveTopology_LineStrip:
+    case WGPUPrimitiveTopology_LineList:
         return MTLPrimitiveTopologyClassLine;
     case WGPUPrimitiveTopology_TriangleList:
-    case WGPUPrimitiveTopology_LineList:
     case WGPUPrimitiveTopology_TriangleStrip:
         return MTLPrimitiveTopologyClassTriangle;
     case WGPUPrimitiveTopology_Force32:
@@ -244,13 +250,13 @@ static MTLVertexFormat vertexFormat(WGPUVertexFormat vertexFormat)
 {
     switch (vertexFormat) {
     case WGPUVertexFormat_Uint8x2:
-        return MTLVertexFormatUInt2;
+        return MTLVertexFormatUChar2;
     case WGPUVertexFormat_Uint8x4:
-        return MTLVertexFormatUInt4;
+        return MTLVertexFormatUChar4;
     case WGPUVertexFormat_Sint8x2:
-        return MTLVertexFormatInt2;
+        return MTLVertexFormatChar2;
     case WGPUVertexFormat_Sint8x4:
-        return MTLVertexFormatInt4;
+        return MTLVertexFormatChar4;
     case WGPUVertexFormat_Unorm8x2:
         return MTLVertexFormatUChar2Normalized;
     case WGPUVertexFormat_Unorm8x4:
@@ -303,6 +309,8 @@ static MTLVertexFormat vertexFormat(WGPUVertexFormat vertexFormat)
         return MTLVertexFormatInt3;
     case WGPUVertexFormat_Sint32x4:
         return MTLVertexFormatInt4;
+    case WGPUVertexFormat_Unorm10_10_10_2:
+        return MTLVertexFormatUInt1010102Normalized;
     case WGPUVertexFormat_Force32:
     case WGPUVertexFormat_Undefined:
         ASSERT_NOT_REACHED();
@@ -310,8 +318,11 @@ static MTLVertexFormat vertexFormat(WGPUVertexFormat vertexFormat)
     }
 }
 
-static MTLVertexStepFunction stepFunction(WGPUVertexStepMode stepMode)
+static MTLVertexStepFunction stepFunction(WGPUVertexStepMode stepMode, auto arrayStride)
 {
+    if (!arrayStride)
+        return MTLVertexStepFunctionConstant;
+
     switch (stepMode) {
     case WGPUVertexStepMode_Vertex:
         return MTLVertexStepFunctionPerVertex;
@@ -331,12 +342,16 @@ static MTLVertexDescriptor *createVertexDescriptor(WGPUVertexState vertexState)
 
     for (size_t bufferIndex = 0; bufferIndex < vertexState.bufferCount; ++bufferIndex) {
         auto& buffer = vertexState.buffers[bufferIndex];
-        vertexDescriptor.layouts[bufferIndex].stride = buffer.arrayStride;
-        vertexDescriptor.layouts[bufferIndex].stepFunction = stepFunction(buffer.stepMode);
-        // FIXME: need to assign stepRate with per-instance data?
+        if (buffer.arrayStride == WGPU_COPY_STRIDE_UNDEFINED)
+            continue;
+
+        vertexDescriptor.layouts[bufferIndex].stride = std::max<NSUInteger>(sizeof(int), buffer.arrayStride);
+        vertexDescriptor.layouts[bufferIndex].stepFunction = stepFunction(buffer.stepMode, buffer.arrayStride);
+        if (vertexDescriptor.layouts[bufferIndex].stepFunction == MTLVertexStepFunctionConstant)
+            vertexDescriptor.layouts[bufferIndex].stepRate = 0;
         for (size_t i = 0; i < buffer.attributeCount; ++i) {
             auto& attribute = buffer.attributes[i];
-            const auto& mtlAttribute = vertexDescriptor.attributes[i];
+            const auto& mtlAttribute = vertexDescriptor.attributes[attribute.shaderLocation];
             mtlAttribute.format = vertexFormat(attribute.format);
             mtlAttribute.bufferIndex = bufferIndex;
             mtlAttribute.offset = attribute.offset;
@@ -350,35 +365,218 @@ static void populateStencilOperation(MTLStencilDescriptor *mtlStencil, const WGP
 {
     mtlStencil.stencilCompareFunction =  convertToMTLCompare(stencil.compare);
     mtlStencil.stencilFailureOperation = convertToMTLStencilOperation(stencil.failOp);
-    mtlStencil.depthStencilPassOperation = convertToMTLStencilOperation(stencil.depthFailOp);
+    mtlStencil.depthFailureOperation = convertToMTLStencilOperation(stencil.depthFailOp);
     mtlStencil.depthStencilPassOperation = convertToMTLStencilOperation(stencil.passOp);
     mtlStencil.writeMask = stencilWriteMask;
     mtlStencil.readMask = stencilReadMask;
 }
 
+static WGPUBufferBindingType convertBindingType(WGSL::BufferBindingType bindingType)
+{
+    switch (bindingType) {
+    case WGSL::BufferBindingType::Uniform:
+        return WGPUBufferBindingType_Uniform;
+    case WGSL::BufferBindingType::Storage:
+        return WGPUBufferBindingType_Storage;
+    case WGSL::BufferBindingType::ReadOnlyStorage:
+        return WGPUBufferBindingType_ReadOnlyStorage;
+    }
+}
+
+static WGPUSamplerBindingType convertSamplerBindingType(WGSL::SamplerBindingType samplerType)
+{
+    switch (samplerType) {
+    case WGSL::SamplerBindingType::Filtering:
+        return WGPUSamplerBindingType_Filtering;
+    case WGSL::SamplerBindingType::NonFiltering:
+        return WGPUSamplerBindingType_NonFiltering;
+    case WGSL::SamplerBindingType::Comparison:
+        return WGPUSamplerBindingType_Comparison;
+    }
+}
+
+static WGPUShaderStageFlags convertVisibility(const OptionSet<WGSL::ShaderStage>& visibility)
+{
+    WGPUShaderStageFlags flags = 0;
+    if (visibility & WGSL::ShaderStage::Vertex)
+        flags |= WGPUShaderStage_Vertex;
+    if (visibility & WGSL::ShaderStage::Fragment)
+        flags |= WGPUShaderStage_Fragment;
+    if (visibility & WGSL::ShaderStage::Compute)
+        flags |= WGPUShaderStage_Compute;
+
+    return flags;
+}
+
+static WGPUTextureSampleType convertSampleType(WGSL::TextureSampleType sampleType)
+{
+    switch (sampleType) {
+    case WGSL::TextureSampleType::Float:
+        return WGPUTextureSampleType_Float;
+    case WGSL::TextureSampleType::UnfilterableFloat:
+        return WGPUTextureSampleType_UnfilterableFloat;
+    case WGSL::TextureSampleType::Depth:
+        return WGPUTextureSampleType_Depth;
+    case WGSL::TextureSampleType::SignedInt:
+        return WGPUTextureSampleType_Sint;
+    case WGSL::TextureSampleType::UnsignedInt:
+        return WGPUTextureSampleType_Uint;
+    }
+}
+
+static WGPUTextureViewDimension convertViewDimension(WGSL::TextureViewDimension viewDimension)
+{
+    switch (viewDimension) {
+    case WGSL::TextureViewDimension::OneDimensional:
+        return WGPUTextureViewDimension_1D;
+    case WGSL::TextureViewDimension::TwoDimensional:
+        return WGPUTextureViewDimension_2D;
+    case WGSL::TextureViewDimension::TwoDimensionalArray:
+        return WGPUTextureViewDimension_2DArray;
+    case WGSL::TextureViewDimension::Cube:
+        return WGPUTextureViewDimension_Cube;
+    case WGSL::TextureViewDimension::CubeArray:
+        return WGPUTextureViewDimension_CubeArray;
+    case WGSL::TextureViewDimension::ThreeDimensional:
+        return WGPUTextureViewDimension_3D;
+    }
+}
+
+void Device::addPipelineLayouts(Vector<Vector<WGPUBindGroupLayoutEntry>>& pipelineEntries, const std::optional<WGSL::PipelineLayout>& optionalPipelineLayout)
+{
+    if (!optionalPipelineLayout)
+        return;
+
+    auto &pipelineLayout = *optionalPipelineLayout;
+    size_t pipelineLayoutCount = pipelineLayout.bindGroupLayouts.size();
+    if (pipelineEntries.size() < pipelineLayoutCount)
+        pipelineEntries.grow(pipelineLayoutCount);
+
+    for (size_t pipelineLayoutIndex = 0; pipelineLayoutIndex < pipelineLayoutCount; ++pipelineLayoutIndex) {
+        auto& bindGroupLayout = pipelineLayout.bindGroupLayouts[pipelineLayoutIndex];
+        auto& entries = pipelineEntries[pipelineLayoutIndex];
+        HashMap<String, uint64_t> entryMap;
+        for (auto& entry : bindGroupLayout.entries) {
+            WGPUBindGroupLayoutEntry newEntry = { };
+            uint64_t minBindingSize = 0;
+            WGPUBufferBindingType bufferTypeOverride = WGPUBufferBindingType_Undefined;
+            auto& entryName = entry.name;
+            if (entryName.endsWith("_ArrayLength"_s)) {
+                bufferTypeOverride = static_cast<WGPUBufferBindingType>(WGPUBufferBindingType_ArrayLength);
+                auto shortName = entryName.substring(2, entryName.length() - (sizeof("_ArrayLength") + 1));
+                minBindingSize = entryMap.find(shortName)->value;
+            } else
+                entryMap.set(entryName, entry.binding);
+
+            newEntry.binding = entry.webBinding;
+            newEntry.visibility = convertVisibility(entry.visibility);
+            WTF::switchOn(entry.bindingMember, [&](const WGSL::BufferBindingLayout& bufferBinding) {
+                newEntry.buffer = WGPUBufferBindingLayout {
+                    .nextInChain = nullptr,
+                    .type = (bufferTypeOverride != WGPUBufferBindingType_Undefined) ? bufferTypeOverride : convertBindingType(bufferBinding.type),
+                    .hasDynamicOffset = bufferBinding.hasDynamicOffset,
+                    .minBindingSize = minBindingSize ?: bufferBinding.minBindingSize,
+                };
+            }, [&](const WGSL::SamplerBindingLayout& sampler) {
+                newEntry.sampler = WGPUSamplerBindingLayout {
+                    .nextInChain = nullptr,
+                    .type = convertSamplerBindingType(sampler.type)
+                };
+            }, [&](const WGSL::TextureBindingLayout& texture) {
+                newEntry.texture = WGPUTextureBindingLayout {
+                    .nextInChain = nullptr,
+                    .sampleType = convertSampleType(texture.sampleType),
+                    .viewDimension = convertViewDimension(texture.viewDimension),
+                    .multisampled = texture.multisampled
+                };
+            }, [&](const WGSL::StorageTextureBindingLayout& storageTexture) {
+                newEntry.storageTexture = WGPUStorageTextureBindingLayout {
+                    .nextInChain = nullptr,
+                    .access = WGPUStorageTextureAccess_WriteOnly,
+                    .format = WGPUTextureFormat_BGRA8Unorm,
+                    .viewDimension = convertViewDimension(storageTexture.viewDimension)
+                };
+            }, [&](const WGSL::ExternalTextureBindingLayout&) {
+                newEntry.texture = WGPUTextureBindingLayout {
+                    .nextInChain = nullptr,
+                    .sampleType = static_cast<WGPUTextureSampleType>(WGPUTextureSampleType_ExternalTexture),
+                    .viewDimension = WGPUTextureViewDimension_2D,
+                    .multisampled = false
+                };
+            });
+
+            entries.append(WTFMove(newEntry));
+        }
+    }
+}
+
+Ref<PipelineLayout> Device::generatePipelineLayout(const Vector<Vector<WGPUBindGroupLayoutEntry>> &bindGroupEntries)
+{
+    Vector<WGPUBindGroupLayout> bindGroupLayouts;
+    Vector<Ref<WebGPU::BindGroupLayout>> bindGroupLayoutsRefs;
+    bindGroupLayoutsRefs.reserveInitialCapacity(bindGroupEntries.size());
+    bindGroupLayouts.reserveInitialCapacity(bindGroupEntries.size());
+    for (auto& entries : bindGroupEntries) {
+        WGPUBindGroupLayoutDescriptor bindGroupLayoutDescriptor = { };
+        bindGroupLayoutDescriptor.label = "getBindGroup() generated layout";
+        bindGroupLayoutDescriptor.entryCount = entries.size();
+        bindGroupLayoutDescriptor.entries = entries.size() ? &entries[0] : nullptr;
+        bindGroupLayoutsRefs.append(createBindGroupLayout(bindGroupLayoutDescriptor, true));
+        bindGroupLayouts.append(&bindGroupLayoutsRefs[bindGroupLayoutsRefs.size() - 1].get());
+    }
+
+    auto generatedPipelineLayout = createPipelineLayout(WGPUPipelineLayoutDescriptor {
+        .nextInChain = nullptr,
+        .label = "generated pipeline layout",
+        .bindGroupLayoutCount = static_cast<uint32_t>(bindGroupLayouts.size()),
+        .bindGroupLayouts = bindGroupLayouts.size() ? &bindGroupLayouts[0] : nullptr
+    });
+
+    return generatedPipelineLayout;
+}
+
 Ref<RenderPipeline> Device::createRenderPipeline(const WGPURenderPipelineDescriptor& descriptor)
 {
-    if (!validateRenderPipeline(descriptor))
+    if (!validateRenderPipeline(descriptor) || !isValid())
         return RenderPipeline::createInvalid(*this);
 
     MTLRenderPipelineDescriptor* mtlRenderPipelineDescriptor = [MTLRenderPipelineDescriptor new];
+    auto label = fromAPI(descriptor.label);
     // FIXME: https://bugs.webkit.org/show_bug.cgi?id=249345 don't unconditionally set this to YES
     mtlRenderPipelineDescriptor.supportIndirectCommandBuffers = YES;
 
+    const PipelineLayout* pipelineLayout = nullptr;
+    Vector<Vector<WGPUBindGroupLayoutEntry>> bindGroupEntries;
+    if (descriptor.layout) {
+        if (auto& layout = WebGPU::fromAPI(descriptor.layout); layout.isValid() && !layout.isAutoLayout())
+            pipelineLayout = &layout;
+    }
+
+    std::optional<PipelineLayout> vertexPipelineLayout { std::nullopt };
     {
         if (descriptor.vertex.nextInChain)
             return RenderPipeline::createInvalid(*this);
 
         const auto& vertexModule = WebGPU::fromAPI(descriptor.vertex.module);
-        const auto& vertexFunctionName = String::fromLatin1(descriptor.vertex.entryPoint);
-
-        const auto vertexFunction = vertexModule.getNamedFunction(vertexFunctionName, buildKeyValueReplacements(descriptor.vertex));
-        if (!vertexFunction)
+        if (!vertexModule.isValid())
             return RenderPipeline::createInvalid(*this);
 
+        const auto& vertexFunctionName = String::fromLatin1(descriptor.vertex.entryPoint);
+        auto libraryCreationResult = createLibrary(m_device, vertexModule, pipelineLayout, vertexFunctionName, label);
+        if (!libraryCreationResult)
+            return RenderPipeline::createInvalid(*this);
+
+        const auto& entryPointInformation = libraryCreationResult->entryPointInformation;
+        if (!pipelineLayout)
+            addPipelineLayouts(bindGroupEntries, entryPointInformation.defaultLayout);
+        auto [constantValues, _] = createConstantValues(descriptor.vertex.constantCount, descriptor.vertex.constants, entryPointInformation);
+        auto vertexFunction = createFunction(libraryCreationResult->library, entryPointInformation, constantValues, label);
+        if (!vertexFunction)
+            return RenderPipeline::createInvalid(*this);
         mtlRenderPipelineDescriptor.vertexFunction = vertexFunction;
     }
 
+    std::optional<PipelineLayout> fragmentPipelineLayout { std::nullopt };
     if (descriptor.fragment) {
         const auto& fragmentDescriptor = *descriptor.fragment;
 
@@ -386,17 +584,30 @@ Ref<RenderPipeline> Device::createRenderPipeline(const WGPURenderPipelineDescrip
             return RenderPipeline::createInvalid(*this);
 
         const auto& fragmentModule = WebGPU::fromAPI(fragmentDescriptor.module);
-        const auto& fragmentFunctionName = String::fromLatin1(fragmentDescriptor.entryPoint);
-
-        const auto fragmentFunction = fragmentModule.getNamedFunction(fragmentFunctionName, buildKeyValueReplacements(fragmentDescriptor));
-
-        if (!fragmentFunction)
+        if (!fragmentModule.isValid())
             return RenderPipeline::createInvalid(*this);
 
+        const auto& fragmentFunctionName = String::fromLatin1(fragmentDescriptor.entryPoint);
+
+        auto libraryCreationResult = createLibrary(m_device, fragmentModule, pipelineLayout, fragmentFunctionName, label);
+        if (!libraryCreationResult)
+            return RenderPipeline::createInvalid(*this);
+
+        const auto& entryPointInformation = libraryCreationResult->entryPointInformation;
+        if (!pipelineLayout)
+            addPipelineLayouts(bindGroupEntries, entryPointInformation.defaultLayout);
+
+        auto [constantValues, _] = createConstantValues(fragmentDescriptor.constantCount, fragmentDescriptor.constants, entryPointInformation);
+        auto fragmentFunction = createFunction(libraryCreationResult->library, entryPointInformation, constantValues, label);
+        if (!fragmentFunction)
+            return RenderPipeline::createInvalid(*this);
         mtlRenderPipelineDescriptor.fragmentFunction = fragmentFunction;
 
         for (uint32_t i = 0; i < fragmentDescriptor.targetCount; ++i) {
             const auto& targetDescriptor = fragmentDescriptor.targets[i];
+            if (targetDescriptor.format == WGPUTextureFormat_Undefined)
+                continue;
+
             const auto& mtlColorAttachment = mtlRenderPipelineDescriptor.colorAttachments[i];
 
             mtlColorAttachment.pixelFormat = Texture::pixelFormat(targetDescriptor.format);
@@ -421,24 +632,43 @@ Ref<RenderPipeline> Device::createRenderPipeline(const WGPURenderPipelineDescrip
     }
 
     MTLDepthStencilDescriptor *depthStencilDescriptor = nil;
+    float depthBias = 0.f, depthBiasSlopeScale = 0.f, depthBiasClamp = 0.f;
     if (auto depthStencil = descriptor.depthStencil) {
-        mtlRenderPipelineDescriptor.depthAttachmentPixelFormat = Texture::pixelFormat(depthStencil->format);
+        MTLPixelFormat depthStencilFormat = Texture::pixelFormat(depthStencil->format);
+        bool isStencilOnlyFormat = Device::isStencilOnlyFormat(depthStencilFormat);
+        mtlRenderPipelineDescriptor.depthAttachmentPixelFormat = isStencilOnlyFormat ? MTLPixelFormatInvalid : depthStencilFormat;
+        if (Texture::stencilOnlyAspectMetalFormat(depthStencil->format))
+            mtlRenderPipelineDescriptor.stencilAttachmentPixelFormat = depthStencilFormat;
 
         depthStencilDescriptor = [MTLDepthStencilDescriptor new];
         depthStencilDescriptor.depthCompareFunction = convertToMTLCompare(depthStencil->depthCompare);
         depthStencilDescriptor.depthWriteEnabled = depthStencil->depthWriteEnabled;
         populateStencilOperation(depthStencilDescriptor.frontFaceStencil, depthStencil->stencilFront, depthStencil->stencilReadMask, depthStencil->stencilWriteMask);
         populateStencilOperation(depthStencilDescriptor.backFaceStencil, depthStencil->stencilBack, depthStencil->stencilReadMask, depthStencil->stencilWriteMask);
+        depthBias = depthStencil->depthBias;
+        depthBiasSlopeScale = depthStencil->depthBiasSlopeScale;
+        depthBiasClamp = depthStencil->depthBiasClamp;
     }
 
     mtlRenderPipelineDescriptor.rasterSampleCount = descriptor.multisample.count ?: 1;
     mtlRenderPipelineDescriptor.alphaToCoverageEnabled = descriptor.multisample.alphaToCoverageEnabled;
+    RELEASE_ASSERT([mtlRenderPipelineDescriptor respondsToSelector:@selector(setSampleMask:)]);
+    if (auto mask = descriptor.multisample.mask; mask != 0xFFFFFFFF)
+        [mtlRenderPipelineDescriptor setSampleMask:mask];
 
     if (descriptor.vertex.bufferCount)
         mtlRenderPipelineDescriptor.vertexDescriptor = createVertexDescriptor(descriptor.vertex);
 
-    if (descriptor.primitive.nextInChain)
-        return RenderPipeline::createInvalid(*this);
+    MTLDepthClipMode mtlDepthClipMode = MTLDepthClipModeClip;
+    if (descriptor.primitive.nextInChain) {
+        if (!hasFeature(WGPUFeatureName_DepthClipControl) || descriptor.primitive.nextInChain->sType != WGPUSType_PrimitiveDepthClipControl || descriptor.primitive.nextInChain->next)
+            return RenderPipeline::createInvalid(*this);
+
+        auto* depthClipControl = reinterpret_cast<const WGPUPrimitiveDepthClipControl*>(descriptor.primitive.nextInChain);
+
+        if (depthClipControl->unclippedDepth)
+            mtlDepthClipMode = MTLDepthClipModeClamp;
+    }
 
     mtlRenderPipelineDescriptor.inputPrimitiveTopology = topologyType(descriptor.primitive.topology);
 
@@ -450,63 +680,45 @@ Ref<RenderPipeline> Device::createRenderPipeline(const WGPURenderPipelineDescrip
     auto mtlFrontFace = frontFace(descriptor.primitive.frontFace);
     auto mtlCullMode = cullMode(descriptor.primitive.cullMode);
 
-    // FIXME: GPUPrimitiveState.unclippedDepth
-
-    MTLRenderPipelineReflection *reflection;
-    const auto& pipelineLayout = WebGPU::fromAPI(descriptor.layout);
-    bool hasBindGroups = pipelineLayout.numberOfBindGroupLayouts() > 0;
-    id<MTLRenderPipelineState> renderPipelineState = [m_device newRenderPipelineStateWithDescriptor:mtlRenderPipelineDescriptor options: hasBindGroups ? MTLPipelineOptionNone : MTLPipelineOptionArgumentInfo reflection:&reflection error:nil];
-    if (!renderPipelineState)
+    NSError *error = nil;
+    id<MTLRenderPipelineState> renderPipelineState = [m_device newRenderPipelineStateWithDescriptor:mtlRenderPipelineDescriptor error:&error];
+    if (error || !renderPipelineState)
         return RenderPipeline::createInvalid(*this);
 
-    if (hasBindGroups)
-        return RenderPipeline::create(renderPipelineState, mtlPrimitiveType, mtlIndexType, mtlFrontFace, mtlCullMode, depthStencilDescriptor, pipelineLayout, *this);
+    if (!pipelineLayout)
+        return RenderPipeline::create(renderPipelineState, mtlPrimitiveType, mtlIndexType, mtlFrontFace, mtlCullMode, mtlDepthClipMode, depthStencilDescriptor, generatePipelineLayout(bindGroupEntries), depthBias, depthBiasSlopeScale, depthBiasClamp, *this);
 
-    return RenderPipeline::create(renderPipelineState, mtlPrimitiveType, mtlIndexType, mtlFrontFace, mtlCullMode, depthStencilDescriptor, reflection, *this);
+    return RenderPipeline::create(renderPipelineState, mtlPrimitiveType, mtlIndexType, mtlFrontFace, mtlCullMode, mtlDepthClipMode, depthStencilDescriptor, const_cast<PipelineLayout&>(*pipelineLayout), depthBias, depthBiasSlopeScale, depthBiasClamp, *this);
 }
 
 void Device::createRenderPipelineAsync(const WGPURenderPipelineDescriptor& descriptor, CompletionHandler<void(WGPUCreatePipelineAsyncStatus, Ref<RenderPipeline>&&, String&& message)>&& callback)
 {
-    // FIXME: Implement this.
-    UNUSED_PARAM(descriptor);
-    instance().scheduleWork([strongThis = Ref { *this }, callback = WTFMove(callback)]() mutable {
-        callback(WGPUCreatePipelineAsyncStatus_Error, RenderPipeline::createInvalid(strongThis), { });
+    auto pipeline = createRenderPipeline(descriptor);
+    instance().scheduleWork([strongThis = Ref { *this }, pipeline, callback = WTFMove(callback)]() mutable {
+        callback(WGPUCreatePipelineAsyncStatus_Success, WTFMove(pipeline), { });
     });
 }
 
-RenderPipeline::RenderPipeline(id<MTLRenderPipelineState> renderPipelineState, MTLPrimitiveType primitiveType, std::optional<MTLIndexType> indexType, MTLWinding frontFace, MTLCullMode cullMode, MTLDepthStencilDescriptor *depthStencilDescriptor, MTLRenderPipelineReflection *reflection, Device& device)
+RenderPipeline::RenderPipeline(id<MTLRenderPipelineState> renderPipelineState, MTLPrimitiveType primitiveType, std::optional<MTLIndexType> indexType, MTLWinding frontFace, MTLCullMode cullMode, MTLDepthClipMode clipMode, MTLDepthStencilDescriptor *depthStencilDescriptor, Ref<PipelineLayout>&& pipelineLayout, float depthBias, float depthBiasSlopeScale, float depthBiasClamp, Device& device)
     : m_renderPipelineState(renderPipelineState)
     , m_device(device)
     , m_primitiveType(primitiveType)
     , m_indexType(indexType)
     , m_frontFace(frontFace)
     , m_cullMode(cullMode)
+    , m_clipMode(clipMode)
+    , m_depthBias(depthBias)
+    , m_depthBiasSlopeScale(depthBiasSlopeScale)
+    , m_depthBiasClamp(depthBiasClamp)
     , m_depthStencilDescriptor(depthStencilDescriptor)
     , m_depthStencilState(depthStencilDescriptor ? [device.device() newDepthStencilStateWithDescriptor:depthStencilDescriptor] : nil)
-#if HAVE(METAL_BUFFER_BINDING_REFLECTION)
-    , m_reflection(reflection)
-#endif
-{
-#if !HAVE(METAL_BUFFER_BINDING_REFLECTION)
-    UNUSED_PARAM(reflection);
-#endif
-}
-
-RenderPipeline::RenderPipeline(id<MTLRenderPipelineState> renderPipelineState, MTLPrimitiveType primitiveType, std::optional<MTLIndexType> indexType, MTLWinding frontFace, MTLCullMode cullMode, MTLDepthStencilDescriptor *depthStencilDescriptor, const PipelineLayout &pipelineLayout, Device& device)
-    : m_renderPipelineState(renderPipelineState)
-    , m_device(device)
-    , m_primitiveType(primitiveType)
-    , m_indexType(indexType)
-    , m_frontFace(frontFace)
-    , m_cullMode(cullMode)
-    , m_depthStencilDescriptor(depthStencilDescriptor)
-    , m_depthStencilState(depthStencilDescriptor ? [device.device() newDepthStencilStateWithDescriptor:depthStencilDescriptor] : nil)
-    , m_pipelineLayout(&pipelineLayout)
+    , m_pipelineLayout(WTFMove(pipelineLayout))
 {
 }
 
 RenderPipeline::RenderPipeline(Device& device)
     : m_device(device)
+    , m_pipelineLayout(PipelineLayout::createInvalid(device))
 {
 }
 
@@ -514,48 +726,19 @@ RenderPipeline::~RenderPipeline() = default;
 
 RefPtr<BindGroupLayout> RenderPipeline::getBindGroupLayout(uint32_t groupIndex)
 {
-    if (m_pipelineLayout)
-        return const_cast<BindGroupLayout*>(&m_pipelineLayout->bindGroupLayout(groupIndex));
-
-    auto it = m_cachedBindGroupLayouts.find(groupIndex + 1);
-    if (it != m_cachedBindGroupLayouts.end())
-        return it->value.ptr();
-
-#if HAVE(METAL_BUFFER_BINDING_REFLECTION)
-    uint32_t bindingIndex = 0;
-    Vector<WGPUBindGroupLayoutEntry> entries;
-    auto vertexStageGroupIndex = m_device->vertexBufferIndexForBindGroup(groupIndex);
-    for (id<MTLBufferBinding> binding in m_reflection.vertexBindings) {
-        if (binding.index != vertexStageGroupIndex)
-            continue;
-
-        ASSERT(binding.type == MTLBindingTypeBuffer);
-        for (MTLStructMember *structMember in binding.bufferStructType.members)
-            entries.append(BindGroupLayout::createEntryFromStructMember(structMember, bindingIndex, WGPUShaderStage_Vertex));
+    if (!isValid()) {
+        m_device->generateAValidationError("getBindGroupLayout: RenderPipeline is invalid"_s);
+        m_pipelineLayout->makeInvalid();
+        return nullptr;
     }
 
-    for (id<MTLBufferBinding> binding in m_reflection.fragmentBindings) {
-        if (binding.index != groupIndex)
-            continue;
-
-        ASSERT(binding.type == MTLBindingTypeBuffer);
-        for (MTLStructMember *structMember in binding.bufferStructType.members)
-            entries.append(BindGroupLayout::createEntryFromStructMember(structMember, bindingIndex, WGPUShaderStage_Fragment));
+    if (groupIndex >= m_pipelineLayout->numberOfBindGroupLayouts()) {
+        m_device->generateAValidationError("getBindGroupLayout: groupIndex is out of range"_s);
+        m_pipelineLayout->makeInvalid();
+        return nullptr;
     }
 
-    WGPUBindGroupLayoutDescriptor bindGroupLayoutDescriptor = { };
-    bindGroupLayoutDescriptor.label = "getBindGroup() generated layout";
-    bindGroupLayoutDescriptor.entryCount = entries.size();
-    bindGroupLayoutDescriptor.entries = entries.size() ? &entries[0] : nullptr;
-    auto bindGroupLayout = m_device->createBindGroupLayout(bindGroupLayoutDescriptor);
-    m_cachedBindGroupLayouts.add(groupIndex + 1, bindGroupLayout);
-
-    return bindGroupLayout.ptr();
-#else
-    UNUSED_PARAM(groupIndex);
-    // FIXME: Return an invalid object instead of nullptr.
-    return nullptr;
-#endif
+    return &m_pipelineLayout->bindGroupLayout(groupIndex);
 }
 
 void RenderPipeline::setLabel(String&&)
@@ -579,9 +762,19 @@ bool RenderPipeline::validateDepthStencilState(bool depthReadOnly, bool stencilR
     return true;
 }
 
+PipelineLayout& RenderPipeline::pipelineLayout() const
+{
+    return m_pipelineLayout;
+}
+
 } // namespace WebGPU
 
 #pragma mark WGPU Stubs
+
+void wgpuRenderPipelineReference(WGPURenderPipeline renderPipeline)
+{
+    WebGPU::fromAPI(renderPipeline).ref();
+}
 
 void wgpuRenderPipelineRelease(WGPURenderPipeline renderPipeline)
 {

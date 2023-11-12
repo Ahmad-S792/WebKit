@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2016 Apple Inc. All rights reserved.
+ * Copyright (C) 2016-2023 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -163,7 +163,7 @@ void FlattenedConstraint::merge(const MediaConstraint& constraint)
 
 void FlattenedConstraint::append(const MediaConstraint& constraint)
 {
-#ifndef NDEBUG
+#if ASSERT_ENABLED
     ++m_generation;
 #endif
 
@@ -215,6 +215,13 @@ void MediaTrackConstraintSetMap::filter(const Function<bool(const MediaConstrain
         return;
     if (m_groupId && !m_groupId->isEmpty() && callback(*m_groupId))
         return;
+
+    if (m_whiteBalanceMode && !m_whiteBalanceMode->isEmpty() && callback(*m_whiteBalanceMode))
+        return;
+    if (m_zoom && !m_zoom->isEmpty() && callback(*m_zoom))
+        return;
+    if (m_torch && !m_torch->isEmpty() && callback(*m_torch))
+        return;
 }
 
 void MediaTrackConstraintSetMap::set(MediaConstraintType constraintType, std::optional<IntConstraint>&& constraint)
@@ -242,6 +249,10 @@ void MediaTrackConstraintSetMap::set(MediaConstraintType constraintType, std::op
     case MediaConstraintType::GroupId:
     case MediaConstraintType::DisplaySurface:
     case MediaConstraintType::LogicalSurface:
+    case MediaConstraintType::FocusDistance:
+    case MediaConstraintType::WhiteBalanceMode:
+    case MediaConstraintType::Zoom:
+    case MediaConstraintType::Torch:
     case MediaConstraintType::Unknown:
         ASSERT_NOT_REACHED();
         break;
@@ -260,6 +271,9 @@ void MediaTrackConstraintSetMap::set(MediaConstraintType constraintType, std::op
     case MediaConstraintType::Volume:
         m_volume = WTFMove(constraint);
         break;
+    case MediaConstraintType::Zoom:
+        m_zoom = WTFMove(constraint);
+        break;
 
     case MediaConstraintType::Width:
     case MediaConstraintType::Height:
@@ -271,6 +285,9 @@ void MediaTrackConstraintSetMap::set(MediaConstraintType constraintType, std::op
     case MediaConstraintType::GroupId:
     case MediaConstraintType::DisplaySurface:
     case MediaConstraintType::LogicalSurface:
+    case MediaConstraintType::FocusDistance:
+    case MediaConstraintType::WhiteBalanceMode:
+    case MediaConstraintType::Torch:
     case MediaConstraintType::Unknown:
         ASSERT_NOT_REACHED();
         break;
@@ -290,6 +307,10 @@ void MediaTrackConstraintSetMap::set(MediaConstraintType constraintType, std::op
         m_logicalSurface = WTFMove(constraint);
         break;
 
+    case MediaConstraintType::Torch:
+        m_torch = WTFMove(constraint);
+        break;
+
     case MediaConstraintType::Width:
     case MediaConstraintType::Height:
     case MediaConstraintType::SampleRate:
@@ -300,6 +321,9 @@ void MediaTrackConstraintSetMap::set(MediaConstraintType constraintType, std::op
     case MediaConstraintType::FacingMode:
     case MediaConstraintType::DeviceId:
     case MediaConstraintType::GroupId:
+    case MediaConstraintType::FocusDistance:
+    case MediaConstraintType::Zoom:
+    case MediaConstraintType::WhiteBalanceMode:
     case MediaConstraintType::Unknown:
         ASSERT_NOT_REACHED();
         break;
@@ -320,6 +344,9 @@ void MediaTrackConstraintSetMap::set(MediaConstraintType constraintType, std::op
     case MediaConstraintType::GroupId:
         m_groupId = WTFMove(constraint);
         break;
+    case MediaConstraintType::WhiteBalanceMode:
+        m_whiteBalanceMode = WTFMove(constraint);
+        break;
 
     case MediaConstraintType::Width:
     case MediaConstraintType::Height:
@@ -331,6 +358,9 @@ void MediaTrackConstraintSetMap::set(MediaConstraintType constraintType, std::op
     case MediaConstraintType::EchoCancellation:
     case MediaConstraintType::DisplaySurface:
     case MediaConstraintType::LogicalSurface:
+    case MediaConstraintType::FocusDistance:
+    case MediaConstraintType::Zoom:
+    case MediaConstraintType::Torch:
     case MediaConstraintType::Unknown:
         ASSERT_NOT_REACHED();
         break;
@@ -352,26 +382,22 @@ bool MediaTrackConstraintSetMap::isEmpty() const
     return !size();
 }
 
-static inline void addDefaultVideoConstraints(MediaTrackConstraintSetMap& videoConstraints, bool addFrameRateConstraint, bool addSizeConstraint, bool addFacingModeConstraint)
+static inline void addDefaultVideoConstraints(MediaTrackConstraintSetMap& videoConstraints, bool addFrameRateConstraint, bool addWidthConstraint, bool addHeightConstraint)
 {
     if (addFrameRateConstraint) {
         DoubleConstraint frameRateConstraint({ }, MediaConstraintType::FrameRate);
         frameRateConstraint.setIdeal(30);
         videoConstraints.set(MediaConstraintType::FrameRate, WTFMove(frameRateConstraint));
     }
-    if (addSizeConstraint) {
+    if (addWidthConstraint) {
         IntConstraint widthConstraint({ }, MediaConstraintType::Width);
         widthConstraint.setIdeal(640);
         videoConstraints.set(MediaConstraintType::Width, WTFMove(widthConstraint));
-        
+    }
+    if (addHeightConstraint) {
         IntConstraint heightConstraint({ }, MediaConstraintType::Height);
         heightConstraint.setIdeal(480);
         videoConstraints.set(MediaConstraintType::Height, WTFMove(heightConstraint));
-    }
-    if (addFacingModeConstraint) {
-        StringConstraint facingModeConstraint({ }, MediaConstraintType::FacingMode);
-        facingModeConstraint.setIdeal("user"_s);
-        videoConstraints.set(MediaConstraintType::FacingMode, WTFMove(facingModeConstraint));
     }
 }
 
@@ -387,22 +413,35 @@ bool MediaConstraints::isConstraintSet(const Function<bool(const MediaTrackConst
     return false;
 }
 
+void MediaConstraints::setDefaultAudioConstraints()
+{
+    bool needsEchoCancellationConstraint = !isConstraintSet([](const MediaTrackConstraintSetMap& constraint) {
+        return !!constraint.echoCancellation();
+    });
+
+    if (needsEchoCancellationConstraint) {
+        BooleanConstraint echoCancellationConstraint({ }, MediaConstraintType::EchoCancellation);
+        echoCancellationConstraint.setIdeal(true);
+        mandatoryConstraints.set(MediaConstraintType::EchoCancellation, WTFMove(echoCancellationConstraint));
+    }
+}
+
 void MediaConstraints::setDefaultVideoConstraints()
 {
-    // 640x480, 30fps, front-facing camera
-    bool needsFrameRateConstraints = !isConstraintSet([](const MediaTrackConstraintSetMap& constraint) {
+    // 640x480, 30fps camera
+    bool needsFrameRateConstraint = !isConstraintSet([](const MediaTrackConstraintSetMap& constraint) {
         return !!constraint.frameRate() || !!constraint.width() || !!constraint.height();
     });
     
-    bool needsSizeConstraints = !isConstraintSet([](const MediaTrackConstraintSetMap& constraint) {
+    bool needsWidthConstraint = !isConstraintSet([](const MediaTrackConstraintSetMap& constraint) {
         return !!constraint.width() || !!constraint.height();
     });
     
-    bool needsFacingModeConstraints = !isConstraintSet([](const MediaTrackConstraintSetMap& constraint) {
-        return !!constraint.facingMode() || !!constraint.deviceId();
+    bool needsHeightConstraint = !isConstraintSet([](const MediaTrackConstraintSetMap& constraint) {
+        return !!constraint.width() || !!constraint.height() || !!constraint.aspectRatio();
     });
-    
-    addDefaultVideoConstraints(mandatoryConstraints, needsFrameRateConstraints, needsSizeConstraints, needsFacingModeConstraints);
+
+    addDefaultVideoConstraints(mandatoryConstraints, needsFrameRateConstraint, needsWidthConstraint, needsHeightConstraint);
 }
 
 void MediaConstraint::log() const

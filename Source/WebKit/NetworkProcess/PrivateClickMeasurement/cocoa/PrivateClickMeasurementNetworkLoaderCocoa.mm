@@ -29,6 +29,7 @@
 #import "NetworkDataTaskCocoa.h"
 #import <WebCore/HTTPHeaderValues.h>
 #import <WebCore/MIMETypeRegistry.h>
+#import <WebCore/UserAgent.h>
 #import <pal/spi/cf/CFNetworkSPI.h>
 #import <wtf/BlockPtr.h>
 #import <wtf/NeverDestroyed.h>
@@ -77,7 +78,7 @@ static bool trustsServerForLocalTests(NSURLAuthenticationChallenge *challenge)
 
 namespace WebKit::PCM {
 
-enum LoadTaskIdentifierType { };
+enum class LoadTaskIdentifierType { };
 using LoadTaskIdentifier = ObjectIdentifier<LoadTaskIdentifierType>;
 static HashMap<LoadTaskIdentifier, RetainPtr<NSURLSessionDataTask>>& taskMap()
 {
@@ -95,7 +96,7 @@ static NSURLSession *statelessSessionWithoutRedirects()
         configuration.URLCache = nil;
         configuration.HTTPCookieStorage = nil;
         configuration._shouldSkipPreferredClientCertificateLookup = YES;
-        return adoptNS([NSURLSession sessionWithConfiguration:configuration delegate:delegate.get().get() delegateQueue:[NSOperationQueue mainQueue]]);
+        return [NSURLSession sessionWithConfiguration:configuration delegate:delegate.get().get() delegateQueue:[NSOperationQueue mainQueue]];
     }();
     return session.get().get();
 }
@@ -114,6 +115,7 @@ void NetworkLoader::start(URL&& url, RefPtr<JSON::Object>&& jsonPayload, WebCore
 
     auto request = adoptNS([[NSMutableURLRequest alloc] initWithURL:url]);
     [request setValue:WebCore::HTTPHeaderValues::maxAge0() forHTTPHeaderField:@"Cache-Control"];
+    [request setValue:WebCore::standardUserAgentWithApplicationName({ }) forHTTPHeaderField:@"User-Agent"];
     if (jsonPayload) {
         request.get().HTTPMethod = @"POST";
         [request setValue:WebCore::HTTPHeaderValues::applicationJSONContentType() forHTTPHeaderField:@"Content-Type"];

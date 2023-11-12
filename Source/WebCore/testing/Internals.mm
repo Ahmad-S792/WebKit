@@ -47,9 +47,6 @@
 #import <pal/spi/mac/NSScrollerImpSPI.h>
 #endif
 
-#if PLATFORM(COCOA)
-#import <Metal/Metal.h>
-#endif
 #import <pal/spi/cocoa/NSAccessibilitySPI.h>
 #import <wtf/cf/TypeCastsCF.h>
 #import <wtf/cocoa/NSURLExtras.h>
@@ -125,12 +122,17 @@ ExceptionOr<RefPtr<Range>> Internals::rangeForDictionaryLookupAtLocation(int x, 
 {
     auto* document = contextDocument();
     if (!document || !document->frame())
-        return Exception { InvalidAccessError };
+        return Exception { ExceptionCode::InvalidAccessError };
 
-    document->updateLayoutIgnorePendingStylesheets();
+    document->updateLayout(LayoutOptions::IgnorePendingStylesheets);
 
     constexpr OptionSet<HitTestRequest::Type> hitType { HitTestRequest::Type::ReadOnly, HitTestRequest::Type::Active, HitTestRequest::Type::DisallowUserAgentShadowContent, HitTestRequest::Type::AllowChildFrameContent };
-    auto result = document->frame()->mainFrame().eventHandler().hitTestResultAtPoint(IntPoint(x, y), hitType);
+    
+    auto* localFrame = dynamicDowncast<LocalFrame>(document->frame()->mainFrame());
+    if (!localFrame)
+        return nullptr; 
+
+    auto result = localFrame->eventHandler().hitTestResultAtPoint(IntPoint(x, y), hitType);
     auto range = DictionaryLookup::rangeAtHitTestResult(result);
     if (!range)
         return nullptr;
@@ -209,27 +211,6 @@ bool Internals::hasSandboxIOKitOpenAccessToClass(const String& process, const St
 
     return !sandbox_check(pid, "iokit-open", static_cast<enum sandbox_filter_type>(SANDBOX_FILTER_IOKIT_CONNECTION | SANDBOX_CHECK_NO_REPORT), ioKitClass.utf8().data());
 }
-
-#if ENABLE(WEBGL) && PLATFORM(COCOA)
-bool Internals::platformSupportsMetal(bool isWebGL2)
-{
-    auto device = adoptNS(MTLCreateSystemDefaultDevice());
-
-    UNUSED_PARAM(isWebGL2);
-
-    if (device) {
-#if PLATFORM(MAC) || PLATFORM(MACCATALYST)
-        // Old Macs, such as MacBookPro11,4 cannot use WebGL via Metal.
-        // This check can be removed once they are no longer supported.
-        return [device supportsFamily:MTLGPUFamilyMac2];
-#else
-        return true;
-#endif
-    }
-
-    return false;
-}
-#endif
 
 #if ENABLE(DATA_DETECTION)
 

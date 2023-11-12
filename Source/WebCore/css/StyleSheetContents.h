@@ -21,12 +21,12 @@
 #pragma once
 
 #include "CSSParserContext.h"
+#include <wtf/CheckedRef.h>
 #include <wtf/Function.h>
 #include <wtf/HashMap.h>
 #include <wtf/RefCounted.h>
 #include <wtf/URL.h>
 #include <wtf/Vector.h>
-#include <wtf/WeakPtr.h>
 #include <wtf/text/AtomStringHash.h>
 
 namespace WebCore {
@@ -45,7 +45,7 @@ class StyleRuleNamespace;
 
 enum class CachePolicy : uint8_t;
 
-class StyleSheetContents final : public RefCounted<StyleSheetContents>, public CanMakeWeakPtr<StyleSheetContents> {
+class StyleSheetContents final : public RefCounted<StyleSheetContents>, public CanMakeCheckedPtr {
 public:
     static Ref<StyleSheetContents> create(const CSSParserContext& context = CSSParserContext(HTMLStandardMode))
     {
@@ -103,10 +103,10 @@ public:
     void clearRules();
 
     String encodingFromCharsetRule() const { return m_encodingFromCharsetRule; }
-    const Vector<RefPtr<StyleRuleLayer>>& layerRulesBeforeImportRules() const { return m_layerRulesBeforeImportRules; }
-    const Vector<RefPtr<StyleRuleImport>>& importRules() const { return m_importRules; }
-    const Vector<RefPtr<StyleRuleNamespace>>& namespaceRules() const { return m_namespaceRules; }
-    const Vector<RefPtr<StyleRuleBase>>& childRules() const { return m_childRules; }
+    const Vector<Ref<StyleRuleLayer>>& layerRulesBeforeImportRules() const { return m_layerRulesBeforeImportRules; }
+    const Vector<Ref<StyleRuleImport>>& importRules() const { return m_importRules; }
+    const Vector<Ref<StyleRuleNamespace>>& namespaceRules() const { return m_namespaceRules; }
+    const Vector<Ref<StyleRuleBase>>& childRules() const { return m_childRules; }
 
     void notifyLoadedSheet(const CachedCSSStyleSheet*);
     
@@ -139,6 +139,9 @@ public:
     bool isMutable() const { return m_isMutable; }
     void setMutable() { m_isMutable = true; }
 
+    bool hasNestingRules() const { return m_hasNestingRules; }
+    void setHasNestingRules() { m_hasNestingRules = true; }
+
     bool isInMemoryCache() const { return m_inMemoryCacheCount; }
     void addedToMemoryCache();
     void removedFromMemoryCache();
@@ -150,21 +153,23 @@ public:
 
     void setLoadErrorOccured() { m_didLoadErrorOccur = true; }
 
+    friend class CSSStyleSheet;
+
 private:
     WEBCORE_EXPORT StyleSheetContents(StyleRuleImport* ownerRule, const String& originalURL, const CSSParserContext&);
     StyleSheetContents(const StyleSheetContents&);
 
     void clearCharsetRule();
 
-    StyleRuleImport* m_ownerRule;
+    StyleRuleImport* m_ownerRule { nullptr };
 
     String m_originalURL;
 
     String m_encodingFromCharsetRule;
-    Vector<RefPtr<StyleRuleLayer>> m_layerRulesBeforeImportRules;
-    Vector<RefPtr<StyleRuleImport>> m_importRules;
-    Vector<RefPtr<StyleRuleNamespace>> m_namespaceRules;
-    Vector<RefPtr<StyleRuleBase>> m_childRules;
+    Vector<Ref<StyleRuleLayer>> m_layerRulesBeforeImportRules;
+    Vector<Ref<StyleRuleImport>> m_importRules;
+    Vector<Ref<StyleRuleNamespace>> m_namespaceRules;
+    Vector<Ref<StyleRuleBase>> m_childRules;
     typedef HashMap<AtomString, AtomString> PrefixNamespaceURIMap;
     PrefixNamespaceURIMap m_namespaces;
     AtomString m_defaultNamespace;
@@ -175,6 +180,7 @@ private:
     bool m_didLoadErrorOccur { false };
     bool m_usesStyleBasedEditability { false };
     bool m_isMutable { false };
+    bool m_hasNestingRules { false };
     unsigned m_inMemoryCacheCount { 0 };
 
     CSSParserContext m_parserContext;

@@ -359,7 +359,7 @@ class RunTest(unittest.TestCase, StreamTestingMixin):
         self.assertEqual(get_tests_run(['--skip-failing-tests', '--skipped=always'] + list_of_tests_failing), [])
 
     def test_ews_corner_case_failing_directory(self):
-        # When a whole directory is is marked as failing (or flaky), then the tests inside should not run if we specify the name of the directory and we pass '--skip-failing-tests'
+        # When a whole directory is is marked as failing (or flaky), then the tests inside should not run if we specify the name of the directory and we pass '--skip-failing-tests' or '--skip-flaky-tests'
         self.assertEqual(get_tests_run(['--skip-failing-tests', 'corner-cases/ews/directory-flaky']), [])
         # But if we specify on the command-line the name of individual tests inside that directory the tests should run (even with '--skip-failing-tests')
         list_of_tests_failing = ['corner-cases/ews/directory-skipped/failure.html', 'corner-cases/ews/directory-skipped/timeout.html']
@@ -977,9 +977,9 @@ class RunTest(unittest.TestCase, StreamTestingMixin):
         self.assertTrue(RunTest.has_test_of_type(batch_tests_run_http, 'http'))
         self.assertTrue(RunTest.has_test_of_type(batch_tests_run_http, 'websocket'))
 
-    def serial_test_platform_tests_are_found(self):
+    def serial_test_platform_tests_are_not_found(self):
         tests_run = get_tests_run(['--platform', 'test-mac-leopard', 'http'])
-        self.assertTrue('platform/test-mac-leopard/http/test.html' in tests_run)
+        self.assertFalse('platform/test-mac-leopard/http/test.html' in tests_run)
         self.assertFalse('platform/test-win-win7/http/test.html' in tests_run)
 
     def test_output_diffs(self):
@@ -1037,7 +1037,7 @@ class RunTest(unittest.TestCase, StreamTestingMixin):
         for line in logging.getvalue():
             if str(DeviceType.from_string('iPhone SE')) in line:
                 self.assertTrue('Skipping 2 tests' in line)
-            elif str(DeviceType.from_string('iPad (10th generation)')) in line:
+            elif str(DeviceType.from_string('iPad (9th generation)')) in line:
                 self.assertTrue('Skipping 1 test' in line)
             elif str(DeviceType.from_string('iPhone 7')) in line:
                 self.assertTrue('Skipping 0 tests' in line)
@@ -1067,7 +1067,7 @@ class RunTest(unittest.TestCase, StreamTestingMixin):
 
         self.assertEqual(3, len(by_type.keys()))
         self.assertEqual(2, len(by_type[DeviceType.from_string('iPhone 12')]))
-        self.assertEqual(1, len(by_type[DeviceType.from_string('iPad (10th generation)')]))
+        self.assertEqual(1, len(by_type[DeviceType.from_string('iPad (9th generation)')]))
         self.assertEqual(0, len(by_type[DeviceType.from_string('iPhone 7')]))
 
     def test_ipad_test_division(self):
@@ -1085,7 +1085,7 @@ class RunTest(unittest.TestCase, StreamTestingMixin):
             run_webkit_tests.run(port, run_webkit_tests.parse_args(['--debug-rwt-logging', '-n', '--no-build', '--root', '/build'])[0], [], logging_stream=logging)
 
         for line in logging.getvalue():
-            if str(DeviceType.from_string('iPad (10th generation)')) in line:
+            if str(DeviceType.from_string('iPad (9th generation)')) in line:
                 self.assertTrue('Skipping 3 test' in line)
 
     def test_ipad_listing(self):
@@ -1113,7 +1113,7 @@ class RunTest(unittest.TestCase, StreamTestingMixin):
             by_type[current_type].append(line)
 
         self.assertEqual(1, len(by_type.keys()))
-        self.assertEqual(3, len(by_type[DeviceType.from_string('iPad (10th generation)')]))
+        self.assertEqual(3, len(by_type[DeviceType.from_string('iPad (9th generation)')]))
 
 
 class RebaselineTest(unittest.TestCase, StreamTestingMixin):

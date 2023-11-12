@@ -28,7 +28,12 @@
 #if PLATFORM(MAC)
 
 #include "APIObject.h"
+#include "ContextMenuContextData.h"
 #include "WebHitTestResultData.h"
+
+namespace WebKit {
+class WebPageProxy;
+}
 
 namespace API {
 
@@ -40,12 +45,21 @@ public:
     }
 
     const WebKit::WebHitTestResultData& hitTestResultData() const { return m_hitTestResultData; }
+    WebKit::WebPageProxy& page() { return m_page.get(); }
+    const WTF::String& qrCodePayloadString() const { return m_qrCodePayloadString; }
+    bool hasEntireImage() const { return m_hasEntireImage; }
 
 private:
-    ContextMenuElementInfoMac(const WebKit::WebHitTestResultData& hitTestResultData)
-        : m_hitTestResultData(hitTestResultData) { }
+    ContextMenuElementInfoMac(const WebKit::ContextMenuContextData& data, WebKit::WebPageProxy& page)
+        : m_hitTestResultData(data.webHitTestResultData().value())
+        , m_page(page)
+        , m_qrCodePayloadString(data.qrCodePayloadString())
+        , m_hasEntireImage(data.hasEntireImage()) { }
 
     WebKit::WebHitTestResultData m_hitTestResultData;
+    Ref<WebKit::WebPageProxy> m_page;
+    WTF::String m_qrCodePayloadString;
+    bool m_hasEntireImage { false };
 };
 
 } // namespace API

@@ -4,7 +4,7 @@
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
  * License as published by the Free Software Foundation; either
- * version 2,1 of the License, or (at your option) any later version.
+ * version 2.1 of the License, or (at your option) any later version.
  *
  * This library is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -95,7 +95,7 @@ struct _WebKitNetworkSessionPrivate {
     PAL::HysteresisActivity dnsPrefetchHystereris;
 };
 
-WEBKIT_DEFINE_FINAL_TYPE(WebKitNetworkSession, webkit_network_session, G_TYPE_OBJECT)
+WEBKIT_DEFINE_FINAL_TYPE(WebKitNetworkSession, webkit_network_session, G_TYPE_OBJECT, GObject)
 
 static void webkitNetworkSessionGetProperty(GObject* object, guint propID, GValue* value, GParamSpec* paramSpec)
 {
@@ -553,7 +553,7 @@ void webkit_network_session_set_memory_pressure_settings(WebKitMemoryPressureSet
  * @session: a #WebKitNetworkSession
  * @cancellable: (allow-none): a #GCancellable or %NULL to ignore
  * @callback: (scope async): a #GAsyncReadyCallback to call when the request is satisfied
- * @user_data: (closure): the data to pass to callback function
+ * @user_data: the data to pass to callback function
  *
  * Asynchronously get the list of #WebKitITPThirdParty seen for @session.
  *
@@ -567,11 +567,12 @@ void webkit_network_session_set_memory_pressure_settings(WebKitMemoryPressureSet
  */
 void webkit_network_session_get_itp_summary(WebKitNetworkSession* session, GCancellable* cancellable, GAsyncReadyCallback callback, gpointer userData)
 {
+#if ENABLE(TRACKING_PREVENTION)
     g_return_if_fail(WEBKIT_IS_NETWORK_SESSION(session));
 
     auto& websiteDataStore = webkitWebsiteDataManagerGetDataStore(session->priv->websiteDataManager.get());
     GRefPtr<GTask> task = adoptGRef(g_task_new(session, cancellable, callback, userData));
-    websiteDataStore.getResourceLoadStatisticsDataSummary([task = WTFMove(task)](Vector<WebResourceLoadStatisticsStore::ThirdPartyData>&& thirdPartyList) {
+    websiteDataStore.getResourceLoadStatisticsDataSummary([task = WTFMove(task)](Vector<ITPThirdPartyData>&& thirdPartyList) {
         GList* result = nullptr;
         while (!thirdPartyList.isEmpty())
             result = g_list_prepend(result, webkitITPThirdPartyCreate(thirdPartyList.takeLast()));
@@ -579,6 +580,9 @@ void webkit_network_session_get_itp_summary(WebKitNetworkSession* session, GCanc
             g_list_free_full(static_cast<GList*>(data), reinterpret_cast<GDestroyNotify>(webkit_itp_third_party_unref));
         });
     });
+#else
+    return;
+#endif
 }
 
 /**
@@ -597,10 +601,14 @@ void webkit_network_session_get_itp_summary(WebKitNetworkSession* session, GCanc
  */
 GList* webkit_network_session_get_itp_summary_finish(WebKitNetworkSession* session, GAsyncResult* result, GError** error)
 {
+#if ENABLE(TRACKING_PREVENTION)
     g_return_val_if_fail(WEBKIT_IS_NETWORK_SESSION(session), nullptr);
     g_return_val_if_fail(g_task_is_valid(result, session), nullptr);
 
     return static_cast<GList*>(g_task_propagate_pointer(G_TASK(result), error));
+#else
+    return nullptr;
+#endif
 }
 
 /**
@@ -648,9 +656,9 @@ WebKitDownload* webkit_network_session_download_uri(WebKitNetworkSession* sessio
 
     WebCore::ResourceRequest request(String::fromUTF8(uri));
     auto& websiteDataStore = webkitWebsiteDataManagerGetDataStore(session->priv->websiteDataManager.get());
-    auto& downloadProxy = websiteDataStore.createDownloadProxy(adoptRef(*new API::DownloadClient), request, nullptr, { });
+    auto downloadProxy = websiteDataStore.createDownloadProxy(adoptRef(*new API::DownloadClient), request, nullptr, { });
     auto download = webkitDownloadCreate(downloadProxy);
-    downloadProxy.setDidStartCallback([session = GRefPtr<WebKitNetworkSession> { session }, download = download.get()](auto* downloadProxy) {
+    downloadProxy->setDidStartCallback([session = GRefPtr<WebKitNetworkSession> { session }, download = download.get()](auto* downloadProxy) {
         if (!downloadProxy)
             return;
 

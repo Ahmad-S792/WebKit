@@ -39,13 +39,12 @@ class Encoder;
 namespace WebKit {
 
 struct GPUProcessCreationParameters {
-    GPUProcessCreationParameters();
-
     AuxiliaryProcessCreationParameters auxiliaryProcessParameters;
 #if ENABLE(MEDIA_STREAM)
     bool useMockCaptureDevices { false };
 #if PLATFORM(MAC)
     SandboxExtension::Handle microphoneSandboxExtensionHandle;
+    SandboxExtension::Handle launchServicesExtensionHandle;
 #endif
 #endif
 #if HAVE(AVCONTENTKEYSPECIFIER)
@@ -62,11 +61,16 @@ struct GPUProcessCreationParameters {
     Vector<SandboxExtension::Handle> dynamicIOKitExtensionHandles;
 #endif
     std::optional<SandboxExtension::Handle> mobileGestaltExtensionHandle;
+#if PLATFORM(COCOA) && ENABLE(REMOTE_INSPECTOR)
+    Vector<SandboxExtension::Handle> gpuToolsExtensionHandles;
+#endif
 
     String applicationVisibleName;
 
-    void encode(IPC::Encoder&) const;
-    static WARN_UNUSED_RETURN bool decode(IPC::Decoder&, GPUProcessCreationParameters&);
+#if USE(GBM)
+    String renderDeviceFile;
+#endif
+    Vector<String> overrideLanguages;
 };
 
 } // namespace WebKit

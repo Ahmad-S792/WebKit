@@ -27,7 +27,7 @@
 #include "JSRemoteDOMWindow.h"
 
 #include "JSDOMExceptionHandling.h"
-#include "JSDOMWindowCustom.h"
+#include "JSLocalDOMWindowCustom.h"
 #include "WebCoreJSClientData.h"
 
 namespace WebCore {
@@ -38,8 +38,12 @@ bool JSRemoteDOMWindow::getOwnPropertySlot(JSObject* object, JSGlobalObject* lex
     if (std::optional<unsigned> index = parseIndex(propertyName))
         return getOwnPropertySlotByIndex(object, lexicalGlobalObject, index.value(), slot);
 
+    // FIXME (rdar://115751655): This should be replaced with a same-origin check between the active and target document.
+    if (propertyName == "$vm"_s)
+        return true;
+
     auto* thisObject = jsCast<JSRemoteDOMWindow*>(object);
-    return jsDOMWindowGetOwnPropertySlotRestrictedAccess<DOMWindowType::Remote>(thisObject, thisObject->wrapped(), *lexicalGlobalObject, propertyName, slot, String());
+    return jsLocalDOMWindowGetOwnPropertySlotRestrictedAccess<DOMWindowType::Remote>(thisObject, thisObject->wrapped(), *lexicalGlobalObject, propertyName, slot, String());
 }
 
 bool JSRemoteDOMWindow::getOwnPropertySlotByIndex(JSObject* object, JSGlobalObject* lexicalGlobalObject, unsigned index, PropertySlot& slot)
@@ -52,7 +56,7 @@ bool JSRemoteDOMWindow::getOwnPropertySlotByIndex(JSObject* object, JSGlobalObje
 
     // FIXME: Add support for indexed properties.
 
-    return jsDOMWindowGetOwnPropertySlotRestrictedAccess<DOMWindowType::Remote>(thisObject, thisObject->wrapped(), *lexicalGlobalObject, Identifier::from(vm, index), slot, String());
+    return jsLocalDOMWindowGetOwnPropertySlotRestrictedAccess<DOMWindowType::Remote>(thisObject, thisObject->wrapped(), *lexicalGlobalObject, Identifier::from(vm, index), slot, String());
 }
 
 bool JSRemoteDOMWindow::put(JSCell* cell, JSGlobalObject* lexicalGlobalObject, PropertyName propertyName, JSValue value, PutPropertySlot& slot)

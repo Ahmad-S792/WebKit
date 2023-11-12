@@ -386,7 +386,7 @@ ConversionBufferMtl *BufferMtl::getUniformConversionBuffer(ContextMtl *context,
 {
     for (UniformConversionBufferMtl &buffer : mUniformConversionBuffers)
     {
-        if (buffer.offset.first == offset.first)
+        if (buffer.offset.first == offset.first && buffer.uniformBufferBlockSize == stdSize)
         {
             if (buffer.offset.second <= offset.second &&
                 (offset.second - buffer.offset.second) % buffer.uniformBufferBlockSize == 0)
@@ -757,7 +757,8 @@ angle::Result BufferMtl::commitShadowCopy(ContextMtl *contextMtl, size_t size)
     auto storageMode                  = mtl::Buffer::getStorageModeForUsage(contextMtl, mUsage);
 
     bufferManager.returnBuffer(contextMtl, mBuffer);
-    ANGLE_TRY(bufferManager.getBuffer(contextMtl, storageMode, mGLSize, mBuffer));
+    size_t bufferSize = (mGLSize == 0 ? mShadowCopy.size() : mGLSize);
+    ANGLE_TRY(bufferManager.getBuffer(contextMtl, storageMode, bufferSize, mBuffer));
 
     if (size)
     {

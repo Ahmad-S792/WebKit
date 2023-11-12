@@ -29,9 +29,16 @@
 #include <WebCore/FloatPoint.h>
 #include <WebCore/PageOverlay.h>
 #include <WebCore/SimpleRange.h>
+#include <wtf/CheckedRef.h>
 #include <wtf/RetainPtr.h>
 
+#if HAVE(SECURE_ACTION_CONTEXT)
+OBJC_CLASS DDSecureActionContext;
+using WKDDActionContext = DDSecureActionContext;
+#else
 OBJC_CLASS DDActionContext;
+using WKDDActionContext = DDActionContext;
+#endif
 
 namespace WebCore {
 class IntRect;
@@ -42,7 +49,7 @@ namespace WebKit {
 class WebFrame;
 class WebPage;
 
-class WebPageOverlay : public API::ObjectImpl<API::Object::Type::BundlePageOverlay>, private WebCore::PageOverlay::Client {
+class WebPageOverlay : public API::ObjectImpl<API::Object::Type::BundlePageOverlay>, private WebCore::PageOverlay::Client, public CanMakeCheckedPtr {
 public:
     struct ActionContext;
 
@@ -82,7 +89,7 @@ public:
 
 #if PLATFORM(MAC)
     struct ActionContext {
-        RetainPtr<DDActionContext> context;
+        RetainPtr<WKDDActionContext> context;
         WebCore::SimpleRange range;
     };
     std::optional<ActionContext> actionContextForResultAtPoint(WebCore::FloatPoint);
@@ -99,7 +106,7 @@ private:
     void didMoveToPage(WebCore::PageOverlay&, WebCore::Page*) override;
     void drawRect(WebCore::PageOverlay&, WebCore::GraphicsContext&, const WebCore::IntRect& dirtyRect) override;
     bool mouseEvent(WebCore::PageOverlay&, const WebCore::PlatformMouseEvent&) override;
-    void didScrollFrame(WebCore::PageOverlay&, WebCore::Frame&) override;
+    void didScrollFrame(WebCore::PageOverlay&, WebCore::LocalFrame&) override;
 
     bool copyAccessibilityAttributeStringValueForPoint(WebCore::PageOverlay&, String /* attribute */, WebCore::FloatPoint /* parameter */, String& value) override;
     bool copyAccessibilityAttributeBoolValueForPoint(WebCore::PageOverlay&, String /* attribute */, WebCore::FloatPoint /* parameter */, bool& value) override;

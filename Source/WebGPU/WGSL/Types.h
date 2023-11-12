@@ -25,29 +25,22 @@
 
 #pragma once
 
+#include "ASTForward.h"
+#include "WGSLEnums.h"
+#include <wtf/FixedVector.h>
 #include <wtf/HashMap.h>
+#include <wtf/Markable.h>
 #include <wtf/PrintStream.h>
+#include <wtf/SortedArrayMap.h>
 #include <wtf/text/WTFString.h>
 
 namespace WGSL {
 
-struct Primitive;
-struct Vector;
-struct Matrix;
-struct Array;
-struct Struct;
-struct Function;
-struct Bottom;
+class TypeChecker;
+class TypeStore;
+struct Type;
 
-using Type = std::variant<
-    Primitive,
-    Vector,
-    Matrix,
-    Array,
-    Struct,
-    Function,
-    Bottom
->;
+namespace Types {
 
 #define FOR_EACH_PRIMITIVE_TYPE(f) \
     f(AbstractInt, "<AbstractInt>") \
@@ -57,9 +50,15 @@ using Type = std::variant<
     f(F32, "f32") \
     f(Void, "void") \
     f(Bool, "bool") \
+    f(Sampler, "sampler") \
+    f(SamplerComparison, "sampler_comparion") \
+    f(TextureExternal, "texture_external") \
+    f(AccessMode, "access_mode") \
+    f(TexelFormat, "texel_format") \
+    f(AddressSpace, "address_space") \
 
 struct Primitive {
-    enum Kind {
+    enum Kind : uint8_t {
 #define PRIMITIVE_KIND(kind, name) kind,
     FOR_EACH_PRIMITIVE_TYPE(PRIMITIVE_KIND)
 #undef PRIMITIVE_KIND
@@ -68,49 +67,196 @@ struct Primitive {
     Kind kind;
 };
 
+struct Texture {
+    enum class Kind : uint8_t {
+        Texture1d = 1,
+        Texture2d,
+        Texture2dArray,
+        Texture3d,
+        TextureCube,
+        TextureCubeArray,
+        TextureMultisampled2d,
+    };
+
+    const Type* element;
+    Kind kind;
+};
+
+struct TextureStorage {
+    enum class Kind : uint8_t {
+        TextureStorage1d = 1,
+        TextureStorage2d,
+        TextureStorage2dArray,
+        TextureStorage3d,
+    };
+
+    Kind kind;
+    TexelFormat format;
+    AccessMode access;
+};
+
+struct TextureDepth {
+    enum class Kind : uint8_t {
+        TextureDepth2d = 1,
+        TextureDepth2dArray,
+        TextureDepthCube,
+        TextureDepthCubeArray,
+        TextureDepthMultisampled2d,
+    };
+
+    Kind kind;
+};
+
 struct Vector {
-    Type* element;
+    const Type* element;
     uint8_t size;
 };
 
 struct Matrix {
-    Type* element;
+    const Type* element;
     uint8_t columns;
     uint8_t rows;
 };
 
 struct Array {
-    Type* element;
+    const Type* element;
     std::optional<unsigned> size;
 };
 
 struct Struct {
+    AST::Structure& structure;
+    HashMap<String, const Type*> fields { };
+};
+
+struct PrimitiveStruct {
+private:
+    enum Kind : uint8_t {
+        FrexpResult,
+    };
+
+public:
+    struct FrexpResult {
+        static constexpr Kind kind = Kind::FrexpResult;
+        static constexpr unsigned fract = 0;
+        static constexpr unsigned exp = 1;
+
+        static constexpr std::pair<ComparableASCIILiteral, unsigned> mapEntries[] {
+            { "exp", exp },
+            { "fract", fract },
+        };
+
+        static constexpr SortedArrayMap map { mapEntries };
+    };
+
+    static constexpr SortedArrayMap<std::pair<ComparableASCIILiteral, unsigned>[2]> keys[] {
+        FrexpResult::map,
+    };
+
     String name;
-    HashMap<String, Type*> fields { };
+    Kind kind;
+    FixedVector<const Type*> values;
 };
 
 struct Function {
+    WTF::Vector<const Type*> parameters;
+    const Type* result;
+};
+
+struct Reference {
+    AddressSpace addressSpace;
+    AccessMode accessMode;
+    const Type* element;
+};
+
+struct Pointer {
+    AddressSpace addressSpace;
+    AccessMode accessMode;
+    const Type* element;
+};
+
+struct Atomic {
+    const Type* element;
+};
+
+struct TypeConstructor {
+    ASCIILiteral name;
+    std::function<const Type*(AST::ElaboratedTypeExpression&)> construct;
 };
 
 struct Bottom {
 };
 
-struct TypeConstructor {
-    std::function<Type*(Type*)> construct;
+} // namespace Types
+
+struct Type : public std::variant<
+    Types::Primitive,
+    Types::Vector,
+    Types::Matrix,
+    Types::Array,
+    Types::Struct,
+    Types::PrimitiveStruct,
+    Types::Function,
+    Types::Texture,
+    Types::TextureStorage,
+    Types::TextureDepth,
+    Types::Reference,
+    Types::Pointer,
+    Types::Atomic,
+    Types::TypeConstructor,
+    Types::Bottom
+> {
+    using std::variant<
+        Types::Primitive,
+        Types::Vector,
+        Types::Matrix,
+        Types::Array,
+        Types::Struct,
+        Types::PrimitiveStruct,
+        Types::Function,
+        Types::Texture,
+        Types::TextureStorage,
+        Types::TextureDepth,
+        Types::Reference,
+        Types::Pointer,
+        Types::Atomic,
+        Types::TypeConstructor,
+        Types::Bottom
+        >::variant;
+    void dump(PrintStream&) const;
+    String toString() const;
+    unsigned size() const;
+    unsigned alignment() const;
 };
 
-void printInternal(PrintStream&, const Type&);
-String toString(const Type&);
+using ConversionRank = Markable<unsigned, IntegralMarkableTraits<unsigned, std::numeric_limits<unsigned>::max()>>;
+ConversionRank conversionRank(const Type* from, const Type* to);
+
+bool isPrimitive(const Type*, Types::Primitive::Kind);
+bool isPrimitiveReference(const Type*, Types::Primitive::Kind);
+const Type* shaderTypeForTexelFormat(TexelFormat, const TypeStore&);
 
 } // namespace WGSL
 
 namespace WTF {
 
-template<> class StringTypeAdapter<WGSL::Type, void> : public StringTypeAdapter<String, void> {
+template<> class StringTypeAdapter<WGSL::Type, void> {
 public:
     StringTypeAdapter(const WGSL::Type& type)
-        : StringTypeAdapter<String, void> { toString(type) }
-    { }
+        : m_string { type.toString() }
+    {
+    }
+
+    unsigned length() const { return m_string.length(); }
+    bool is8Bit() const { return m_string.is8Bit(); }
+    template<typename CharacterType>
+    void writeTo(CharacterType* destination) const
+    {
+        StringView { m_string }.getCharacters(destination);
+        WTF_STRINGTYPEADAPTER_COPIED_WTF_STRING();
+    }
+
+private:
+    String const m_string;
 };
 
 } // namespace WTF

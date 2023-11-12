@@ -65,7 +65,7 @@ ExceptionOr<Ref<CSSScale>> CSSScale::create(CSSNumberish x, CSSNumberish y, std:
 
     // https://drafts.css-houdini.org/css-typed-om/#dom-cssscale-cssscale
     if (!isValidScaleCoord(rectifiedX) || !isValidScaleCoord(rectifiedY) || !isValidScaleCoord(rectifiedZ))
-        return Exception { TypeError };
+        return Exception { ExceptionCode::TypeError };
 
     return adoptRef(*new CSSScale(z ? Is2D::No : Is2D::Yes, WTFMove(rectifiedX), WTFMove(rectifiedY), WTFMove(rectifiedZ)));
 }
@@ -74,12 +74,12 @@ ExceptionOr<Ref<CSSScale>> CSSScale::create(CSSFunctionValue& cssFunctionValue)
 {
     auto makeScale = [&](const Function<ExceptionOr<Ref<CSSScale>>(Vector<RefPtr<CSSNumericValue>>&&)>& create, size_t minNumberOfComponents, std::optional<size_t> maxNumberOfComponents = std::nullopt) -> ExceptionOr<Ref<CSSScale>> {
         Vector<RefPtr<CSSNumericValue>> components;
-        for (auto componentCSSValue : cssFunctionValue) {
+        for (auto& componentCSSValue : cssFunctionValue) {
             auto valueOrException = CSSStyleValueFactory::reifyValue(componentCSSValue, std::nullopt);
             if (valueOrException.hasException())
                 return valueOrException.releaseException();
             if (!is<CSSNumericValue>(valueOrException.returnValue()))
-                return Exception { TypeError, "Expected a CSSNumericValue."_s };
+                return Exception { ExceptionCode::TypeError, "Expected a CSSNumericValue."_s };
             components.append(downcast<CSSNumericValue>(valueOrException.releaseReturnValue().ptr()));
         }
         if (!maxNumberOfComponents)
@@ -87,7 +87,7 @@ ExceptionOr<Ref<CSSScale>> CSSScale::create(CSSFunctionValue& cssFunctionValue)
         auto numberOfComponents = components.size();
         if (numberOfComponents < minNumberOfComponents || numberOfComponents > maxNumberOfComponents) {
             ASSERT_NOT_REACHED();
-            return Exception { TypeError, "Unexpected number of values."_s };
+            return Exception { ExceptionCode::TypeError, "Unexpected number of values."_s };
         }
         return create(WTFMove(components));
     };
@@ -159,7 +159,7 @@ void CSSScale::serialize(StringBuilder& builder) const
 ExceptionOr<Ref<DOMMatrix>> CSSScale::toMatrix()
 {
     if (!is<CSSUnitValue>(m_x) || !is<CSSUnitValue>(m_y) || !is<CSSUnitValue>(m_z))
-        return Exception { TypeError };
+        return Exception { ExceptionCode::TypeError };
 
     TransformationMatrix matrix { };
 
@@ -182,16 +182,14 @@ RefPtr<CSSValue> CSSScale::toCSSValue() const
     if (!x || !y)
         return nullptr;
 
-    auto result = CSSFunctionValue::create(is2D() ? CSSValueScale : CSSValueScale3d);
-    result->append(x.releaseNonNull());
-    result->append(y.releaseNonNull());
-    if (!is2D()) {
-        auto z = m_z->toCSSValue();
-        if (!z)
-            return nullptr;
-        result->append(z.releaseNonNull());
-    }
-    return result;
+    if (is2D())
+        return CSSFunctionValue::create(CSSValueScale, x.releaseNonNull(), y.releaseNonNull());
+
+    auto z = m_z->toCSSValue();
+    if (!z)
+        return nullptr;
+
+    return CSSFunctionValue::create(CSSValueScale3d, x.releaseNonNull(), y.releaseNonNull(), z.releaseNonNull());
 }
 
 } // namespace WebCore

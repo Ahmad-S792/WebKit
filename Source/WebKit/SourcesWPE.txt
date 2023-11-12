@@ -34,6 +34,8 @@ NetworkProcess/Classifier/WebResourceLoadStatisticsStore.cpp
 
 NetworkProcess/Cookies/soup/WebCookieManagerSoup.cpp
 
+NetworkProcess/NetworkDataTaskDataURL.cpp
+
 NetworkProcess/cache/NetworkCacheDataGLib.cpp
 NetworkProcess/cache/NetworkCacheIOChannelGLib.cpp
 
@@ -78,9 +80,10 @@ Shared/CoordinatedGraphics/SimpleViewportController.cpp
 
 Shared/CoordinatedGraphics/threadedcompositor/CompositingRunLoop.cpp
 Shared/CoordinatedGraphics/threadedcompositor/ThreadedCompositor.cpp
-Shared/CoordinatedGraphics/threadedcompositor/ThreadedDisplayRefreshMonitor.cpp
 
 Shared/cairo/ShareableBitmapCairo.cpp
+
+Shared/freetype/WebCoreArgumentCodersFreeType.cpp
 
 Shared/glib/ArgumentCodersGLib.cpp
 Shared/glib/InputMethodState.cpp
@@ -110,13 +113,18 @@ UIProcess/WebViewportAttributes.cpp
 UIProcess/API/C/WKGrammarDetail.cpp
 UIProcess/API/C/WKViewportAttributes.cpp
 
+UIProcess/API/C/glib/WKContextConfigurationGlib.cpp
 UIProcess/API/C/glib/WKTextCheckerGLib.cpp
 
 UIProcess/API/C/wpe/WKView.cpp
+UIProcess/API/C/wpe/WKPagePrivateWPE.cpp
+
+Shared/API/c/wpe/WKEventWPE.cpp
 
 UIProcess/API/glib/APIContentRuleListStoreGLib.cpp @no-unify
 UIProcess/API/glib/APISerializedScriptValueGLib.cpp @no-unify
 UIProcess/API/glib/InputMethodFilter.cpp @no-unify
+UIProcess/API/glib/KeyAutoRepeatHandler.cpp @no-unify
 UIProcess/API/glib/WebKitApplicationInfo.cpp @no-unify
 UIProcess/API/glib/WebKitAuthenticationRequest.cpp @no-unify
 UIProcess/API/glib/WebKitAutomationSession.cpp @no-unify
@@ -130,6 +138,7 @@ UIProcess/API/glib/WebKitDownload.cpp @no-unify
 UIProcess/API/glib/WebKitDownloadClient.cpp @no-unify
 UIProcess/API/glib/WebKitEditorState.cpp @no-unify
 UIProcess/API/glib/WebKitError.cpp @no-unify
+UIProcess/API/glib/WebKitFeature.cpp @no-unify
 UIProcess/API/glib/WebKitFileChooserRequest.cpp @no-unify
 UIProcess/API/glib/WebKitFindController.cpp @no-unify
 UIProcess/API/glib/WebKitFormClient.cpp @no-unify
@@ -140,7 +149,6 @@ UIProcess/API/glib/WebKitInitialize.cpp @no-unify
 UIProcess/API/glib/WebKitInjectedBundleClient.cpp @no-unify
 UIProcess/API/glib/WebKitInputMethodContext.cpp @no-unify
 UIProcess/API/glib/WebKitInstallMissingMediaPluginsPermissionRequest.cpp @no-unify
-UIProcess/API/glib/WebKitJavascriptResult.cpp @no-unify
 UIProcess/API/glib/WebKitMediaKeySystemPermissionRequest.cpp @no-unify
 UIProcess/API/glib/WebKitMemoryPressureSettings.cpp @no-unify
 UIProcess/API/glib/WebKitNavigationAction.cpp @no-unify
@@ -211,10 +219,13 @@ UIProcess/Gamepad/libwpe/UIGamepadProviderLibWPE.cpp
 
 UIProcess/geoclue/GeoclueGeolocationProvider.cpp
 
+UIProcess/glib/DisplayLinkGLib.cpp
+UIProcess/glib/DisplayVBlankMonitor.cpp
+UIProcess/glib/DisplayVBlankMonitorDRM.cpp
+UIProcess/glib/DisplayVBlankMonitorTimer.cpp
 UIProcess/glib/WebPageProxyGLib.cpp
 UIProcess/glib/WebProcessPoolGLib.cpp
 UIProcess/glib/WebProcessProxyGLib.cpp
-UIProcess/glib/WebsiteDataStoreGLib.cpp @no-unify
 
 UIProcess/gstreamer/WebPageProxyGStreamer.cpp
 
@@ -231,8 +242,8 @@ UIProcess/Launcher/libwpe/ProcessProviderLibWPE.cpp
 
 UIProcess/Notifications/glib/NotificationService.cpp
 
+UIProcess/WebsiteData/glib/WebsiteDataStoreGLib.cpp
 UIProcess/WebsiteData/soup/WebsiteDataStoreSoup.cpp
-UIProcess/WebsiteData/unix/WebsiteDataStoreUnix.cpp
 
 UIProcess/libwpe/WebPasteboardProxyLibWPE.cpp
 
@@ -246,14 +257,13 @@ WebProcess/GPU/graphics/gbm/RemoteGraphicsContextGLProxyGBM.cpp
 
 WebProcess/GPU/media/gstreamer/VideoLayerRemoteGStreamer.cpp
 
-WebProcess/InjectedBundle/API/glib/WebKitExtensionManager.cpp @no-unify
 WebProcess/InjectedBundle/API/glib/WebKitFrame.cpp @no-unify
 WebProcess/InjectedBundle/API/glib/WebKitScriptWorld.cpp @no-unify
 WebProcess/InjectedBundle/API/glib/WebKitWebEditor.cpp @no-unify
-WebProcess/InjectedBundle/API/glib/WebKitWebExtension.cpp @no-unify
 WebProcess/InjectedBundle/API/glib/WebKitWebFormManager.cpp @no-unify
 WebProcess/InjectedBundle/API/glib/WebKitWebHitTestResult.cpp @no-unify
 WebProcess/InjectedBundle/API/glib/WebKitWebPage.cpp @no-unify
+WebProcess/InjectedBundle/API/glib/WebProcessExtensionManager.cpp @no-unify
 
 WebProcess/InjectedBundle/glib/InjectedBundleGlib.cpp
 

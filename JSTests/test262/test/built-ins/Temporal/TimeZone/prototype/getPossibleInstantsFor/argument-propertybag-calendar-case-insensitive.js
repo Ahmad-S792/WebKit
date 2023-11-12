@@ -14,4 +14,4 @@ const calendar = "IsO8601";
 
 const arg = { year: 1976, monthCode: "M11", day: 18, calendar };
 const result = instance.getPossibleInstantsFor(arg);
-assert.compareArray(result.map(i => i.epochNanoseconds), [217_123_200_000_000_000n], `Calendar created from string "${calendar}"`);
+assert.compareArray(result.map(i => i.epochNanoseconds), [217_123_200_000_000_000n], "Calendar is case-insensitive");

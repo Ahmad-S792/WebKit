@@ -39,11 +39,11 @@ public:
     BoxGeometry() = default;
     ~BoxGeometry();
 
-    static LayoutUnit borderBoxTop(const BoxGeometry& box) { return box.logicalTop(); }
-    static LayoutUnit borderBoxLeft(const BoxGeometry& box) { return box.logicalLeft(); }
-    static LayoutPoint borderBoxTopLeft(const BoxGeometry& box) { return box.logicalTopLeft(); }
-    static Rect borderBoxRect(const BoxGeometry& box) { return { box.logicalTop(), box.logicalLeft(), box.borderBoxWidth(), box.borderBoxHeight() }; }
-    static Rect marginBoxRect(const BoxGeometry& box) { return { box.logicalTop() - box.marginBefore(), box.logicalLeft() - box.marginStart(), box.marginBoxWidth(), box.marginBoxHeight() }; }
+    static LayoutUnit borderBoxTop(const BoxGeometry& box) { return box.top(); }
+    static LayoutUnit borderBoxLeft(const BoxGeometry& box) { return box.left(); }
+    static LayoutPoint borderBoxTopLeft(const BoxGeometry& box) { return box.topLeft(); }
+    static Rect borderBoxRect(const BoxGeometry& box) { return { box.top(), box.left(), box.borderBoxWidth(), box.borderBoxHeight() }; }
+    static Rect marginBoxRect(const BoxGeometry& box) { return { box.top() - box.marginBefore(), box.left() - box.marginStart(), box.marginBoxWidth(), box.marginBoxHeight() }; }
 
     struct VerticalMargin {
         LayoutUnit before;
@@ -86,6 +86,7 @@ public:
     LayoutUnit contentBoxRight() const { return contentBoxLeft() + contentBoxWidth(); }
     LayoutUnit contentBoxHeight() const;
     LayoutUnit contentBoxWidth() const;
+    LayoutSize contentBoxSize() const { return { contentBoxWidth(), contentBoxHeight() }; }
 
     LayoutUnit paddingBoxTop() const { return borderBefore(); }
     LayoutUnit paddingBoxLeft() const { return borderStart(); }
@@ -121,9 +122,9 @@ public:
     void setHasPrecomputedMarginBefore() { m_hasPrecomputedMarginBefore = true; }
 #endif
 
-    void setLogicalTopLeft(const LayoutPoint&);
-    void setLogicalTop(LayoutUnit);
-    void setLogicalLeft(LayoutUnit);
+    void setTopLeft(const LayoutPoint&);
+    void setTop(LayoutUnit);
+    void setLeft(LayoutUnit);
     void moveHorizontally(LayoutUnit offset) { m_topLeft.move(offset, 0_lu); }
     void moveVertically(LayoutUnit offset) { m_topLeft.move(0_lu, offset); }
     void move(const LayoutSize& size) { m_topLeft.move(size); }
@@ -131,8 +132,12 @@ public:
 
     void setContentBoxHeight(LayoutUnit);
     void setContentBoxWidth(LayoutUnit);
+    void setContentBoxSize(const LayoutSize&);
 
     void setHorizontalMargin(HorizontalMargin);
+    void setMarginStart(LayoutUnit);
+    void setMarginEnd(LayoutUnit);
+
     void setVerticalMargin(VerticalMargin);
 
     void setBorder(Layout::Edges);
@@ -143,12 +148,12 @@ public:
     void setVerticalSpaceForScrollbar(LayoutUnit scrollbarHeight) { m_verticalSpaceForScrollbar = scrollbarHeight; }
     void setHorizontalSpaceForScrollbar(LayoutUnit scrollbarWidth) { m_horizontalSpaceForScrollbar = scrollbarWidth; }
 
-    BoxGeometry geometryForWritingModeAndDirection(bool isHorizontalWritingMode, bool isLeftToRightDirection, LayoutUnit containerLogicalWidth) const;
+    BoxGeometry geometryForWritingModeAndDirection(WritingMode, bool isLeftToRightDirection, LayoutUnit containerLogicalWidth) const;
 
 private:
-    LayoutUnit logicalTop() const;
-    LayoutUnit logicalLeft() const;
-    LayoutPoint logicalTopLeft() const;
+    LayoutUnit top() const;
+    LayoutUnit left() const;
+    LayoutPoint topLeft() const;
 
 #if ASSERT_ENABLED
     void invalidateMargin();
@@ -164,13 +169,13 @@ private:
     void setHasValidBorder() { m_hasValidBorder = true; }
     void setHasValidPadding() { m_hasValidPadding = true; }
 
-    void setHasValidContentHeight() { m_hasValidContentHeight = true; }
-    void setHasValidContentWidth() { m_hasValidContentWidth = true; }
+    void setHasValidContentBoxHeight() { m_hasValidContentBoxHeight = true; }
+    void setHasValidContentBoxWidth() { m_hasValidContentBoxWidth = true; }
 #endif // ASSERT_ENABLED
 
     LayoutPoint m_topLeft;
-    LayoutUnit m_contentWidth;
-    LayoutUnit m_contentHeight;
+    LayoutUnit m_contentBoxWidth;
+    LayoutUnit m_contentBoxHeight;
 
     HorizontalMargin m_horizontalMargin;
     VerticalMargin m_verticalMargin;
@@ -188,8 +193,8 @@ private:
     bool m_hasValidVerticalMargin { false };
     bool m_hasValidBorder { false };
     bool m_hasValidPadding { false };
-    bool m_hasValidContentHeight { false };
-    bool m_hasValidContentWidth { false };
+    bool m_hasValidContentBoxHeight { false };
+    bool m_hasValidContentBoxWidth { false };
     bool m_hasPrecomputedMarginBefore { false };
 #endif // ASSERT_ENABLED
 };
@@ -202,26 +207,26 @@ inline void BoxGeometry::invalidateMargin()
 }
 #endif
 
-inline LayoutUnit BoxGeometry::logicalTop() const
+inline LayoutUnit BoxGeometry::top() const
 {
     ASSERT(m_hasValidTop && (m_hasPrecomputedMarginBefore || m_hasValidVerticalMargin));
     return m_topLeft.y();
 }
 
-inline LayoutUnit BoxGeometry::logicalLeft() const
+inline LayoutUnit BoxGeometry::left() const
 {
     ASSERT(m_hasValidLeft && m_hasValidHorizontalMargin);
     return m_topLeft.x();
 }
 
-inline LayoutPoint BoxGeometry::logicalTopLeft() const
+inline LayoutPoint BoxGeometry::topLeft() const
 {
     ASSERT(m_hasValidTop && (m_hasPrecomputedMarginBefore || m_hasValidVerticalMargin));
     ASSERT(m_hasValidLeft && m_hasValidHorizontalMargin);
     return m_topLeft;
 }
 
-inline void BoxGeometry::setLogicalTopLeft(const LayoutPoint& topLeft)
+inline void BoxGeometry::setTopLeft(const LayoutPoint& topLeft)
 {
 #if ASSERT_ENABLED
     setHasValidTop();
@@ -230,7 +235,7 @@ inline void BoxGeometry::setLogicalTopLeft(const LayoutPoint& topLeft)
     m_topLeft = topLeft;
 }
 
-inline void BoxGeometry::setLogicalTop(LayoutUnit top)
+inline void BoxGeometry::setTop(LayoutUnit top)
 {
 #if ASSERT_ENABLED
     setHasValidTop();
@@ -238,7 +243,7 @@ inline void BoxGeometry::setLogicalTop(LayoutUnit top)
     m_topLeft.setY(top);
 }
 
-inline void BoxGeometry::setLogicalLeft(LayoutUnit left)
+inline void BoxGeometry::setLeft(LayoutUnit left)
 {
 #if ASSERT_ENABLED
     setHasValidLeft();
@@ -249,29 +254,35 @@ inline void BoxGeometry::setLogicalLeft(LayoutUnit left)
 inline void BoxGeometry::setContentBoxHeight(LayoutUnit height)
 { 
 #if ASSERT_ENABLED
-    setHasValidContentHeight();
+    setHasValidContentBoxHeight();
 #endif
-    m_contentHeight = height;
+    m_contentBoxHeight = height;
 }
 
 inline void BoxGeometry::setContentBoxWidth(LayoutUnit width)
 { 
 #if ASSERT_ENABLED
-    setHasValidContentWidth();
+    setHasValidContentBoxWidth();
 #endif
-    m_contentWidth = width;
+    m_contentBoxWidth = width;
+}
+
+inline void BoxGeometry::setContentBoxSize(const LayoutSize& size)
+{
+    setContentBoxWidth(size.width());
+    setContentBoxHeight(size.height());
 }
 
 inline LayoutUnit BoxGeometry::contentBoxHeight() const
 {
-    ASSERT(m_hasValidContentHeight);
-    return m_contentHeight;
+    ASSERT(m_hasValidContentBoxHeight);
+    return m_contentBoxHeight;
 }
 
 inline LayoutUnit BoxGeometry::contentBoxWidth() const
 {
-    ASSERT(m_hasValidContentWidth);
-    return m_contentWidth;
+    ASSERT(m_hasValidContentBoxWidth);
+    return m_contentBoxWidth;
 }
 
 inline void BoxGeometry::setHorizontalMargin(HorizontalMargin margin)
@@ -280,6 +291,22 @@ inline void BoxGeometry::setHorizontalMargin(HorizontalMargin margin)
     setHasValidHorizontalMargin();
 #endif
     m_horizontalMargin = margin;
+}
+
+inline void BoxGeometry::setMarginStart(LayoutUnit marginStart)
+{
+#if ASSERT_ENABLED
+    setHasValidHorizontalMargin();
+#endif
+    m_horizontalMargin = { marginStart, m_horizontalMargin.end };
+}
+
+inline void BoxGeometry::setMarginEnd(LayoutUnit marginEnd)
+{
+#if ASSERT_ENABLED
+    setHasValidHorizontalMargin();
+#endif
+    m_horizontalMargin = { m_horizontalMargin.start, marginEnd };
 }
 
 inline void BoxGeometry::setVerticalMargin(VerticalMargin margin)
@@ -425,8 +452,11 @@ inline LayoutUnit BoxGeometry::borderEnd() const
     return m_border.horizontal.right;
 }
 
-inline BoxGeometry BoxGeometry::geometryForWritingModeAndDirection(bool isHorizontalWritingMode, bool isLeftToRightDirection, LayoutUnit containerLogicalWidth) const
+inline BoxGeometry BoxGeometry::geometryForWritingModeAndDirection(WritingMode writingMode, bool isLeftToRightDirection, LayoutUnit containerLogicalWidth) const
 {
+    auto isHorizontalWritingMode = WebCore::isHorizontalWritingMode(writingMode);
+    auto isFlippedBlocksWritingMode = WebCore::isFlippedWritingMode(writingMode);
+
     if (isHorizontalWritingMode && isLeftToRightDirection)
         return *this;
 
@@ -443,10 +473,10 @@ inline BoxGeometry BoxGeometry::geometryForWritingModeAndDirection(bool isHorizo
     }
 
     // Vertical flip.
-    visualGeometry.m_contentWidth = m_contentHeight;
-    visualGeometry.m_contentHeight = m_contentWidth;
+    visualGeometry.m_contentBoxWidth = m_contentBoxHeight;
+    visualGeometry.m_contentBoxHeight = m_contentBoxWidth;
 
-    visualGeometry.m_horizontalMargin = { m_verticalMargin.after, m_verticalMargin.before };
+    visualGeometry.m_horizontalMargin = !isFlippedBlocksWritingMode ? HorizontalMargin { m_verticalMargin.after, m_verticalMargin.before } : HorizontalMargin { m_verticalMargin.before, m_verticalMargin.after };
     visualGeometry.m_verticalMargin = { m_horizontalMargin.start, m_horizontalMargin.end };
 
     auto left = isLeftToRightDirection ? m_topLeft.x() : containerLogicalWidth - (m_topLeft.x() + borderBoxWidth());

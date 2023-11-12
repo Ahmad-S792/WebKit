@@ -33,8 +33,7 @@
 #import <WebKit/WKWebViewPrivate.h>
 #import <wtf/RetainPtr.h>
 
-// We can enable the test for old iOS versions after <rdar://problem/63572534> is fixed.
-#if ENABLE(VIDEO_PRESENTATION_MODE) && (PLATFORM(MAC) || (PLATFORM(IOS_FAMILY) && __IPHONE_OS_VERSION_MIN_REQUIRED >= 140000))
+#if ENABLE(FULLSCREEN_API) || ENABLE(VIDEO_PRESENTATION_MODE)
 
 static void loadPictureInPicture(RetainPtr<TestWKWebView> webView)
 {
@@ -59,6 +58,10 @@ static void loadPictureInPicture(RetainPtr<TestWKWebView> webView)
         TestWebKitAPI::Util::runFor(0.5_s);
     } while (true);
 }
+
+#endif // ENABLE(FULLSCREEN_API) || ENABLE(VIDEO_PRESENTATION_MODE)
+
+#if ENABLE(VIDEO_PRESENTATION_MODE)
 
 // FIXME: Re-enable this test for Big Sur once webkit.org/b/245241 is resolved
 #if (PLATFORM(MAC) && __MAC_OS_X_VERSION_MIN_REQUIRED < 141000)
@@ -123,11 +126,16 @@ TEST(WKWebViewCloseAllMediaPresentationsInternal, PictureInPicture)
     EXPECT_TRUE([webView _allMediaPresentationsClosed]);
 }
 
-#endif
+#endif // ENABLE(VIDEO_PRESENTATION_MODE)
 
 #if ENABLE(FULLSCREEN_API)
 
+// FIXME rdar://109155883 is resolved.
+#if PLATFORM(IOS) || PLATFORM(VISION)
+TEST(WKWebViewCloseAllMediaPresentations, DISABLED_VideoFullscreen)
+# else
 TEST(WKWebViewCloseAllMediaPresentations, VideoFullscreen)
+#endif
 {
     auto *configuration = [WKWebViewConfiguration _test_configurationWithTestPlugInClassName:@"WebProcessPlugInWithInternals" configureJSCForTesting:YES];
     [[configuration preferences] _setFullScreenEnabled:YES];
@@ -243,4 +251,4 @@ TEST(WKWebViewCloseAllMediaPresentations, RemovedCloseAllMediaPresentationAPIs)
     EXPECT_FALSE(exception);
 }
 
-#endif
+#endif // ENABLE(FULLSCREEN_API)

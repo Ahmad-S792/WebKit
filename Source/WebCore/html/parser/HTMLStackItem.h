@@ -21,7 +21,7 @@
  * PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY
  * OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
- * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE. 
+ * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
 #pragma once
@@ -29,8 +29,8 @@
 #include "AtomHTMLToken.h"
 #include "DocumentFragment.h"
 #include "Element.h"
-#include "ElementName.h"
 #include "Namespace.h"
+#include "NodeName.h"
 #include "TagName.h"
 
 namespace WebCore {
@@ -53,6 +53,7 @@ public:
 
     ContainerNode& node() const { return *m_node; }
     Element& element() const { return downcast<Element>(node()); }
+    Ref<Element> protectedElement() const { return element(); }
     Element* elementOrNull() const { return downcast<Element>(m_node.get()); }
 
     const AtomString& localName() const { return isElement() ? element().localName() : nullAtom(); }
@@ -146,7 +147,7 @@ inline bool isNumberedHeaderElement(const HTMLStackItem& item)
     }
 }
 
-// http://www.whatwg.org/specs/web-apps/current-work/multipage/parsing.html#special
+// https://html.spec.whatwg.org/multipage/parsing.html#special
 inline bool isSpecialNode(const HTMLStackItem& item)
 {
     using namespace ElementNames;
@@ -171,7 +172,6 @@ inline bool isSpecialNode(const HTMLStackItem& item)
     case HTML::center:
     case HTML::col:
     case HTML::colgroup:
-    case HTML::command:
     case HTML::dd:
     case HTML::details:
     case HTML::dir:

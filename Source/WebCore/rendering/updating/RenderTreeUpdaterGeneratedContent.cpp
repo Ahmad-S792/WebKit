@@ -29,10 +29,12 @@
 #include "ContentData.h"
 #include "InspectorInstrumentation.h"
 #include "PseudoElement.h"
+#include "RenderCounter.h"
 #include "RenderDescendantIterator.h"
 #include "RenderElement.h"
 #include "RenderImage.h"
 #include "RenderQuote.h"
+#include "RenderStyleInlines.h"
 #include "RenderTreeUpdater.h"
 #include "RenderView.h"
 #include "StyleTreeResolver.h"
@@ -67,6 +69,18 @@ void RenderTreeUpdater::GeneratedContent::updateQuotesUpTo(RenderQuote* lastQuot
             return;
     }
     ASSERT(!lastQuote || m_updater.m_builder.hasBrokenContinuation());
+}
+
+void RenderTreeUpdater::GeneratedContent::updateCounters()
+{
+    auto update = [&] {
+        auto counters = m_updater.renderView().takeCountersNeedingUpdate();
+        for (auto& counter : counters)
+            counter.updateCounter();
+    };
+    // Update twice and hope it stabilizes.
+    update();
+    update();
 }
 
 static bool elementIsTargetedByKeyframeEffectRequiringPseudoElement(const Element* element, PseudoId pseudoId)
@@ -154,7 +168,7 @@ void RenderTreeUpdater::GeneratedContent::updatePseudoElement(Element& current, 
         auto pseudoElementUpdateStyle = RenderStyle::cloneIncludingPseudoElements(*updateStyle);
         Style::ElementUpdate pseudoElementUpdate { makeUnique<RenderStyle>(WTFMove(pseudoElementUpdateStyle)), styleChange, elementUpdate.recompositeLayer };
         m_updater.updateElementRenderer(*pseudoElement, WTFMove(pseudoElementUpdate));
-        ASSERT(!pseudoElement->hasDisplayContents());
+        pseudoElement->clearDisplayContentsStyle();
     }
 
     auto* pseudoElementRenderer = pseudoElement->renderer();
@@ -186,8 +200,7 @@ void RenderTreeUpdater::GeneratedContent::updateBackdropRenderer(RenderElement& 
         return;
     }
 
-    // ::backdrop does not inherit style, hence using the view style as parent style
-    auto style = renderer.getCachedPseudoStyle(PseudoId::Backdrop, &renderer.view().style());
+    auto style = renderer.getCachedPseudoStyle(PseudoId::Backdrop, &renderer.style());
     if (!style || style->display() == DisplayType::None) {
         destroyBackdropIfNeeded();
         return;
@@ -197,7 +210,7 @@ void RenderTreeUpdater::GeneratedContent::updateBackdropRenderer(RenderElement& 
     if (auto backdropRenderer = renderer.backdropRenderer())
         backdropRenderer->setStyle(WTFMove(newStyle));
     else {
-        auto newBackdropRenderer = WebCore::createRenderer<RenderBlockFlow>(renderer.document(), WTFMove(newStyle));
+        auto newBackdropRenderer = WebCore::createRenderer<RenderBlockFlow>(RenderObject::Type::BlockFlow, renderer.document(), WTFMove(newStyle));
         newBackdropRenderer->initializeStyle();
         renderer.setBackdropRenderer(*newBackdropRenderer.get());
         m_updater.m_builder.attach(renderer.view(), WTFMove(newBackdropRenderer));

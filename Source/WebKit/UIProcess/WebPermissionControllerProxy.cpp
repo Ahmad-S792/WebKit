@@ -74,10 +74,8 @@ RefPtr<WebPageProxy> WebPermissionControllerProxy::mostReasonableWebPageProxy(co
             return; 
 
         for (auto& process : *processes) {
-            for (auto& potentialWebPageProxy : getPtr(process)->pages()) {
-                if (!potentialWebPageProxy)
-                    continue;
-                if (WebCore::SecurityOriginData::fromURL(URL { potentialWebPageProxy->currentURL() }) != topOrigin)
+            for (Ref potentialWebPageProxy : getPtr(process)->pages()) {
+                if (WebCore::SecurityOriginData::fromURLWithoutStrictOpaqueness(URL { potentialWebPageProxy->currentURL() }) != topOrigin)
                     continue;
                 // The most reasonable webPageProxy is the newest one (the one with the greatest identifier).
                 if (webPageProxy && webPageProxy->identifier() > potentialWebPageProxy->identifier())

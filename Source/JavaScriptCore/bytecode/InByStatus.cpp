@@ -31,7 +31,7 @@
 #include "CodeBlock.h"
 #include "ComplexGetStatus.h"
 #include "ICStatusUtils.h"
-#include "PolymorphicAccess.h"
+#include "InlineCacheCompiler.h"
 #include "StructureStubInfo.h"
 #include <wtf/ListDump.h>
 
@@ -163,11 +163,18 @@ InByStatus InByStatus::computeForStubInfoWithoutExitSiteFeedback(const Concurren
         PolymorphicAccess* list = stubInfo->m_stub.get();
         for (unsigned listIndex = 0; listIndex < list->size(); ++listIndex) {
             const AccessCase& access = list->at(listIndex);
-            if (access.viaProxy())
+            if (access.viaGlobalProxy())
                 return InByStatus(TakesSlowPath);
 
             if (access.usesPolyProto())
                 return InByStatus(TakesSlowPath);
+
+            if (!access.requiresIdentifierNameMatch()) {
+                // FIXME: We could use this for indexed loads in the future. This is pretty solid profiling
+                // information, and probably better than ArrayProfile when it's available.
+                // https://bugs.webkit.org/show_bug.cgi?id=204215
+                return InByStatus(TakesSlowPath);
+            }
 
             Structure* structure = access.structure();
             if (!structure) {

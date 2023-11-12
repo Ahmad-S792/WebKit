@@ -47,12 +47,12 @@ public:
     Path computePathForFocusRing(const LayoutSize& elementSize) const;
 
     // The parent map's image.
-    WEBCORE_EXPORT HTMLImageElement* imageElement() const;
+    WEBCORE_EXPORT RefPtr<HTMLImageElement> imageElement() const;
     
 private:
     HTMLAreaElement(const QualifiedName&, Document&);
 
-    void parseAttribute(const QualifiedName&, const AtomString&) final;
+    void attributeChanged(const QualifiedName&, const AtomString& oldValue, const AtomString& newValue, AttributeModificationReason) final;
     bool supportsFocus() const final;
     AtomString target() const final;
     bool isKeyboardFocusable(KeyboardEvent*) const final;

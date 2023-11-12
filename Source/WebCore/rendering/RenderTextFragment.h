@@ -53,13 +53,11 @@ public:
     void setContentString(const String& text);
     StringImpl* contentString() const { return m_contentString.impl(); }
 
-    void setText(const String&, bool force = false) override;
-
     const String& altText() const { return m_altText; }
     void setAltText(const String& altText) { m_altText = altText; }
     
 private:
-    bool isTextFragment() const override { return true; }
+    void setTextInternal(const String&, bool force) override;
 
     UChar previousCharacter() const override;
 
@@ -74,6 +72,6 @@ private:
 } // namespace WebCore
 
 SPECIALIZE_TYPE_TRAITS_BEGIN(WebCore::RenderTextFragment)
-    static bool isType(const WebCore::RenderText& renderer) { return renderer.isTextFragment(); }
+    static bool isType(const WebCore::RenderText& renderer) { return renderer.isRenderTextFragment(); }
     static bool isType(const WebCore::RenderObject& renderer) { return is<WebCore::RenderText>(renderer) && isType(downcast<WebCore::RenderText>(renderer)); }
 SPECIALIZE_TYPE_TRAITS_END()

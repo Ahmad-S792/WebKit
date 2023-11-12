@@ -28,20 +28,19 @@ from buildbot.steps import master, shell, transfer, trigger
 from buildbot.steps.source import git
 from buildbot.steps.worker import CompositeStepMixin
 from datetime import date
-from requests.auth import HTTPBasicAuth
 
 from twisted.internet import defer, reactor, task
 
-from layout_test_failures import LayoutTestFailures
-from send_email import send_email_to_patch_author, send_email_to_bot_watchers, send_email_to_github_admin, FROM_EMAIL
-from results_db import ResultsDatabase
-from twisted_additions import TwistedAdditions
+from .layout_test_failures import LayoutTestFailures
+from .send_email import send_email_to_patch_author, send_email_to_bot_watchers, send_email_to_github_admin, FROM_EMAIL
+from .results_db import ResultsDatabase
+from .twisted_additions import TwistedAdditions
+from .utils import load_password
 
 import json
 import mock
 import os
 import re
-import requests
 import socket
 import sys
 import time
@@ -50,7 +49,7 @@ if sys.version_info < (3, 5):
     print('ERROR: Please use Python 3. This code is not compatible with Python 2.')
     sys.exit(1)
 
-custom_suffix = '-uat' if os.getenv('BUILDBOT_UAT') else ''
+custom_suffix = '-uat' if load_password('BUILDBOT_UAT') else ''
 BUG_SERVER_URL = 'https://bugs.webkit.org/'
 COMMITS_INFO_URL = 'https://commits.webkit.org/'
 S3URL = 'https://s3-us-west-2.amazonaws.com/'
@@ -64,11 +63,34 @@ WithProperties = properties.WithProperties
 Interpolate = properties.Interpolate
 GITHUB_URL = 'https://github.com/'
 # First project is treated as the default
-GITHUB_PROJECTS = ['WebKit/WebKit', 'apple/WebKit', 'WebKit/WebKit-security']
+GITHUB_PROJECTS = ['WebKit/WebKit', 'WebKit/WebKit-security', 'apple/WebKit']
 HASH_LENGTH_TO_DISPLAY = 8
 DEFAULT_BRANCH = 'main'
 DEFAULT_REMOTE = 'origin'
 LAYOUT_TESTS_URL = '{}{}/blob/{}/LayoutTests/'.format(GITHUB_URL, GITHUB_PROJECTS[0], DEFAULT_BRANCH)
+MAX_COMMITS_IN_PR_SERIES = 50
+QUEUES_WITH_PUSH_ACCESS = ('commit-queue', 'merge-queue', 'unsafe-merge-queue')
+THRESHOLD_FOR_EXCESSIVE_LOGS_DEFAULT = 1000000
+MSG_FOR_EXCESSIVE_LOGS = f'Stopped due to excessive logging, limit: {THRESHOLD_FOR_EXCESSIVE_LOGS_DEFAULT}'
+
+
+class ParseByLineLogObserver(logobserver.LineConsumerLogObserver):
+    """A pretty wrapper for LineConsumerLogObserver to avoid
+       repeatedly setting up generator processors."""
+    def __init__(self, consumeLineFunc):
+        if not callable(consumeLineFunc):
+            raise Exception("Error: ParseByLineLogObserver requires consumeLineFunc to be callable.")
+        self.consumeLineFunc = consumeLineFunc
+        super(ParseByLineLogObserver, self).__init__(self.consumeLineGenerator)
+
+    def consumeLineGenerator(self):
+        """The generator LineConsumerLogObserver expects."""
+        try:
+            while True:
+                stream, line = yield
+                self.consumeLineFunc(line)
+        except GeneratorExit:
+            return
 
 
 class BufferLogHeaderObserver(logobserver.BufferLogObserver):
@@ -86,6 +108,18 @@ class BufferLogHeaderObserver(logobserver.BufferLogObserver):
 
 class GitHub(object):
     _cache = {}
+    MERGE_QUEUE_LABEL = 'merge-queue'
+    UNSAFE_MERGE_QUEUE_LABEL = 'unsafe-merge-queue'
+    SAFE_MERGE_QUEUE_LABEL = 'safe-merge-queue'
+    REQUEST_MERGE_QUEUE_LABEL = 'request-merge-queue'
+    BLOCKED_LABEL = 'merging-blocked'
+    SKIP_EWS_LABEL = 'skip-ews'
+    NO_FAILURE_LIMITS_LABEL = 'no-failure-limits'
+    LABELS = [
+        MERGE_QUEUE_LABEL, UNSAFE_MERGE_QUEUE_LABEL, SAFE_MERGE_QUEUE_LABEL,
+        REQUEST_MERGE_QUEUE_LABEL, BLOCKED_LABEL,
+        SKIP_EWS_LABEL, NO_FAILURE_LIMITS_LABEL,
+    ]
 
     @classmethod
     def repository_urls(cls):
@@ -93,8 +127,8 @@ class GitHub(object):
 
     @classmethod
     def user_for_queue(cls, queue):
-        if queue.lower() in ['commit-queue', 'merge-queue', 'unsafe-merge-queue']:
-            return 'merge-queue'
+        if queue.lower() in QUEUES_WITH_PUSH_ACCESS:
+            return GitHub.MERGE_QUEUE_LABEL
         return None
 
     @classmethod
@@ -153,22 +187,18 @@ class GitHub(object):
         return cls._cache[prefix]
 
     @classmethod
+    @defer.inlineCallbacks
     def email_for_owners(cls, owners):
         if not owners:
-            return None, 'No owners defined, so email cannot be extracted'
-        contributors, errors = Contributors.load()
-        return contributors.get(owners[0].lower(), {}).get('email'), errors
+            return defer.returnValue((None, ['No owners defined, so email cannot be extracted']))
+        contributors, errors = yield Contributors.load()
+        return defer.returnValue((contributors.get(owners[0].lower(), {}).get('email'), errors))
 
 
 class GitHubMixin(object):
     addURLs = False
     pr_open_states = ['open']
     pr_closed_states = ['closed']
-    SKIP_EWS_LABEL = 'skip-ews'
-    BLOCKED_LABEL = 'merging-blocked'
-    MERGE_QUEUE_LABEL = 'merge-queue'
-    UNSAFE_MERGE_QUEUE_LABEL = 'unsafe-merge-queue'
-    REQUEST_MERGE_QUEUE_LABEL = 'request-merge-queue'
     PER_PAGE_LIMIT = 100
     NUM_PAGE_LIMIT = 10
 
@@ -191,51 +221,72 @@ class GitHubMixin(object):
         else:
             defer.returnValue(response)
 
-    # FIXME: Remove when all GitHub requests are using Twisted's deferred requests
-    def fetch_data_from_url_with_authentication_github_old(self, url):
-        response = None
-        try:
-            username, access_token = GitHub.credentials(user=GitHub.user_for_queue(self.getProperty('buildername', '')))
-            auth = HTTPBasicAuth(username, access_token) if username and access_token else None
-            response = requests.get(
-                url, timeout=60, auth=auth,
-                headers=dict(Accept='application/vnd.github.v3+json'),
-            )
-            if response.status_code // 100 != 2:
-                self._addToLog('stdio', 'Accessed {url} with unexpected status code {status_code}.\n'.format(url=url, status_code=response.status_code))
-                return False if response.status_code // 100 == 4 else None
-        except Exception as e:
-            # Catching all exceptions here to safeguard access token.
-            self._addToLog('stdio', 'Failed to access {url}.\n'.format(url=url))
-            return None
-        return response
+    @defer.inlineCallbacks
+    def query_graph_ql(self, payload):
+        headers = {'Accept': ['application/vnd.github.v3+json']}
+        graphql_url = 'https://api.github.com/graphql'
+        username, access_token = GitHub.credentials(user=GitHub.user_for_queue(self.getProperty('buildername', '')))
+        if username and access_token:
+            auth_header = b64encode('{}:{}'.format(username, access_token).encode('utf-8')).decode('utf-8')
+            headers['Authorization'] = ['bearer {}'.format(access_token)]
 
+        response = yield TwistedAdditions.request(
+            graphql_url, type=b'POST',
+            headers=headers,
+            logger=lambda content: self._addToLog('stdio', content),
+            json=payload,
+        )
+        if response and response.status_code // 100 != 2:
+            yield self._addToLog('stdio', f'Accessed {graphql_url} with unexpected status code {response.status_code}.\n')
+            defer.returnValue(False if response.status_code // 100 == 4 else None)
+        elif not response:
+            defer.returnValue(False)
+        else:
+            data = json.loads(response.text)
+            defer.returnValue(data)
+
+    @defer.inlineCallbacks
+    def get_number_of_prs_with_label(self, label):
+        project = self.getProperty('project') or GITHUB_PROJECTS[0]
+        owner, name = project.split('/', 1)
+        query_body = '{repository(owner:"%s", name:"%s") { pullRequests(labels: "%s") { totalCount } } }' % (owner, name, label)
+        query = {'query': query_body}
+        response = yield self.query_graph_ql(query)
+        if response:
+            num_prs = response['data']['repository']['pullRequests']['totalCount']
+            yield self._addToLog('stdio', 'There are {} PR(s) in safe-merge-queue.\n'.format(num_prs))
+            defer.returnValue(num_prs)
+        else:
+            yield self._addToLog('stdio', 'Failed to retrieve number of PRs.\n')
+            defer.returnValue(None)
+
+    @defer.inlineCallbacks
     def get_pr_json(self, pr_number, repository_url=None, retry=0):
         api_url = GitHub.api_url(repository_url)
         if not api_url:
-            return None
+            return defer.returnValue(None)
 
         pr_url = '{}/pulls/{}'.format(api_url, pr_number)
-        content = self.fetch_data_from_url_with_authentication_github_old(pr_url)
+        content = yield self.fetch_data_from_url_with_authentication_github(pr_url)
         if not content:
-            return content
+            return defer.returnValue(content)
 
         for attempt in range(retry + 1):
             try:
                 pr_json = content.json()
                 if pr_json and len(pr_json):
-                    return pr_json
+                    return defer.returnValue(pr_json)
             except Exception as e:
-                self._addToLog('stdio', 'Failed to get pull request data from {}, error: {}'.format(pr_url, e))
+                yield self._addToLog('stdio', 'Failed to get pull request data from {}, error: {}'.format(pr_url, e))
 
-            self._addToLog('stdio', 'Unable to fetch pull request {}.\n'.format(pr_number))
+            yield self._addToLog('stdio', 'Unable to fetch pull request {}.\n'.format(pr_number))
             if attempt > retry:
-                return None
+                return defer.returnValue(None)
             wait_for = (attempt + 1) * 15
-            self._addToLog('stdio', 'Backing off for {} seconds before retrying.\n'.format(wait_for))
-            time.sleep(wait_for)
+            yield self._addToLog('stdio', 'Backing off for {} seconds before retrying.\n'.format(wait_for))
+            yield task.deferLater(reactor, wait_for, lambda: None)
 
-        return None
+        return defer.returnValue(None)
 
     @defer.inlineCallbacks
     def get_reviewers(self, pr_number, repository_url=None):
@@ -254,7 +305,7 @@ class GitHubMixin(object):
                 break
             response_content = content.json() or []
             if not isinstance(response_content, list):
-                self._addToLog('stdio', f"Malformed response when listing reviews with '{url}'\n")
+                yield self._addToLog('stdio', f"Malformed response when listing reviews with '{url}'\n")
                 break
             reviews += response_content
             if len(response_content) < self.PER_PAGE_LIMIT:
@@ -299,19 +350,19 @@ class GitHubMixin(object):
 
     def _is_pr_blocked(self, pr_json):
         for label in (pr_json or {}).get('labels', {}):
-            if label.get('name', '') == self.BLOCKED_LABEL:
+            if label.get('name', '') == GitHub.BLOCKED_LABEL:
                 return 1
         return 0
 
     def _does_pr_has_skip_label(self, pr_json):
         for label in (pr_json or {}).get('labels', {}):
-            if label.get('name', '') == self.SKIP_EWS_LABEL:
+            if label.get('name', '') == GitHub.SKIP_EWS_LABEL:
                 return 1
         return 0
 
     def _is_pr_in_merge_queue(self, pr_json):
         for label in (pr_json or {}).get('labels', {}):
-            if label.get('name', '') in (self.MERGE_QUEUE_LABEL, self.UNSAFE_MERGE_QUEUE_LABEL):
+            if label.get('name', '') in (GitHub.MERGE_QUEUE_LABEL, GitHub.UNSAFE_MERGE_QUEUE_LABEL):
                 return 1
         return 0
 
@@ -320,39 +371,46 @@ class GitHubMixin(object):
             return 1
         return 0
 
+    @defer.inlineCallbacks
     def should_send_email_for_pr(self, pr_number, repository_url=None):
-        pr_json = self.get_pr_json(pr_number, repository_url=repository_url)
+        pr_json = yield self.get_pr_json(pr_number, repository_url=repository_url)
         if not pr_json:
-            return True
+            return defer.returnValue(True)
 
-        if 1 == self._is_hash_outdated(pr_json):
-            self._addToLog('stdio', 'Skipping email since hash {} on PR #{} is outdated\n'.format(
+        is_hash_outdated = yield self._is_hash_outdated(pr_json)
+        if 1 == is_hash_outdated:
+            yield self._addToLog('stdio', 'Skipping email since hash {} on PR #{} is outdated\n'.format(
                 self.getProperty('github.head.sha', '?')[:HASH_LENGTH_TO_DISPLAY], pr_number,
             ))
-            return False
-        return True
+            return defer.returnValue(False)
+        return defer.returnValue(True)
 
+    @defer.inlineCallbacks
     def add_label(self, pr_number, label, repository_url=None):
         api_url = GitHub.api_url(repository_url)
         if not api_url:
-            return False
+            return defer.returnValue(False)
 
         pr_label_url = '{}/issues/{}/labels'.format(api_url, pr_number)
         try:
+            headers = {'Accept': ['application/vnd.github.v3+json']}
             username, access_token = GitHub.credentials(user=GitHub.user_for_queue(self.getProperty('buildername', '')))
-            auth = HTTPBasicAuth(username, access_token) if username and access_token else None
-            response = requests.request(
-                'POST', pr_label_url, timeout=60, auth=auth,
-                headers=dict(Accept='application/vnd.github.v3+json'),
-                json=dict(labels=[label]),
+            if username and access_token:
+                auth_header = b64encode('{}:{}'.format(username, access_token).encode('utf-8')).decode('utf-8')
+                headers['Authorization'] = ['Basic {}'.format(auth_header)]
+
+            response = yield TwistedAdditions.request(
+                pr_label_url, type=b'POST', timeout=60,
+                headers=headers, json=dict(labels=[label]),
+                logger=lambda content: self._addToLog('stdio', content),
             )
             if response.status_code // 100 != 2:
-                self._addToLog('stdio', f"Unable to add '{label}' label on PR {pr_number}. Unexpected response code from GitHub: {response.status_code}\n")
-                return False
+                yield self._addToLog('stdio', f"Unable to add '{label}' label on PR {pr_number}. Unexpected response code from GitHub: {response.status_code}\n")
+                return defer.returnValue(False)
+            defer.returnValue(True)
         except Exception as e:
-            self._addToLog('stdio', f"Error in adding '{label}' label on PR {pr_number}\n")
-            return False
-        return True
+            yield self._addToLog('stdio', f"Error in adding '{label}' label on PR {pr_number}\n")
+            defer.returnValue(False)
 
     @defer.inlineCallbacks
     def remove_labels(self, pr_number, labels=None, repository_url=None):
@@ -430,58 +488,45 @@ class GitHubMixin(object):
             yield self._addToLog('stdio', f'Error in posting comment to PR {pr_number}\n    {e}\n')
             defer.returnValue(FAILURE)
 
+    @defer.inlineCallbacks
     def update_pr(self, pr_number, title, description, base=None, head=None, repository_url=None):
         api_url = GitHub.api_url(repository_url)
         if not api_url:
-            return False
+            return defer.returnValue(False)
 
-        pr_info = dict(
-            title=title,
-            body=description,
-        )
+        pr_info = {}
+        if title:
+            pr_info['title'] = title
+        if description:
+            pr_info['body'] = description
         if base:
             pr_info['base'] = base
         if head:
             pr_info['head'] = head
 
-        update_url = f'{api_url}/pulls/{pr_number}'
-        try:
-            username, access_token = GitHub.credentials(user=GitHub.user_for_queue(self.getProperty('buildername', '')))
-            auth = HTTPBasicAuth(username, access_token) if username and access_token else None
-            response = requests.request(
-                'POST', update_url, timeout=60, auth=auth,
-                headers=dict(Accept='application/vnd.github.v3+json'),
-                json=pr_info,
-            )
-            if response.status_code // 100 != 2:
-                self._addToLog('stdio', f"Failed to update PR {pr_number}. Unexpected response code from GitHub: {response.status_code}\n")
-                return False
-        except Exception as e:
-            self._addToLog('stdio', f"Error in updating PR {pr_number}\n")
-            return False
-        return True
-
-    def close_pr(self, pr_number, repository_url=None):
-        api_url = GitHub.api_url(repository_url)
-        if not api_url:
-            return False
+        if not pr_info:
+            yield self._addToLog('stdio', f"Not enough details provided to update {pr_number}.\n")
+            return defer.returnValue(False)
 
         update_url = f'{api_url}/pulls/{pr_number}'
         try:
+            headers = {'Accept': ['application/vnd.github.v3+json']}
             username, access_token = GitHub.credentials(user=GitHub.user_for_queue(self.getProperty('buildername', '')))
-            auth = HTTPBasicAuth(username, access_token) if username and access_token else None
-            response = requests.request(
-                'POST', update_url, timeout=60, auth=auth,
-                headers=dict(Accept='application/vnd.github.v3+json'),
-                json=dict(state='closed'),
+            if username and access_token:
+                auth_header = b64encode(f'{username}:{access_token}'.encode('utf-8')).decode('utf-8')
+                headers['Authorization'] = [f'Basic {auth_header}']
+            response = yield TwistedAdditions.request(
+                update_url, type=b'PATCH', timeout=60,
+                headers=headers, json=pr_info,
+                logger=lambda content: self._addToLog('stdio', content),
             )
             if response.status_code // 100 != 2:
-                self._addToLog('stdio', f"Failed to close PR {pr_number}. Unexpected response code from GitHub: {response.status_code}\n")
-                return False
+                yield self._addToLog('stdio', f"Failed to update PR {pr_number}. Unexpected response code from GitHub: {response.status_code}\n")
+                return defer.returnValue(False)
+            defer.returnValue(True)
         except Exception as e:
-            self._addToLog('stdio', f"Error in closing PR {pr_number}\n")
-            return False
-        return True
+            yield self._addToLog('stdio', f"Error in updating PR {pr_number}\n    {e}\n")
+            defer.returnValue(False)
 
 
 class ShellMixin(object):
@@ -529,16 +574,20 @@ class Contributors(object):
             return {}, 'Failed to load {}\n'.format(contributors_path)
 
     @classmethod
+    @defer.inlineCallbacks
     def load_from_github(cls):
         try:
-            response = requests.get(cls.url, timeout=60)
+            response = yield TwistedAdditions.request(cls.url, type=b'GET', timeout=60)
             if response.status_code != 200:
-                return {}, 'Failed to access {} with status code: {}\n'.format(cls.url, response.status_code)
-            return response.json(), None
+                return defer.returnValue((
+                    {}, 'Failed to access {} with status code: {}\n'.format(cls.url, response.status_code)
+                ))
+            return defer.returnValue((response.json(), None))
         except Exception as e:
-            return {}, 'Failed to access {url}\n'.format(url=cls.url)
+            return defer.returnValue(({}, 'Failed to access {url}\n'.format(url=cls.url)))
 
     @classmethod
+    @defer.inlineCallbacks
     def load(cls, use_network=None):
         errors = []
 
@@ -548,7 +597,7 @@ class Contributors(object):
 
         if use_network:
             cls.contributors = {}
-            contributors_json, error = cls.load_from_github()
+            contributors_json, error = yield cls.load_from_github()
             if error:
                 errors.append(error)
             else:
@@ -560,7 +609,7 @@ class Contributors(object):
         elif cls.contributors:
             return cls.contributors, errors
         else:
-            contributors_json, error = cls.load_from_github()
+            contributors_json, error = yield cls.load_from_github()
             if error:
                 errors.append(error)
             else:
@@ -593,7 +642,7 @@ class Contributors(object):
                     status=value.get('status'),
                     email=emails[0].lower(),
                 )
-        return cls.contributors, errors
+        return defer.returnValue((cls.contributors, errors))
 
 
 class ConfigureBuild(buildstep.BuildStep, AddToLogMixin):
@@ -615,7 +664,8 @@ class ConfigureBuild(buildstep.BuildStep, AddToLogMixin):
         self.remotes = remotes
         self.additionalArguments = additionalArguments
 
-    def start(self):
+    @defer.inlineCallbacks
+    def run(self):
         if self.platform and self.platform != '*':
             self.setProperty('platform', self.platform, 'config.json')
         if self.fullPlatform and self.fullPlatform != '*':
@@ -636,10 +686,9 @@ class ConfigureBuild(buildstep.BuildStep, AddToLogMixin):
             self.setProperty('additionalArguments', self.additionalArguments, 'config.json')
 
         self.add_patch_id_url()
-        self.add_pr_details()
+        yield self.add_pr_details()
 
-        self.finished(SUCCESS)
-        return defer.succeed(None)
+        defer.returnValue(SUCCESS)
 
     def add_patch_id_url(self):
         patch_id = self.getProperty('patch_id', '')
@@ -648,6 +697,7 @@ class ConfigureBuild(buildstep.BuildStep, AddToLogMixin):
             self.setProperty('change_id', patch_id, 'ConfigureBuild')
             self.addURL('Patch {}'.format(patch_id), Bugzilla.patch_url(patch_id))
 
+    @defer.inlineCallbacks
     def add_pr_details(self):
         pr_number = self.getProperty('github.number')
         if not pr_number:
@@ -673,10 +723,9 @@ class ConfigureBuild(buildstep.BuildStep, AddToLogMixin):
         title = f': {title}' if title else ''
         self.addURL(f'PR {pr_number}{title}', GitHub.pr_url(pr_number, repository_url))
         if owners:
-            email, errors = GitHub.email_for_owners(owners)
+            email, errors = yield GitHub.email_for_owners(owners)
             for error in errors:
-                print(error)
-                self._addToLog('stdio', error)
+                yield self._addToLog('stdio', error)
             if email:
                 display_name = '{} ({})'.format(email, owners[0])
             else:
@@ -692,6 +741,7 @@ class CheckOutSource(git.Git):
     haltOnFailure = False
 
     def __init__(self, repourl=f'{GITHUB_URL}{GITHUB_PROJECTS[0]}.git', **kwargs):
+        self.default_repourl = repourl
         super().__init__(
             repourl=repourl,
             retry=self.CHECKOUT_DELAY_AND_MAX_RETRIES_PAIR,
@@ -723,9 +773,19 @@ class CheckOutSource(git.Git):
         with mock.patch('buildbot.process.remotecommand.RemoteShellCommand', ScrubbedRemoteCommand):
             return super()._dovccmd(*args, **kwargs)
 
-    def run(self):
+    @defer.inlineCallbacks
+    def _fetch(self, _):
         project = self.getProperty('project', '') or GITHUB_PROJECTS[0]
         self.repourl = f'{GITHUB_URL}{project}.git'
+
+        try:
+            rc = yield super()._fetch(_)
+        finally:
+            self.repourl = self.default_repourl
+        defer.returnValue(rc)
+
+    @defer.inlineCallbacks
+    def run(self):
         self.branch = self.getProperty('github.base.ref') or self.branch
 
         username, access_token = GitHub.credentials(user=GitHub.user_for_queue(self.getProperty('buildername', '')))
@@ -734,7 +794,10 @@ class CheckOutSource(git.Git):
             GIT_PASSWORD=access_token,
         )
 
-        return super().run()
+        rc = yield super().run()
+        if rc == SUCCESS and self.getProperty('buildername', '').lower() not in QUEUES_WITH_PUSH_ACCESS:
+            yield self._dovccmd(['remote', 'set-url', '--push', 'origin', 'PUSH_DISABLED_BY_ADMIN'])
+        defer.returnValue(rc)
 
 
 class CleanUpGitIndexLock(shell.ShellCommand):
@@ -770,7 +833,7 @@ class CleanUpGitIndexLock(shell.ShellCommand):
             print('Error in sending email for git issue: {}'.format(e))
 
 
-class CheckOutSpecificRevision(shell.ShellCommand):
+class CheckOutSpecificRevision(shell.ShellCommandNewStyle):
     name = 'checkout-specific-revision'
     descriptionDone = ['Checked out required revision']
     flunkOnFailure = False
@@ -795,9 +858,9 @@ class CheckOutSpecificRevision(shell.ShellCommand):
             result['stdioLogName'] = None
         return result
 
-    def start(self):
-        self.setCommand(['git', 'checkout', self.getProperty('ews_revision')])
-        return shell.ShellCommand.start(self)
+    def run(self):
+        self.command = ['git', 'checkout', self.getProperty('ews_revision')]
+        return super().run()
 
 
 class FetchBranches(steps.ShellSequence, ShellMixin):
@@ -810,13 +873,15 @@ class FetchBranches(steps.ShellSequence, ShellMixin):
         super().__init__(timeout=5 * 60, logEnviron=False, **kwargs)
 
     def run(self):
-        self.commands = [util.ShellArg(command=['git', 'fetch', DEFAULT_REMOTE, '--prune'], logname='stdio')]
+        self.commands = [
+            util.ShellArg(command=['git', 'fetch', DEFAULT_REMOTE, '--prune'], logname='stdio'),
+            util.ShellArg(command=['git', 'config', 'credential.helper', '!echo_credentials() { sleep 1; echo "username=${GIT_USER}"; echo "password=${GIT_PASSWORD}"; }; echo_credentials'], logname='stdio'),
+        ]
 
         project = self.getProperty('project', GITHUB_PROJECTS[0])
         remote = self.getProperty('remote', DEFAULT_REMOTE)
         if remote != DEFAULT_REMOTE:
             for command in [
-                ['git', 'config', 'credential.helper', '!echo_credentials() { sleep 1; echo "username=${GIT_USER}"; echo "password=${GIT_PASSWORD}"; }; echo_credentials'],
                 self.shell_command('git remote add {} {}{}.git || {}'.format(remote, GITHUB_URL, project, self.shell_exit_0())),
                 ['git', 'remote', 'set-url', remote, '{}{}.git'.format(GITHUB_URL, project)],
                 ['git', 'fetch', remote, '--prune'],
@@ -901,7 +966,41 @@ class ShowIdentifier(shell.ShellCommand):
         return results == SUCCESS
 
 
-class CleanWorkingDirectory(shell.ShellCommand):
+class InstallHooks(steps.ShellSequence):
+    name = 'install-hooks'
+    flunkOnFailure = False
+    haltOnFailure = False
+
+    def __init__(self, **kwargs):
+        super().__init__(timeout=30, logEnviron=False, **kwargs)
+
+    def run(self):
+        install_hooks_command = [
+            'python3', 'Tools/Scripts/git-webkit',
+            'install-hooks', 'pre-push',
+            '--mode', 'no-radar',
+        ]
+        source = self.getProperty('github.head.repo.full_name', None)
+        project = self.getProperty('project', None)
+        if project in GITHUB_PROJECTS and source:
+            install_hooks_command += ['--level', 'github.com:{}={}'.format(source, GITHUB_PROJECTS.index(project))]
+
+        self.commands = []
+        for command in [
+            ['git', 'config', 'include.path', '../metadata/git_config_extension'],
+            install_hooks_command,
+        ]:
+            self.commands.append(util.ShellArg(command=command, logname='stdio'))
+
+        return super().run()
+
+    def getResultSummary(self):
+        if self.results == SUCCESS:
+            return {'step': 'Installed hooks to checkout'}
+        return {'step': 'Failed to install hooks to checkout'}
+
+
+class CleanWorkingDirectory(shell.ShellCommandNewStyle):
     name = 'clean-working-directory'
     description = ['clean-working-directory running']
     descriptionDone = ['Cleaned working directory']
@@ -912,11 +1011,11 @@ class CleanWorkingDirectory(shell.ShellCommand):
     def __init__(self, **kwargs):
         super().__init__(logEnviron=False, **kwargs)
 
-    def start(self):
+    def run(self):
         platform = self.getProperty('platform')
         if platform in ('gtk', 'wpe'):
-            self.setCommand(self.command + ['--keep-jhbuild-directory'])
-        return shell.ShellCommand.start(self)
+            self.command = self.command + ['--keep-jhbuild-directory']
+        return super().run()
 
 
 class UpdateWorkingDirectory(steps.ShellSequence, ShellMixin):
@@ -1027,7 +1126,7 @@ class CommitPatch(steps.ShellSequence, CompositeStepMixin, ShellMixin):
 import sys
 
 lines = [l for l in sys.stdin]
-for s in re.split(r' (Need the bug URL \(OOPS!\).)|(\S+:\/\/\S+)', lines[0].rstrip()):
+for s in re.split(r' (Need the bug URL \\(OOPS!\\).)|(\\S+:\\/\\/\\S+)', lines[0].rstrip()):
     if s and s != ' ':
         print(s)
 for l in lines[1:]:
@@ -1109,7 +1208,7 @@ class CheckOutPullRequest(steps.ShellSequence, ShellMixin):
             ['git', 'config', 'credential.helper', '!echo_credentials() { sleep 1; echo "username=${GIT_USER}"; echo "password=${GIT_PASSWORD}"; }; echo_credentials'],
             self.shell_command('git remote add {} {}{}.git || {}'.format(remote, GITHUB_URL, project, self.shell_exit_0())),
             ['git', 'remote', 'set-url', remote, '{}{}.git'.format(GITHUB_URL, project)],
-            ['git', 'fetch', remote, '--prune'],
+            ['git', 'fetch', remote, pr_branch],
             ['git', 'checkout', '-b', pr_branch],
             ['git', 'cherry-pick', 'HEAD..remotes/{}/{}'.format(remote, pr_branch)],
         ]
@@ -1205,7 +1304,7 @@ class CheckChangeRelevance(AnalyzeChange):
         re.compile(rb'Tools', re.IGNORECASE),
     ]
 
-    big_sur_builder_path_regexes = [
+    monterey_builder_path_regexes = [
         re.compile(rb'Source/', re.IGNORECASE),
         re.compile(rb'Tools/', re.IGNORECASE),
     ]
@@ -1219,7 +1318,7 @@ class CheckChangeRelevance(AnalyzeChange):
 
     group_to_paths_mapping = {
         'bindings': bindings_path_regexes,
-        'bigsur-release-build': big_sur_builder_path_regexes,
+        'monterey-release-build': monterey_builder_path_regexes,
         'services-ews': services_path_regexes,
         'jsc': jsc_path_regexes,
         'webkitpy': webkitpy_path_regexes,
@@ -1293,7 +1392,8 @@ class FindModifiedLayoutTests(AnalyzeChange):
     def start(self):
         patch = self._get_patch()
         if not patch:
-            self.finished(SUCCESS)
+            self._addToLog('stdio', 'Unable to access the patch/PR content.')
+            self.finished(WARNINGS)
             return None
 
         tests = self.find_test_names_from_patch(patch)
@@ -1335,72 +1435,65 @@ class BugzillaMixin(AddToLogMixin):
     bug_closed_statuses = ['RESOLVED', 'VERIFIED', 'CLOSED']
     fast_cq_preambles = ('revert of ', 'fast-cq', '[fast-cq]')
 
+    @defer.inlineCallbacks
     def fetch_data_from_url_with_authentication_bugzilla(self, url):
         response = None
         try:
-            response = requests.get(url, timeout=60, params={'Bugzilla_api_key': self.get_bugzilla_api_key()})
+            response = yield TwistedAdditions.request(
+                url, type=b'GET', timeout=60,
+                params={'Bugzilla_api_key': self.get_bugzilla_api_key()},
+                logger=lambda content: self._addToLog('stdio', content),
+            )
             if response.status_code != 200:
-                self._addToLog('stdio', 'Accessed {url} with unexpected status code {status_code}.\n'.format(url=url, status_code=response.status_code))
-                return None
+                yield self._addToLog('stdio', 'Accessed {url} with unexpected status code {status_code}.\n'.format(url=url, status_code=response.status_code))
+                return defer.returnValue(None)
         except Exception as e:
             # Catching all exceptions here to safeguard api key.
-            self._addToLog('stdio', 'Failed to access {url}.\n'.format(url=url))
-            return None
-        return response
+            yield self._addToLog('stdio', 'Failed to access {url}.\n'.format(url=url))
+            return defer.returnValue(None)
+        return defer.returnValue(response)
 
-    def fetch_data_from_url(self, url):
-        response = None
-        try:
-            response = requests.get(url, timeout=60)
-        except Exception as e:
-            if response:
-                self._addToLog('stdio', 'Failed to access {url} with status code {status_code}.\n'.format(url=url, status_code=response.status_code))
-            else:
-                self._addToLog('stdio', 'Failed to access {url} with exception: {exception}\n'.format(url=url, exception=e))
-            return None
-        if response.status_code != 200:
-            self._addToLog('stdio', 'Accessed {url} with unexpected status code {status_code}.\n'.format(url=url, status_code=response.status_code))
-            return None
-        return response
-
+    @defer.inlineCallbacks
     def get_patch_json(self, patch_id):
         patch_url = '{}rest/bug/attachment/{}'.format(BUG_SERVER_URL, patch_id)
-        patch = self.fetch_data_from_url_with_authentication_bugzilla(patch_url)
+        patch = yield self.fetch_data_from_url_with_authentication_bugzilla(patch_url)
         if not patch:
-            return None
+            return defer.returnValue(None)
         try:
             patch_json = patch.json().get('attachments')
         except Exception as e:
-            print('Failed to fetch patch json from {}, error: {}'.format(patch_url, e))
-            return None
+            yield self._addToLog('stdio', f'Failed to fetch patch json from {patch_url}, error: {e}')
+            return defer.returnValue(None)
         if not patch_json or len(patch_json) == 0:
-            return None
-        return patch_json.get(str(patch_id))
+            return defer.returnValue(None)
+        return defer.returnValue(patch_json.get(str(patch_id)))
 
+    @defer.inlineCallbacks
     def get_bug_json(self, bug_id):
         bug_url = '{}rest/bug/{}'.format(BUG_SERVER_URL, bug_id)
-        bug = self.fetch_data_from_url_with_authentication_bugzilla(bug_url)
+        bug = yield self.fetch_data_from_url_with_authentication_bugzilla(bug_url)
         if not bug:
-            return None
+            return defer.returnValue(None)
         try:
             bugs_json = bug.json().get('bugs')
         except Exception as e:
-            print('Failed to fetch bug json from {}, error: {}'.format(bug_url, e))
-            return None
+            yield self._addToLog('stdio', f'Failed to fetch bug json from {bug_url}, error: {e}')
+            return defer.returnValue(None)
         if not bugs_json or len(bugs_json) == 0:
-            return None
-        return bugs_json[0]
+            return defer.returnValue(None)
+        return defer.returnValue(bugs_json[0])
 
+    @defer.inlineCallbacks
     def get_bug_id_from_patch(self, patch_id):
-        patch_json = self.get_patch_json(patch_id)
+        patch_json = yield self.get_patch_json(patch_id)
         if not patch_json:
-            self._addToLog('stdio', 'Unable to fetch patch {}.\n'.format(patch_id))
-            return -1
-        return patch_json.get('bug_id')
+            yield self._addToLog('stdio', 'Unable to fetch patch {}.\n'.format(patch_id))
+            return defer.returnValue(-1)
+        return defer.returnValue(patch_json.get('bug_id'))
 
     @defer.inlineCallbacks
     def _is_patch_obsolete(self, patch_id):
-        patch_json = self.get_patch_json(patch_id)
+        patch_json = yield self.get_patch_json(patch_id)
         if not patch_json:
             yield self._addToLog('stdio', 'Unable to fetch patch {}.\n'.format(patch_id))
             return defer.returnValue(-1)
@@ -1420,7 +1513,7 @@ class BugzillaMixin(AddToLogMixin):
 
     @defer.inlineCallbacks
     def _is_patch_review_denied(self, patch_id):
-        patch_json = self.get_patch_json(patch_id)
+        patch_json = yield self.get_patch_json(patch_id)
         if not patch_json:
             yield self._addToLog('stdio', 'Unable to fetch patch {}.\n'.format(patch_id))
             return defer.returnValue(-1)
@@ -1432,7 +1525,7 @@ class BugzillaMixin(AddToLogMixin):
 
     @defer.inlineCallbacks
     def _is_patch_cq_plus(self, patch_id):
-        patch_json = self.get_patch_json(patch_id)
+        patch_json = yield self.get_patch_json(patch_id)
         if not patch_json:
             yield self._addToLog('stdio', 'Unable to fetch patch {}.\n'.format(patch_id))
             return defer.returnValue(-1)
@@ -1445,7 +1538,7 @@ class BugzillaMixin(AddToLogMixin):
 
     @defer.inlineCallbacks
     def _does_patch_have_acceptable_review_flag(self, patch_id):
-        patch_json = self.get_patch_json(patch_id)
+        patch_json = yield self.get_patch_json(patch_id)
         if not patch_json:
             yield self._addToLog('stdio', 'Unable to fetch patch {}.\n'.format(patch_id))
             return defer.returnValue(-1)
@@ -1470,7 +1563,7 @@ class BugzillaMixin(AddToLogMixin):
             yield self._addToLog('stdio', 'Skipping bug status validation since bug id is None.\n')
             return defer.returnValue(-1)
 
-        bug_json = self.get_bug_json(bug_id)
+        bug_json = yield self.get_bug_json(bug_id)
         if not bug_json or not bug_json.get('status'):
             yield self._addToLog('stdio', 'Unable to fetch bug {}.\n'.format(bug_id))
             return defer.returnValue(-1)
@@ -1487,16 +1580,17 @@ class BugzillaMixin(AddToLogMixin):
             return defer.returnValue(1)
         return defer.returnValue(0)
 
+    @defer.inlineCallbacks
     def should_send_email_for_patch(self, patch_id):
-        patch_json = self.get_patch_json(patch_id)
+        patch_json = yield self.get_patch_json(patch_id)
         if not patch_json:
-            self._addToLog('stdio', 'Unable to fetch patch {}'.format(patch_id))
-            return True
+            yield self._addToLog('stdio', 'Unable to fetch patch {}'.format(patch_id))
+            return defer.returnValue(True)
 
         obsolete = patch_json.get('is_obsolete')
         if obsolete == 1:
-            self._addToLog('stdio', 'Skipping email since patch {} is obsolete'.format(patch_id))
-            return False
+            yield self._addToLog('stdio', 'Skipping email since patch {} is obsolete'.format(patch_id))
+            return defer.returnValue(False)
 
         review_denied = False
         for flag in patch_json.get('flags', []):
@@ -1504,24 +1598,29 @@ class BugzillaMixin(AddToLogMixin):
                 review_denied = True
 
         if review_denied:
-            self._addToLog('stdio', 'Skipping email since patch {} is marked r-'.format(patch_id))
-            return False
-        return True
+            yield self._addToLog('stdio', 'Skipping email since patch {} is marked r-'.format(patch_id))
+            return defer.returnValue(False)
+        return defer.returnValue(True)
 
     def send_email_for_infrastructure_issue(self, infrastructure_issue_text):
         try:
             builder_name = self.getProperty('buildername', '')
             worker_name = self.getProperty('workername', '')
+            pr_number = self.getProperty('github.number')
+            sha = self.getProperty('github.head.sha', '')[:HASH_LENGTH_TO_DISPLAY]
+            owners = self.getProperty('owners', [])
+            author = owners[0] if owners else '?'
             build_url = '{}#/builders/{}/builds/{}'.format(self.master.config.buildbotURL, self.build._builderid, self.build.number)
-            email_subject = 'Infrastructure issue at {}'.format(builder_name)
-            email_text = 'The following infrastructure issue happened at:\n\n'
-            email_text += '    - Build : <a href="{}">{}</a>\n'.format(build_url, build_url)
-            email_text += '    - Builder : {}\n'.format(builder_name)
-            email_text += '    - Worker : {}\n'.format(worker_name)
-            email_text += '    - Issue: {}\n'.format(infrastructure_issue_text)
-            send_email_to_bot_watchers(email_subject, email_text, builder_name, 'infrastructure-{}'.format(builder_name))
+            email_subject = f'Infrastructure issue at {builder_name}'
+            email_text = f'The following infrastructure issue happened at:\n\n'
+            email_text += f'    - Build : <a href="{build_url}">{build_url}</a>\n'
+            email_text += f'    - Builder : {builder_name}\n'
+            email_text += f'    - Worker : {worker_name}\n'
+            email_text += f'    - PR: {pr_number}, Hash: {sha}, By: {author}\n'
+            email_text += f'    - Issue: {infrastructure_issue_text}\n'
+            send_email_to_bot_watchers(email_subject, email_text, builder_name, f'infrastructure-{builder_name}')
         except Exception as e:
-            print('Error in sending email for infrastructure issue: {}'.format(e))
+            print(f'Error in sending email for infrastructure issue: {e}')
 
     def get_bugzilla_api_key(self):
         try:
@@ -1623,6 +1722,7 @@ class ValidateChange(buildstep.BuildStep, BugzillaMixin, GitHubMixin):
         verifyMergeQueue=False,
         verifyNoDraftForMergeQueue=False,
         enableSkipEWSLabel=True,
+        branches=None,
     ):
         self.verifyObsolete = verifyObsolete
         self.verifyBugClosed = verifyBugClosed
@@ -1632,6 +1732,10 @@ class ValidateChange(buildstep.BuildStep, BugzillaMixin, GitHubMixin):
         self.verifyNoDraftForMergeQueue = verifyNoDraftForMergeQueue
         self.enableSkipEWSLabel = enableSkipEWSLabel
         self.addURLs = addURLs
+
+        branches = branches or [r'.+']
+        self.branches = [re.compile(branch) if isinstance(branch, str) else branch for branch in branches]
+
         super().__init__()
 
     def getResultSummary(self):
@@ -1662,6 +1766,11 @@ class ValidateChange(buildstep.BuildStep, BugzillaMixin, GitHubMixin):
     def run(self):
         patch_id = self.getProperty('patch_id', '')
         pr_number = self.getProperty('github.number', '')
+        branch = self.getProperty('github.base.ref', DEFAULT_BRANCH)
+
+        if not any(candidate.match(branch) for candidate in self.branches):
+            rc = yield self.skip_build(f"Changes to '{branch}' are not tested")
+            return defer.returnValue(rc)
 
         if not patch_id and not pr_number:
             yield self._addToLog('stdio', 'No patch_id or pr_number found. Unable to proceed without one of them.\n')
@@ -1697,12 +1806,23 @@ class ValidateChange(buildstep.BuildStep, BugzillaMixin, GitHubMixin):
         if self.verifyMergeQueue and pr_number:
             yield self._addToLog('stdio', 'Change is in merge queue.\n')
         if self.enableSkipEWSLabel and pr_number:
-            yield self._addToLog('stdio', f'PR does not have {self.SKIP_EWS_LABEL} label.\n')
+            yield self._addToLog('stdio', f'PR does not have {GitHub.SKIP_EWS_LABEL} label.\n')
         defer.returnValue(SUCCESS)
 
     @defer.inlineCallbacks
     def validate_bugzilla(self, patch_id):
-        bug_id = self.getProperty('bug_id', '') or self.get_bug_id_from_patch(patch_id)
+        if self.getProperty('sensitive', False) and self.getProperty('buildername', '').lower() == 'commit-queue':
+            message = 'Cannot land security changes with Commit-Queue, please use a GitHub PR against a secret remote'
+            self.build.results = FAILURE
+            self.descriptionDone = message
+            self.setProperty('build_finish_summary', message)
+            self.setProperty('comment_text', message)
+            self.build.addStepsAfterCurrentStep([LeaveComment(), SetCommitQueueMinusFlagOnPatch()])
+            return defer.returnValue(FAILURE)
+
+        bug_id = self.getProperty('bug_id', '')
+        if not bug_id:
+            bug_id = yield self.get_bug_id_from_patch(patch_id)
 
         bug_closed = yield self._is_bug_closed(bug_id) if self.verifyBugClosed else 0
         if bug_closed == 1:
@@ -1739,7 +1859,15 @@ class ValidateChange(buildstep.BuildStep, BugzillaMixin, GitHubMixin):
             return defer.returnValue(FAILURE)
 
         repository_url = self.getProperty('repository', '')
-        pr_json = self.get_pr_json(pr_number, repository_url, retry=3)
+        pr_json = yield self.get_pr_json(pr_number, repository_url, retry=3)
+
+        if pr_json:
+            # Only track acionable labels, since bug category labels may reveal information about security bugs
+            self.setProperty('github_labels', [
+                data.get('name')
+                for data in pr_json.get('labels', [])
+                if data.get('name') in GitHub.LABELS
+            ])
 
         pr_closed = yield self._is_pr_closed(pr_json) if self.verifyBugClosed else 0
         if pr_closed == 1:
@@ -1753,12 +1881,12 @@ class ValidateChange(buildstep.BuildStep, BugzillaMixin, GitHubMixin):
 
         blocked = self._is_pr_blocked(pr_json) if self.verifyMergeQueue else 0
         if blocked == 1:
-            rc = yield self.skip_build("PR {} has been marked as '{}'".format(pr_number, self.BLOCKED_LABEL))
+            rc = yield self.skip_build(f"PR {pr_number} has been marked as '{GitHub.BLOCKED_LABEL}'")
             return defer.returnValue(rc)
 
         skip_ews = self._does_pr_has_skip_label(pr_json) if self.enableSkipEWSLabel else 0
         if skip_ews == 1:
-            rc = yield self.skip_build(f'Skipping as PR {pr_number} has {self.SKIP_EWS_LABEL} label')
+            rc = yield self.skip_build(f'Skipping as PR {pr_number} has {GitHub.SKIP_EWS_LABEL} label')
             return defer.returnValue(rc)
 
         if self.verifyMergeQueue:
@@ -1788,9 +1916,8 @@ class ValidateChange(buildstep.BuildStep, BugzillaMixin, GitHubMixin):
             sha = self.getProperty('github.head.sha', '')[:HASH_LENGTH_TO_DISPLAY]
 
             change_string = 'Hash {}'.format(sha)
-            change_author, errors = GitHub.email_for_owners(self.getProperty('owners', []))
+            change_author, errors = yield GitHub.email_for_owners(self.getProperty('owners', []))
             for error in errors:
-                print(error)
                 yield self._addToLog('stdio', error)
 
             if not change_author:
@@ -1812,16 +1939,16 @@ class ValidateChange(buildstep.BuildStep, BugzillaMixin, GitHubMixin):
             yield self._addToLog('stdio', 'Sending email notification to {}.\nPlease contact an admin to fix the issue.\n'.format(change_author))
             send_email_to_patch_author(change_author, email_subject, email_text, self.getProperty('github.head.sha', ''))
         except Exception as e:
-            print('Error in sending email for github failure: {}'.format(e))
+            yield self._addToLog('stdio', f'Error in sending email for github failure: {e}')
         return defer.returnValue(None)
 
 
 class ValidateCommitterAndReviewer(buildstep.BuildStep, GitHubMixin, AddToLogMixin):
     name = 'validate-commiter-and-reviewer'
-    descriptionDone = ['Validated commiter and reviewer']
+    descriptionDone = ['Validated committer and reviewer']
     VALIDATORS_FOR = {
         # FIXME: Remove manual validators once bot is finished
-        'apple': ['geoffreygaren', 'markcgee', 'rjepstein', 'JonWBedard', 'ryanhaddad', 'webkit-bug-bridge'],
+        'apple': ['webkit-bug-bridge'],
     }
 
     def __init__(self, *args, **kwargs):
@@ -1867,11 +1994,16 @@ class ValidateCommitterAndReviewer(buildstep.BuildStep, GitHubMixin, AddToLogMix
 
     @defer.inlineCallbacks
     def fail_build(self, reason, comment):
-        self.setProperty('comment_text', comment)
-
         yield self._addToLog('stdio', reason)
         self.setProperty('build_finish_summary', reason)
-        self.build.addStepsAfterCurrentStep([LeaveComment(), BlockPullRequest(), SetCommitQueueMinusFlagOnPatch()])
+        if self.getProperty('buildername', '') == 'Safe-Merge-Queue':
+            build_url = f'{self.master.config.buildbotURL}#/builders/{self.build._builderid}/builds/{self.build.number}'
+            url = '[#{}]({})'.format(self.getProperty("buildnumber", ""), build_url)
+            comment += f'\n\nSafe-Merge-Queue: Build {url}.'
+            self.build.addStepsAfterCurrentStep([LeaveComment(), CheckStatusOfPR(pr_number=self.getProperty('github.number'))])
+        else:
+            self.build.addStepsAfterCurrentStep([LeaveComment(), BlockPullRequest(), SetCommitQueueMinusFlagOnPatch()])
+        self.setProperty('comment_text', comment)
         self.descriptionDone = reason
         defer.returnValue(FAILURE)
 
@@ -1891,9 +2023,8 @@ class ValidateCommitterAndReviewer(buildstep.BuildStep, GitHubMixin, AddToLogMix
 
     @defer.inlineCallbacks
     def run(self):
-        self.contributors, errors = Contributors.load(use_network=True)
+        self.contributors, errors = yield Contributors.load(use_network=True)
         for error in errors:
-            print(error)
             yield self._addToLog('stdio', error)
 
         if not self.contributors:
@@ -1903,6 +2034,7 @@ class ValidateCommitterAndReviewer(buildstep.BuildStep, GitHubMixin, AddToLogMix
             return
 
         pr_number = self.getProperty('github.number', '')
+        builder_name = self.getProperty('buildername', '')
 
         if pr_number:
             committer = (self.getProperty('owners', []) or [''])[0]
@@ -1910,10 +2042,18 @@ class ValidateCommitterAndReviewer(buildstep.BuildStep, GitHubMixin, AddToLogMix
             committer = self.getProperty('patch_committer', '').lower()
 
         if not self.is_committer(committer):
+            if builder_name == 'Safe-Merge-Queue':
+                failed_status_check = self.getProperty('failed_status_check', [])
+                failed_status_check.append(pr_number)
+                self.setProperty('failed_status_check', failed_status_check)
             rc = yield self.fail_build_due_to_invalid_status(committer, 'committer')
             defer.returnValue(rc)
             return
-        yield self._addToLog('stdio', f'{committer} is a valid commiter.\n')
+        yield self._addToLog('stdio', f'{committer} is a valid committer.\n')
+
+        if builder_name == 'Safe-Merge-Queue':
+            self.build.addStepsAfterCurrentStep([CheckStatusOfPR(pr_number=self.getProperty('github.number'))])
+            return defer.returnValue(SUCCESS)
 
         if pr_number:
             reviewers = yield self.get_reviewers(pr_number, self.getProperty('repository', ''))
@@ -1959,6 +2099,76 @@ class ValidateCommitterAndReviewer(buildstep.BuildStep, GitHubMixin, AddToLogMix
         defer.returnValue(SUCCESS)
 
 
+class DetermineLabelOwner(buildstep.BuildStep, GitHubMixin, AddToLogMixin):
+    name = 'determine-label-owner'
+    flunkOnFailure = False
+    haltOnFailure = False
+
+    @defer.inlineCallbacks
+    def run(self):
+        builder_name = self.getProperty('buildername', '')
+        pr_number = self.getProperty('github.number', '')
+        if builder_name == 'Safe-Merge-Queue':
+            # Get PR and set up properties from safe-merge-queue.
+            list_of_prs = self.getProperty('list_of_prs', [])
+            pr_number = list_of_prs.pop()
+            all_pr_data = self.getProperty('all_pr_data', [])
+            pr_data = [i for i in all_pr_data if i['node']['number'] == pr_number][0]
+            pr_title = pr_data['node']['title']
+            commit_hash = pr_data['node']['commits']['nodes'][0]['commit']['commitUrl'][40:]
+            self.setProperty('github.number', pr_number)
+            self.setProperty('list_of_prs', list_of_prs)
+            self.setProperty('github.title', pr_title)
+            self.setProperty('github.head.sha', commit_hash)
+
+        if not pr_number:
+            yield self._addToLog('stdio', 'Unable to fetch PR number.\n')
+            return defer.returnValue(FAILURE)
+
+        project = self.getProperty('project') or GITHUB_PROJECTS[0]
+        owner, name = project.split('/', 1)
+        query_body = '{repository(owner:"%s", name:"%s") { pullRequest(number: %s) {timelineItems(itemTypes: LABELED_EVENT, last: 5) {nodes {... on LabeledEvent {actor { login } label { name } createdAt } } } } } }' % (owner, name, pr_number)
+        query = {'query': query_body}
+
+        response = yield self.query_graph_ql(query)
+        if 'errors' in response:
+            yield self._addToLog('stdio', response['errors'][0]['message'])
+            return defer.returnValue(FAILURE)
+        if response:
+            yield self._addToLog('stdio', 'Retrieved labels.\n')
+            label_events = response['data']['repository']['pullRequest']['timelineItems']['nodes']
+        else:
+            yield self._addToLog('stdio', 'Failed to retrieve label author.\n')
+            return defer.returnValue(FAILURE)
+
+        owner = None
+        label = builder_name.lower()
+        for event in reversed(label_events):
+            if event['label']['name'] == label:
+                owner = event['actor']['login']
+                yield self._addToLog('stdio', f'Label: {label}, Owner: {owner}\n')
+                if owner == 'webkit-commit-queue' or owner == 'webkit-ews-buildbot':
+                    label = 'safe-merge-queue'
+                    continue
+                else:
+                    break
+        if owner:
+            self.setProperty('owners', [owner])
+            if builder_name == 'Safe-Merge-Queue':
+                self.build.addStepsAfterCurrentStep([ValidateCommitterAndReviewer()])
+                yield ConfigureBuild.add_pr_details(self)
+            defer.returnValue(SUCCESS)
+        else:
+            yield self._addToLog('stdio', f'Did not change owner because owner not found from labels.\n')
+            defer.returnValue(FAILURE)
+
+    def getResultSummary(self):
+        if self.results == SUCCESS:
+            return {'step': f"Owner of PR {self.getProperty('github.number')} determined to be {self.getProperty('owners')[0]}\n"}
+        elif self.results == FAILURE:
+            return {'step': f"Unable to determine owner of PR {self.getProperty('github.number')}\n"}
+
+
 class SetCommitQueueMinusFlagOnPatch(buildstep.BuildStep, BugzillaMixin):
     name = 'set-cq-minus-flag-on-patch'
 
@@ -1998,27 +2208,35 @@ class BlockPullRequest(buildstep.BuildStep, GitHubMixin, AddToLogMixin):
 
         rc = SKIPPED
         repository_url = self.getProperty('repository', '')
-        pr_json = self.get_pr_json(pr_number, repository_url)
+        pr_json = yield self.get_pr_json(pr_number, repository_url)
 
-        if self._is_hash_outdated(pr_json) == 0 and CURRENT_HOSTNAME == EWS_BUILD_HOSTNAME:
-            repository_url = self.getProperty('repository', '')
-            rc = SUCCESS
-            did_remove_labels = yield self.remove_labels(pr_number, [self.MERGE_QUEUE_LABEL, self.UNSAFE_MERGE_QUEUE_LABEL, self.REQUEST_MERGE_QUEUE_LABEL], repository_url=repository_url)
-            if any((
-                not did_remove_labels,
-                not self.add_label(pr_number, self.BLOCKED_LABEL, repository_url=repository_url),
-            )):
-                rc = FAILURE
+        if CURRENT_HOSTNAME != EWS_BUILD_HOSTNAME:
+            yield self._addToLog('stdio', 'Skipping this step on non-production instance.\n')
+        else:
+            is_hash_outdated = yield self._is_hash_outdated(pr_json)
+            if is_hash_outdated != 0:
+                pr_sha = (pr_json or {}).get('head', {}).get('sha', '')
+                yield self._addToLog('stdio', f'Skipping this step as hash {pr_sha} is outdated.\n')
+            else:
+                repository_url = self.getProperty('repository', '')
+                rc = SUCCESS
+                did_remove_labels = yield self.remove_labels(pr_number, [GitHub.MERGE_QUEUE_LABEL, GitHub.UNSAFE_MERGE_QUEUE_LABEL, GitHub.REQUEST_MERGE_QUEUE_LABEL], repository_url=repository_url)
+                did_add_label = yield self.add_label(pr_number, GitHub.BLOCKED_LABEL, repository_url=repository_url)
+                if any((
+                    not did_remove_labels,
+                    not did_add_label,
+                )):
+                    rc = FAILURE
         if build_finish_summary:
             self.build.buildFinished([build_finish_summary], FAILURE)
         defer.returnValue(rc)
 
     def getResultSummary(self):
         if self.results == SUCCESS:
-            return {'step': f"Added '{self.BLOCKED_LABEL}' label to pull request"}
+            return {'step': f"Added '{GitHub.BLOCKED_LABEL}' label to pull request"}
         elif self.results == SKIPPED:
             return buildstep.BuildStep.getResultSummary(self)
-        return {'step': f"Failed to add '{self.BLOCKED_LABEL}' label to pull request"}
+        return {'step': f"Failed to add '{GitHub.BLOCKED_LABEL}' label to pull request"}
 
     def doStepIf(self, step):
         return self.getProperty('github.number')
@@ -2063,10 +2281,11 @@ class RemoveLabelsFromPullRequest(buildstep.BuildStep, GitHubMixin, AddToLogMixi
     flunkOnFailure = False
     haltOnFailure = False
     LABELS_TO_REMOVE = [
-        GitHubMixin.MERGE_QUEUE_LABEL,
-        GitHubMixin.UNSAFE_MERGE_QUEUE_LABEL,
-        GitHubMixin.BLOCKED_LABEL,
-        GitHubMixin.REQUEST_MERGE_QUEUE_LABEL,
+        GitHub.SAFE_MERGE_QUEUE_LABEL,
+        GitHub.MERGE_QUEUE_LABEL,
+        GitHub.UNSAFE_MERGE_QUEUE_LABEL,
+        GitHub.BLOCKED_LABEL,
+        GitHub.REQUEST_MERGE_QUEUE_LABEL,
     ]
 
     @defer.inlineCallbacks
@@ -2089,6 +2308,307 @@ class RemoveLabelsFromPullRequest(buildstep.BuildStep, GitHubMixin, AddToLogMixi
 
     def hideStepIf(self, results, step):
         return not self.doStepIf(step)
+
+
+class RemoveAndAddLabels(buildstep.BuildStep, GitHubMixin, AddToLogMixin):
+    name = 'remove-and-add-labels'
+    flunkOnFailure = False
+    haltOnFailure = False
+
+    def __init__(self, label_to_add='', labels_to_remove=None, **kwargs):
+        self.label_to_add = label_to_add
+        self.labels_to_remove = [GitHub.SAFE_MERGE_QUEUE_LABEL] if labels_to_remove is None else labels_to_remove
+        super().__init__(**kwargs)
+
+    @defer.inlineCallbacks
+    def run(self):
+        if self.label_to_add == GitHub.MERGE_QUEUE_LABEL:
+            pr_status = 'passed_status_check'
+        elif self.label_to_add == GitHub.BLOCKED_LABEL:
+            pr_status = 'failed_status_check'
+        else:
+            yield self._addToLog('stdio', f'{self.label_to_add} not supported.\n')
+            return defer.returnValue(FAILURE)
+        prs_to_label = self.getProperty(pr_status)
+        if not prs_to_label:
+            yield self._addToLog('stdio', f'There are no PRs to label with {self.label_to_add}.\n')
+            return defer.returnValue(FAILURE)
+        pr_number = prs_to_label.pop()
+        self.setProperty('github.number', pr_number)
+        yield self._addToLog('stdio', f'Updating labels for PR {pr_number}...\n')
+        self.setProperty(pr_status, prs_to_label)
+        rc = yield self.update_labels(pr_number)
+
+        # When a PR is removed from safe-merge-queue, add a comment with the build link.
+        build_url = f'{self.master.config.buildbotURL}#/builders/{self.build._builderid}/builds/{self.build.number}'
+        url = '[#{}]({})'.format(self.getProperty("buildnumber", ""), build_url)
+        comment = f'\n\nSafe-Merge-Queue: Build {url}.'
+        self.setProperty('comment_text', comment)
+        steps_to_add = [LeaveComment()]
+        if len(prs_to_label):
+            steps_to_add += [RemoveAndAddLabels(label_to_add=self.label_to_add)]
+        self.build.addStepsAfterCurrentStep(steps_to_add)
+
+        defer.returnValue(rc)
+
+    def getResultSummary(self):
+        if self.results == SUCCESS:
+            return {'step': f"Labelled PR {self.getProperty('github.number')} with {self.label_to_add}"}
+        elif self.results == FAILURE:
+            return {'step': f"Failed to label PR {self.getProperty('github.number', '')} with {self.label_to_add}"}
+        return buildstep.BuildStep.getResultSummary(self)
+
+    @defer.inlineCallbacks
+    def update_labels(self, pr_number):
+        repository_url = self.getProperty('repository', '')
+
+        did_remove_labels = yield self.remove_labels(pr_number, self.labels_to_remove, repository_url=repository_url)
+        if did_remove_labels:
+            yield self._addToLog('stdio', f'Successfully removed {self.labels_to_remove} label(s) from PR {pr_number}.\n')
+        else:
+            yield self._addToLog('stdio', f'Failed to remove {self.labels_to_remove} label(s) from PR {pr_number}.\n')
+
+        did_add_label = yield self.add_label(pr_number, self.label_to_add, repository_url=repository_url)
+        if did_add_label:
+            yield self._addToLog('stdio', f'Successfully added {self.label_to_add} label to PR {pr_number}.\n')
+        else:
+            yield self._addToLog('stdio', f'Failed to add {self.label_to_add} label to PR {pr_number}.\n')
+        defer.returnValue(SUCCESS if did_remove_labels and did_add_label else FAILURE)
+
+
+class RetrievePRDataFromLabel(buildstep.BuildStep, GitHubMixin, AddToLogMixin):
+    name = 'retrieve-pr-data-from-label'
+
+    def __init__(self, project="WebKit/WebKit", label='', **kwargs):
+        self.project = project
+        owner, name = project.lower().split('/', 1)
+        self.name = f'{self.name}-{owner}-{name}'
+        self.label = label
+        super().__init__(**kwargs)
+
+    @defer.inlineCallbacks
+    def run(self):
+        yield self._addToLog('stdio', f'Starting process for {self.project}...\n')
+        self.setProperty('project', self.project)
+        project = self.getProperty('project')
+        self.setProperty('repository', f'{GITHUB_URL}{project}')
+
+        num_prs = yield self.get_number_of_prs_with_label(self.label)
+        if num_prs == 0:
+            yield self._addToLog('stdio', f'Ending process as there are no PRs in {self.label}.\n')
+            return defer.returnValue(SUCCESS)
+        if not num_prs:
+            yield self._addToLog('stdio', f'Failed to retrieve number of PRs in {self.label}.\n')
+            return defer.returnValue(FAILURE)
+
+        self.setProperty('passed_status_check', [])
+        self.setProperty('failed_status_check', [])
+        self.setProperty('pending_prs', [])
+
+        retrieved_pr_data = yield self.getAllPRData(num_prs, self.label)
+        if retrieved_pr_data:
+            self.build.addStepsAfterCurrentStep([DetermineLabelOwner()])
+
+        defer.returnValue(SUCCESS if retrieved_pr_data else FAILURE)
+
+    def getResultSummary(self):
+        if self.results == SUCCESS:
+            return {'step': f"Successfully retrieved pull request data"}
+        elif self.results == FAILURE:
+            return {'step': f"Failed to retrieve pull request data"}
+        return buildstep.BuildStep.getResultSummary(self)
+
+    @defer.inlineCallbacks
+    def getAllPRData(self, limit, label):
+        project = self.getProperty('project') or GITHUB_PROJECTS[0]
+        owner, name = project.split('/', 1)
+        query_body = '{repository(owner:"%s", name:"%s") { pullRequests(labels: "%s", last: %s) { edges { node { title number commits(last: 3) { nodes { commit { commitUrl status { state contexts { context state } } } } } } } } } }' % (owner, name, label, limit)
+        query = {'query': query_body}
+
+        yield self._addToLog('stdio', "Fetching all PRs with label {}...\n".format(label))
+
+        response = yield self.query_graph_ql(query)
+        if not response:
+            yield self._addToLog('stderr', 'Failed to retrieve list of PRs.\n')
+            return defer.returnValue(None)
+
+        all_pr_data = response['data']['repository']['pullRequests']['edges']
+        list_of_prs = [pr_data['node']['number'] for pr_data in all_pr_data]
+
+        self.setProperty('list_of_prs', list_of_prs)
+        self.setProperty('all_pr_data', all_pr_data)
+        yield self._addToLog('stdio', 'All PRs in safe-merge-queue: {}\n'.format(list_of_prs))
+        yield self._addToLog('stdio', 'Done!\n')
+
+        defer.returnValue(True)
+
+
+class CheckStatusOfPR(buildstep.BuildStep, GitHubMixin, AddToLogMixin):
+    name = 'check-status-of-pr'
+    flunkOnFailure = False
+    haltOnFailure = False
+    EMBEDDED_CHECKS = ['ios', 'ios-sim', 'ios-wk2', 'ios-wk2-wpt', 'api-ios', 'tv', 'tv-sim', 'watch', 'watch-sim']
+    MACOS_CHECKS = ['mac', 'mac-AS-debug', 'api-mac', 'mac-wk1', 'mac-wk2', 'mac-AS-debug-wk2', 'mac-wk2-stress']
+    LINUX_CHECKS = ['gtk', 'gtk-wk2', 'api-gtk', 'wpe', 'wpe-wk2']
+    WINDOWS_CHECKS = ['wincairo']
+    QUEUES_FOR_SAFE_MERGE_QUEUE = EMBEDDED_CHECKS + MACOS_CHECKS + LINUX_CHECKS + WINDOWS_CHECKS
+    EWS_WEBKIT_FAILED = 0
+    EWS_WEBKIT_PASSED = 1
+    EWS_WEBKIT_PENDING = 2
+
+    def __init__(self, pr_number='', **kwargs):
+        self.name = f'{self.name}-{pr_number}'
+        self.steps_to_add = []
+        self.passed_status_check = None
+        super().__init__(**kwargs)
+
+    @defer.inlineCallbacks
+    def run(self):
+        pr_number = self.getProperty('github.number', '')
+        repository = self.getProperty('repository', '')
+
+        yield self._addToLog('stdio', f'Performing status check on PR {pr_number}.\n')
+        yield self._addToLog('stdio', f'Link to PR: {repository}/pull/{pr_number}\n')
+
+        if pr_number not in self.getProperty('failed_status_check', []):
+            self.passed_status_check = yield self.checkPRStatus(pr_number)
+
+        if len(self.getProperty('list_of_prs')):
+            self.steps_to_add += [DetermineLabelOwner()]
+        else:
+            self.steps_to_add += [AddMergeLabelsToPRs()]
+        self.build.addStepsAfterCurrentStep(self.steps_to_add)
+
+        if self.passed_status_check == self.EWS_WEBKIT_PENDING:
+            defer.returnValue(WARNINGS)
+        defer.returnValue(SUCCESS if self.passed_status_check else FAILURE)
+
+    def getResultSummary(self):
+        pr_number = self.getProperty('github.number', '')
+        if self.results == SUCCESS and self.passed_status_check == self.EWS_WEBKIT_PASSED:
+            return {'step': f"PR {pr_number} marked safe for merge-queue"}
+        elif self.results == WARNINGS and self.passed_status_check == self.EWS_WEBKIT_PENDING:
+            return {'step': f"PR {pr_number} not ready for merge-queue"}
+        elif self.results == FAILURE:
+            return {'step': f"PR {pr_number} unsafe for merge-queue"}
+        return buildstep.BuildStep.getResultSummary(self)
+
+    @defer.inlineCallbacks
+    def checkPRStatus(self, pr_number):
+        passed_status_check = self.getProperty('passed_status_check')
+        failed_status_check = self.getProperty('failed_status_check')
+        pending_prs = self.getProperty('pending_prs')
+
+        all_pr_data = self.getProperty('all_pr_data')
+        pr_data = [i for i in all_pr_data if i['node']['number'] == pr_number][0]
+        pr_commit_status_data = pr_data['node']['commits']['nodes'][0]['commit']['status']
+
+        yield self._addToLog('stdio', f'Checking the status of PR {pr_number}...\n')
+        project = self.getProperty('project') or GITHUB_PROJECTS[0]
+        owner, name = project.split('/', 1)
+        query_body = '{repository(owner: "%s", name: "%s") {pullRequest(number: %s) {commits (last:1) {edges {node {commit {oid } } } } } } }' % (owner, name, pr_number)
+        query = {'query': query_body}
+
+        response = yield self.query_graph_ql(query)
+        if not response:
+            yield self._addToLog('stderr', 'Failed to retrieve commit hash.\n')
+            defer.returnValue(None)
+
+        try:
+            head_sha = response['data']['repository']['pullRequest']['commits']['edges'][0]['node']['commit']['oid']
+        except TypeError:
+            yield self._addToLog('stderr', 'Failed to retrieve commit hash.\n')
+            defer.returnValue(None)
+
+        rc = yield self.getQueueStatusFromList(head_sha, pr_number)
+        defer.returnValue(rc)
+
+    @defer.inlineCallbacks
+    def getQueueStatusFromList(self, change_id, pr_number):
+        missing_checks = []
+        failed_checks = []
+        url = '{}status/{}/'.format(EWS_URL, change_id)
+
+        response = yield TwistedAdditions.request(url, logger=lambda content: self._addToLog('stdio', content))
+        if response and response.status_code // 100 != 2:
+            yield self._addToLog('stdio', f'Accessed {url} with unexpected status code {response.status_code}.\n')
+            return defer.returnValue(False if response.status_code // 100 == 4 else None)
+
+        for queue in self.QUEUES_FOR_SAFE_MERGE_QUEUE:
+            queue_data = response.json().get(queue, None)
+            if queue_data:
+                status = queue_data.get('state', None)
+                if status == 0:  # success
+                    yield self._addToLog('stdio', f'{queue}: Success\n')
+                    continue
+                elif status == 2:  # failure
+                    failed_checks.append(queue)
+                    yield self._addToLog('stdio', f'{queue}: Failure\n')
+                elif status == 3:  # skipped
+                    yield self._addToLog('stdio', f'{queue}: Skipped\n')
+                else:  # null
+                    missing_checks.append(queue)
+                    yield self._addToLog('stdio', f'{queue}: Pending\n')
+            else:
+                missing_checks.append(queue)
+                yield self._addToLog('stdio', f'{queue}: Pending\n')
+
+        passed_status_check = self.getProperty('passed_status_check')
+        failed_status_check = self.getProperty('failed_status_check')
+        pending_prs = self.getProperty('pending_prs')
+
+        if len(missing_checks):
+            pending_prs.append(pr_number)
+            self.setProperty('pending_prs', pending_prs)
+            yield self._addToLog('stdio', 'Required checks are not completed. Waiting until all checks are completed before relabelling PR.\n')
+            yield self._addToLog('stdio', f'Missing the following checks: {missing_checks}\n')
+            defer.returnValue(self.EWS_WEBKIT_PENDING)
+        elif len(failed_checks):
+            failed_status_check.append(pr_number)
+            self.setProperty('failed_status_check', failed_status_check)
+            yield self._addToLog('stdio', 'Failed status check.\n')
+            yield self._addToLog('stdio', f'Merged blocked due to failure: {failed_checks}\n')
+            format_checks = ', '.join(failed_checks)
+            comment = f'Failed {format_checks} checks. Please resolve failures and re-apply `safe-merge-queue` label.'
+            comment += f'\n\nRejecting #{pr_number} from merge queue.'
+            self.setProperty('comment_text', comment)
+            self.steps_to_add += [LeaveComment()]
+            defer.returnValue(self.EWS_WEBKIT_FAILED)
+        else:
+            passed_status_check.append(pr_number)
+            self.setProperty('passed_status_check', passed_status_check)
+            yield self._addToLog('stdio', 'Passed status check.\n')
+            defer.returnValue(self.EWS_WEBKIT_PASSED)
+
+
+class AddMergeLabelsToPRs(buildstep.BuildStep, GitHubMixin, AddToLogMixin):
+    name = 'add-merge-labels-to-prs'
+    flunkOnFailure = False
+    haltOnFailure = False
+
+    @defer.inlineCallbacks
+    def run(self):
+        steps_to_add = []
+        label_as_safe = self.getProperty('passed_status_check', '')
+        yield self._addToLog('stdio', f'PRs to merge: {label_as_safe}.\n')
+        label_as_blocked = self.getProperty('failed_status_check', '')
+        yield self._addToLog('stdio', f'PRs to block: {label_as_blocked}.\n')
+        pending_prs = self.getProperty('pending_prs', '')
+        yield self._addToLog('stdio', f'PRs with checks pending: {pending_prs}. No action taken.\n')
+
+        if len(label_as_safe):
+            steps_to_add.append(RemoveAndAddLabels(label_to_add=GitHub.MERGE_QUEUE_LABEL, labels_to_remove=[GitHub.SAFE_MERGE_QUEUE_LABEL]))
+        if len(label_as_blocked):
+            steps_to_add.append(RemoveAndAddLabels(label_to_add=GitHub.BLOCKED_LABEL, labels_to_remove=[GitHub.SAFE_MERGE_QUEUE_LABEL]))
+        self.build.addStepsAfterCurrentStep(steps_to_add)
+        defer.returnValue(SUCCESS)
+
+    def getResultSummary(self):
+        if self.results == SUCCESS:
+            return {'step': f"Started PR labelling process successfully"}
+        elif self.results == FAILURE:
+            return {'step': f"Failed to start PR labelling process"}
+        return buildstep.BuildStep.getResultSummary(self)
 
 
 class CloseBug(buildstep.BuildStep, BugzillaMixin):
@@ -2214,11 +2734,12 @@ class RevertPullRequestChanges(steps.ShellSequence):
 
 
 class Trigger(trigger.Trigger):
-    def __init__(self, schedulerNames, include_revision=True, triggers=None, patch=True, pull_request=False, **kwargs):
+    # By default, set updateSourceStamp=False so that the triggered build uses the sourcestamp of the triggering build.
+    def __init__(self, schedulerNames, include_revision=True, triggers=None, patch=True, pull_request=False, updateSourceStamp=False, **kwargs):
         self.include_revision = include_revision
         self.triggers = triggers
         set_properties = self.propertiesToPassToTriggers(patch=patch, pull_request=pull_request) or {}
-        super().__init__(schedulerNames=schedulerNames, set_properties=set_properties, **kwargs)
+        super().__init__(schedulerNames=schedulerNames, set_properties=set_properties, updateSourceStamp=updateSourceStamp, **kwargs)
 
     def propertiesToPassToTriggers(self, patch=True, pull_request=False):
         property_names = [
@@ -2226,6 +2747,7 @@ class Trigger(trigger.Trigger):
             'platform',
             'fullPlatform',
             'architecture',
+            'codebase',
         ]
         if patch:
             property_names += ['patch_id', 'bug_id', 'owner']
@@ -2233,7 +2755,7 @@ class Trigger(trigger.Trigger):
             property_names += [
                 'github.base.ref', 'github.head.ref', 'github.head.sha',
                 'github.head.repo.full_name', 'github.number', 'github.title',
-                'repository', 'project', 'owners',
+                'repository', 'project', 'owners', 'classification',
             ]
         if self.triggers:
             property_names.append('triggers')
@@ -2359,7 +2881,7 @@ class RunWebKitPerlTests(shell.ShellCommandNewStyle):
         return {'step': 'Failed webkitperl tests'}
 
     def evaluateCommand(self, cmd):
-        rc = shell.ShellCommand.evaluateCommand(self, cmd)
+        rc = shell.ShellCommandNewStyle.evaluateCommand(self, cmd)
         if rc == FAILURE:
             self.build.addStepsAfterCurrentStep([KillOldProcesses(), ReRunWebKitPerlTests()])
         return rc
@@ -2371,13 +2893,13 @@ class ReRunWebKitPerlTests(RunWebKitPerlTests):
     haltOnFailure = True
 
     def evaluateCommand(self, cmd):
-        return shell.ShellCommand.evaluateCommand(self, cmd)
+        return shell.ShellCommandNewStyle.evaluateCommand(self, cmd)
 
 
 class RunBuildWebKitOrgUnitTests(shell.ShellCommandNewStyle):
     name = 'build-webkit-org-unit-tests'
     description = ['build-webkit-unit-tests running']
-    command = ['python3', 'runUnittests.py', 'build-webkit-org']
+    command = ['python3', 'runUnittests.py', 'build-webkit-org', '--autoinstall']
 
     def __init__(self, **kwargs):
         super().__init__(workdir='build/Tools/CISupport', timeout=2 * 60, logEnviron=False, **kwargs)
@@ -2391,7 +2913,7 @@ class RunBuildWebKitOrgUnitTests(shell.ShellCommandNewStyle):
 class RunEWSUnitTests(shell.ShellCommandNewStyle):
     name = 'ews-unit-tests'
     description = ['ews-unit-tests running']
-    command = ['python3', 'runUnittests.py', 'ews-build']
+    command = ['python3', 'runUnittests.py', 'ews-build', '--autoinstall']
 
     def __init__(self, **kwargs):
         super().__init__(workdir='build/Tools/CISupport', timeout=2 * 60, logEnviron=False, **kwargs)
@@ -2402,19 +2924,19 @@ class RunEWSUnitTests(shell.ShellCommandNewStyle):
         return {'step': 'Failed EWS unit tests'}
 
 
-class RunBuildbotCheckConfig(shell.ShellCommand):
+class RunBuildbotCheckConfig(shell.ShellCommandNewStyle):
     name = 'buildbot-check-config'
     description = ['buildbot-checkconfig running']
-    command = ['buildbot', 'checkconfig']
+    command = ['python3', '../buildbot-cmd', 'checkconfig']
     directory = 'build/Tools/CISupport/ews-build'
     timeout = 2 * 60
 
     def __init__(self, **kwargs):
         super().__init__(workdir=self.directory, timeout=self.timeout, logEnviron=False, **kwargs)
 
-    def start(self):
-        self.workerEnvironment['LC_CTYPE'] = 'en_US.UTF-8'
-        return shell.ShellCommand.start(self)
+    def run(self):
+        self.env['LC_CTYPE'] = 'en_US.UTF-8'
+        return super().run()
 
     def getResultSummary(self):
         if self.results == SUCCESS:
@@ -2524,7 +3046,7 @@ class RunWebKitPyPython3Tests(WebKitPyTest):
     command = ['python3', 'Tools/Scripts/test-webkitpy', '--verbose', '--json-output={0}'.format(jsonFileName)]
 
 
-class InstallGtkDependencies(shell.ShellCommand):
+class InstallGtkDependencies(shell.ShellCommandNewStyle):
     name = 'jhbuild'
     description = ['updating gtk dependencies']
     descriptionDone = ['Updated gtk dependencies']
@@ -2535,7 +3057,7 @@ class InstallGtkDependencies(shell.ShellCommand):
         super().__init__(logEnviron=False, **kwargs)
 
 
-class InstallWpeDependencies(shell.ShellCommand):
+class InstallWpeDependencies(shell.ShellCommandNewStyle):
     name = 'jhbuild'
     description = ['updating wpe dependencies']
     descriptionDone = ['Updated wpe dependencies']
@@ -2557,16 +3079,23 @@ def customBuildFlag(platform, fullPlatform):
     return ['--' + platform]
 
 
-class BuildLogLineObserver(logobserver.LogLineObserver, object):
-    def __init__(self, errorReceived, searchString='rror:', includeRelatedLines=True):
+class BuildLogLineObserver(ParseByLineLogObserver):
+    def __init__(self, errorReceived, searchString='rror:', includeRelatedLines=True, thresholdExceedCallBack=None):
         self.errorReceived = errorReceived
         self.searchString = searchString
         self.includeRelatedLines = includeRelatedLines
         self.error_context_buffer = []
         self.whitespace_re = re.compile(r'^[\s]*$')
-        super().__init__()
+        self.line_count = 0
+        self.thresholdExceedCallBack = thresholdExceedCallBack
+        super().__init__(self.parseOutputLine)
 
-    def outLineReceived(self, line):
+    def parseOutputLine(self, line):
+        self.line_count += 1
+        if self.line_count == THRESHOLD_FOR_EXCESSIVE_LOGS_DEFAULT:
+            self.thresholdExceedCallBack()
+            return
+
         if not self.errorReceived:
             return
 
@@ -2595,9 +3124,11 @@ class CompileWebKit(shell.Compile, AddToLogMixin):
     warningPattern = '.*arning: .*'
     haltOnFailure = False
     command = ['perl', 'Tools/Scripts/build-webkit', WithProperties('--%(configuration)s')]
+    VALID_ADDITIONAL_ARGUMENTS_LIST = []  # If additionalArguments is added to config.json for CompileWebKit step, it should be added here as well.
 
     def __init__(self, skipUpload=False, **kwargs):
         self.skipUpload = skipUpload
+        self.cancelled_due_to_huge_logs = False
         super().__init__(logEnviron=False, **kwargs)
 
     def doStepIf(self, step):
@@ -2607,15 +3138,16 @@ class CompileWebKit(shell.Compile, AddToLogMixin):
         platform = self.getProperty('platform')
         buildOnly = self.getProperty('buildOnly')
         architecture = self.getProperty('architecture')
-        additionalArguments = self.getProperty('additionalArguments')
 
         if platform in ['wincairo']:
-            self.addLogObserver('stdio', BuildLogLineObserver(self.errorReceived, searchString='error ', includeRelatedLines=False))
+            self.addLogObserver('stdio', BuildLogLineObserver(self.errorReceived, searchString='error ', includeRelatedLines=False, thresholdExceedCallBack=self.handleExcessiveLogging))
         else:
-            self.addLogObserver('stdio', BuildLogLineObserver(self.errorReceived))
+            self.addLogObserver('stdio', BuildLogLineObserver(self.errorReceived, thresholdExceedCallBack=self.handleExcessiveLogging))
 
-        if additionalArguments:
-            self.setCommand(self.command + additionalArguments)
+        additionalArguments = self.getProperty('additionalArguments')
+        for additionalArgument in (additionalArguments or []):
+            if additionalArgument in self.VALID_ADDITIONAL_ARGUMENTS_LIST:
+                self.command += [additionalArgument]
         if platform in ('mac', 'ios', 'tvos', 'watchos'):
             # FIXME: Once WK_VALIDATE_DEPENDENCIES is set via xcconfigs, it can
             # be removed here. We can't have build-webkit pass this by default
@@ -2642,19 +3174,15 @@ class CompileWebKit(shell.Compile, AddToLogMixin):
 
         return shell.Compile.start(self)
 
-    def buildCommandKwargs(self, warnings):
-        kwargs = super().buildCommandKwargs(warnings)
-        # https://bugs.webkit.org/show_bug.cgi?id=239455: The timeout needs to be >20 min to
-        # work around log output delays on slower machines.
-        # https://bugs.webkit.org/show_bug.cgi?id=247506: Only applies to Xcode 12.x.
-        if self.getProperty('fullPlatform') == 'mac-bigsur':
-            kwargs['timeout'] = 60 * 60
-        else:
-            kwargs['timeout'] = 60 * 30
-        return kwargs
-
     def errorReceived(self, error):
         self._addToLog('errors', error + '\n')
+
+    def handleExcessiveLogging(self):
+        build_url = f'{self.master.config.buildbotURL}#/builders/{self.build._builderid}/builds/{self.build.number}'
+        print(f'\n{MSG_FOR_EXCESSIVE_LOGS}, {build_url}\n\n')
+        self.cancelled_due_to_huge_logs = True
+        self.build.stopBuild(reason=MSG_FOR_EXCESSIVE_LOGS, results=FAILURE)
+        self.build.buildFinished([MSG_FOR_EXCESSIVE_LOGS], FAILURE)
 
     def evaluateCommand(self, cmd):
         if cmd.didFail():
@@ -2674,7 +3202,12 @@ class CompileWebKit(shell.Compile, AddToLogMixin):
         else:
             triggers = self.getProperty('triggers', None)
             if triggers or not self.skipUpload:
-                steps_to_add = [ArchiveBuiltProduct(), UploadBuiltProduct(), TransferToS3()]
+                steps_to_add = [ArchiveBuiltProduct()]
+                if CURRENT_HOSTNAME == EWS_BUILD_HOSTNAME:
+                    steps_to_add.extend([GenerateS3URL(), UploadFileToS3()])
+                else:
+                    # S3 might not be configured on uat or local instances, achieve similar functionality without S3.
+                    steps_to_add.extend([UploadBuiltProduct()])
                 if triggers:
                     steps_to_add.append(Trigger(
                         schedulerNames=triggers,
@@ -2692,6 +3225,8 @@ class CompileWebKit(shell.Compile, AddToLogMixin):
             if self.getProperty('fast_commit_queue'):
                 return {'step': 'Skipped compiling WebKit in fast-cq mode'}
             return {'step': 'Skipped compiling WebKit'}
+        if self.results == CANCELLED and self.cancelled_due_to_huge_logs:
+            return {'step': 'Cancelled step due to huge logs', 'build': 'Cancelled build due to huge logs'}
         return shell.Compile.getResultSummary(self)
 
 
@@ -2714,16 +3249,21 @@ class CompileWebKitWithoutChange(CompileWebKit):
 
     def send_email_for_unexpected_build_failure(self):
         try:
+            pr_number = self.getProperty('github.number')
+            sha = self.getProperty('github.head.sha', '')[:HASH_LENGTH_TO_DISPLAY]
+            owners = self.getProperty('owners', [])
+            author = owners[0] if owners else '?'
             builder_name = self.getProperty('buildername', '')
             worker_name = self.getProperty('workername', '')
-            build_url = '{}#/builders/{}/builds/{}'.format(self.master.config.buildbotURL, self.build._builderid, self.build.number)
-            email_subject = '{} might be in bad state, unable to build WebKit'.format(worker_name)
-            email_text = '{} might be in bad state. It is unable to build WebKit.'.format(worker_name)
-            email_text += ' Same patch was built successfuly on builder queue previously.\n\nBuild: {}\n\nBuilder: {}'.format(build_url, builder_name)
-            reference = 'build-failure-{}'.format(worker_name)
-            send_email_to_bot_watchers(email_subject, email_text, builder_name, reference)
+            build_url = f'{self.master.config.buildbotURL}#/builders/{self.build._builderid}/builds/{self.build.number}'
+            email_subject = f'{worker_name} might be in bad state, unable to build WebKit'
+            email_text = f'{worker_name} might be in bad state. It is unable to build WebKit.'
+            email_text += f' Same code was built successfuly on builder queue previously.'
+            email_text += f'\n\nBuild: {build_url}\n\nBuilder: {builder_name}'
+            email_text += f'\n\nPR: {pr_number}, Hash: {sha}, By: {author}\n'
+            send_email_to_bot_watchers(email_subject, email_text, builder_name, f'build-failure-{worker_name}')
         except Exception as e:
-            print('Error in sending email for unexpected build failure: {}'.format(e))
+            print(f'Error in sending email for unexpected build failure: {e}')
 
 
 class AnalyzeCompileWebKitResults(buildstep.BuildStep, BugzillaMixin, GitHubMixin):
@@ -2731,15 +3271,17 @@ class AnalyzeCompileWebKitResults(buildstep.BuildStep, BugzillaMixin, GitHubMixi
     description = ['analyze-compile-webkit-results']
     descriptionDone = ['analyze-compile-webkit-results']
 
-    def start(self):
+    @defer.inlineCallbacks
+    def run(self):
         self.error_logs = {}
         self.compile_webkit_step = CompileWebKit.name
         if self.getProperty('group') == 'jsc':
             self.compile_webkit_step = CompileJSC.name
-        d = self.getResults(self.compile_webkit_step)
-        d.addCallback(lambda res: self.analyzeResults())
-        return defer.succeed(None)
+        yield self.getResults(self.compile_webkit_step)
+        rc = yield self.analyzeResults()
+        defer.returnValue(rc)
 
+    @defer.inlineCallbacks
     def analyzeResults(self):
         compile_without_patch_step = CompileWebKitWithoutChange.name
         if self.getProperty('group') == 'jsc':
@@ -2753,16 +3295,14 @@ class AnalyzeCompileWebKitResults(buildstep.BuildStep, BugzillaMixin, GitHubMixi
             if pr_number and self.getProperty('github.base.ref') != 'main':
                 message = 'Unable to build WebKit without PR, please check manually'
                 self.descriptionDone = message
-                self.finished(FAILURE)
                 self.build.buildFinished([message], FAILURE)
-                return defer.succeed(None)
+                return defer.returnValue(FAILURE)
 
             message = 'Unable to build WebKit without {}, retrying build'.format('PR' if pr_number else 'patch')
             self.descriptionDone = message
-            self.send_email_for_preexisting_build_failure()
-            self.finished(FAILURE)
+            yield self.send_email_for_preexisting_build_failure()
             self.build.buildFinished([message], RETRY)
-            return defer.succeed(None)
+            return defer.returnValue(FAILURE)
 
         self.build.results = FAILURE
         sha = self.getProperty('github.head.sha')
@@ -2770,10 +3310,9 @@ class AnalyzeCompileWebKitResults(buildstep.BuildStep, BugzillaMixin, GitHubMixi
             message = 'Hash {} for PR {} does not build'.format(sha[:HASH_LENGTH_TO_DISPLAY], pr_number)
         else:
             message = 'Patch {} does not build'.format(patch_id)
-        self.send_email_for_new_build_failure()
+        yield self.send_email_for_new_build_failure()
 
         self.descriptionDone = message
-        self.finished(FAILURE)
         self.setProperty('build_finish_summary', message)
 
         if patch_id:
@@ -2785,16 +3324,20 @@ class AnalyzeCompileWebKitResults(buildstep.BuildStep, BugzillaMixin, GitHubMixi
         else:
             self.build.addStepsAfterCurrentStep([BlockPullRequest()])
 
+        return defer.returnValue(FAILURE)
+
     @defer.inlineCallbacks
     def getResults(self, name):
         step = self.getBuildStepByName(name)
         if not step:
             defer.returnValue(None)
+            return
 
         logs = yield self.master.db.logs.getLogs(step.stepid)
         log = next((log for log in logs if log['name'] == 'errors'), None)
         if not log:
             defer.returnValue(None)
+            return
 
         lastline = int(max(0, log['num_lines'] - 1))
         logLines = yield self.master.db.logs.getLogLines(log['id'], 0, lastline)
@@ -2802,6 +3345,7 @@ class AnalyzeCompileWebKitResults(buildstep.BuildStep, BugzillaMixin, GitHubMixi
             logLines = '\n'.join([line[1:] for line in logLines.splitlines()])
 
         self.error_logs[name] = logLines
+        defer.returnValue(logLines)
 
     def getStepResult(self, step_name):
         for step in self.build.executedSteps:
@@ -2823,18 +3367,23 @@ class AnalyzeCompileWebKitResults(buildstep.BuildStep, BugzillaMixin, GitHubMixi
                 filtered_logs.append(line)
         return '\n'.join(filtered_logs[-max_num_lines:])
 
+    @defer.inlineCallbacks
     def send_email_for_new_build_failure(self):
         try:
             patch_id = self.getProperty('patch_id', '')
             pr_number = self.getProperty('github.number', '')
             sha = self.getProperty('github.head.sha', '')[:HASH_LENGTH_TO_DISPLAY]
 
-            if patch_id and not self.should_send_email_for_patch(patch_id):
-                return
-            if pr_number and not self.should_send_email_for_pr(pr_number, self.getProperty('repository')):
-                return
+            if patch_id:
+                should_send_email = yield self.should_send_email_for_patch(patch_id)
+                if not should_send_email:
+                    return
+            if pr_number:
+                should_send_email = yield self.should_send_email_for_pr(pr_number, self.getProperty('repository'))
+                if not should_send_email:
+                    return
             if not patch_id and not (pr_number and sha):
-                self._addToLog('stderr', 'Unrecognized change type')
+                yield self._addToLog('stderr', 'Unrecognized change type')
                 return
 
             change_string = None
@@ -2844,13 +3393,12 @@ class AnalyzeCompileWebKitResults(buildstep.BuildStep, BugzillaMixin, GitHubMixi
                 change_string = 'Patch {}'.format(patch_id)
             elif pr_number and sha:
                 change_string = 'Hash {}'.format(sha)
-                change_author, errors = GitHub.email_for_owners(self.getProperty('owners', []))
+                change_author, errors = yield GitHub.email_for_owners(self.getProperty('owners', []))
                 for error in errors:
-                    print(error)
-                    self._addToLog('stdio', error)
+                    yield self._addToLog('stdio', error)
 
             if not change_author:
-                self._addToLog('stderr', 'Unable to determine email address for {} from metadata/contributors.json. Skipping sending email.'.format(self.getProperty('owners', [])))
+                yield self._addToLog('stderr', 'Unable to determine email address for {} from metadata/contributors.json. Skipping sending email.'.format(self.getProperty('owners', [])))
                 return
 
             builder_name = self.getProperty('buildername', '')
@@ -2879,11 +3427,12 @@ class AnalyzeCompileWebKitResults(buildstep.BuildStep, BugzillaMixin, GitHubMixi
                 logs = logs.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
                 email_text += '\n\nError lines:\n\n<code>{}</code>'.format(logs)
             email_text += '\n\nTo unsubscribe from these notifications or to provide any feedback please email aakash_jain@apple.com'
-            self._addToLog('stdio', 'Sending email notification to {}'.format(change_author))
+            yield self._addToLog('stdio', 'Sending email notification to {}'.format(change_author))
             send_email_to_patch_author(change_author, email_subject, email_text, patch_id or self.getProperty('github.head.sha', ''))
         except Exception as e:
-            print('Error in sending email for new build failure: {}'.format(e))
+            yield self._addToLog('stdio', f'Error in sending email for new build failure: {e}')
 
+    @defer.inlineCallbacks
     def send_email_for_preexisting_build_failure(self):
         try:
             builder_name = self.getProperty('buildername', '')
@@ -2904,7 +3453,7 @@ class AnalyzeCompileWebKitResults(buildstep.BuildStep, BugzillaMixin, GitHubMixi
             reference = 'preexisting-build-failure-{}-{}'.format(builder_name, date.today().strftime("%Y-%d-%m"))
             send_email_to_bot_watchers(email_subject, email_text, builder_name, reference)
         except Exception as e:
-            print('Error in sending email for build failure: {}'.format(e))
+            yield self._addToLog('stdio', f'Error in sending email for build failure: {e}')
 
 
 class CompileJSC(CompileWebKit):
@@ -3167,7 +3716,7 @@ class AnalyzeJSCTestsResults(buildstep.BuildStep, AddToLogMixin):
             print('Error in sending email for pre-existing failure: {}'.format(e))
 
 
-class InstallBuiltProduct(shell.ShellCommand):
+class InstallBuiltProduct(shell.ShellCommandNewStyle):
     name = 'install-built-product'
     description = ['Installing Built Product']
     descriptionDone = ['Installed Built Product']
@@ -3247,6 +3796,7 @@ class RunWebKitTests(shell.Test, AddToLogMixin):
     test_failures_log_name = 'test-failures'
     results_db_log_name = 'results-db'
     ENABLE_GUARD_MALLOC = False
+    ENABLE_ADDITIONAL_ARGUMENTS = True
     EXIT_AFTER_FAILURES = '60'
     command = ['python3', 'Tools/Scripts/run-webkit-tests',
                '--no-build',
@@ -3268,7 +3818,6 @@ class RunWebKitTests(shell.Test, AddToLogMixin):
     def setLayoutTestCommand(self):
         platform = self.getProperty('platform')
         self.setCommand(self.command + customBuildFlag(platform, self.getProperty('fullPlatform')))
-        additionalArguments = self.getProperty('additionalArguments')
 
         if self.getProperty('use-dump-render-tree', False):
             self.setCommand(self.command + ['--dump-render-tree'])
@@ -3277,18 +3826,32 @@ class RunWebKitTests(shell.Test, AddToLogMixin):
         self.setCommand(self.command + ['--debug-rwt-logging'])
 
         patch_author = self.getProperty('patch_author')
+        self.maxTime = None
         if patch_author in ['webkit-wpt-import-bot@igalia.com']:
             self.setCommand(self.command + ['imported/w3c/web-platform-tests'])
+        elif GitHub.NO_FAILURE_LIMITS_LABEL in self.getProperty('github_labels', []):
+            self.setCommand(self.command + ['--no-retry'])
+            self.maxTime = 60 * 90
         else:
             if self.EXIT_AFTER_FAILURES is not None:
                 self.setCommand(self.command + ['--exit-after-n-failures', '{}'.format(self.EXIT_AFTER_FAILURES)])
             self.setCommand(self.command + ['--skip-failing-tests'])
 
-        if additionalArguments:
+        if platform in ['gtk', 'wpe']:
+            self.setCommand(self.command + ['--enable-core-dumps-nolimit'])
+
+        additionalArguments = self.getProperty('additionalArguments')
+        if additionalArguments and self.ENABLE_ADDITIONAL_ARGUMENTS:
             self.setCommand(self.command + additionalArguments)
 
         if self.ENABLE_GUARD_MALLOC:
             self.setCommand(self.command + ['--guard-malloc'])
+
+    def buildCommandKwargs(self, warnings):
+        result = super().buildCommandKwargs(warnings)
+        if self.maxTime:
+            result['maxTime'] = self.maxTime
+        return result
 
     def start(self, BufferLogObserverClass=logobserver.BufferLogObserver):
         self.log_observer = BufferLogObserverClass(wantStderr=True)
@@ -3421,30 +3984,38 @@ class RunWebKitTests(shell.Test, AddToLogMixin):
 
     def evaluateCommand(self, cmd):
         rc = self.evaluateResult(cmd)
+        previous_build_summary = self.getProperty('build_summary', '')
         if rc == SUCCESS or rc == WARNINGS:
             message = 'Passed layout tests'
             self.descriptionDone = message
             self.build.results = SUCCESS
-            self.setProperty('build_summary', message)
+            if RunWebKitTestsInStressMode.FAILURE_MSG_IN_STRESS_MODE not in previous_build_summary:
+                self.setProperty('build_summary', message)
         elif (self.preexisting_failures_in_results_db and len(self.failing_tests_filtered) == 0):
             # This means all the tests which failed in this run were also failing or flaky in results database
             message = f"Ignored pre-existing failure: {', '.join(self.preexisting_failures_in_results_db)}"
             self.descriptionDone = message
             self.build.results = SUCCESS
-            self.setProperty('build_summary', message)
+            if RunWebKitTestsInStressMode.FAILURE_MSG_IN_STRESS_MODE not in previous_build_summary:
+                self.setProperty('build_summary', message)
             self.build.addStepsAfterCurrentStep([ArchiveTestResults(),
                                                 UploadTestResults(),
                                                 ExtractTestResults()])
             self.finished(WARNINGS)
         else:
-            self.build.addStepsAfterCurrentStep([
+            steps_to_add = [
                 ArchiveTestResults(),
                 UploadTestResults(),
                 ExtractTestResults(),
                 ValidateChange(verifyBugClosed=False, addURLs=False),
-                KillOldProcesses(),
-                ReRunWebKitTests(),
-            ])
+            ]
+            if GitHub.NO_FAILURE_LIMITS_LABEL not in self.getProperty('github_labels', []):
+                steps_to_add += [
+                    KillOldProcesses(),
+                    ReRunWebKitTests(),
+                ]
+            self.build.addStepsAfterCurrentStep(steps_to_add)
+
         return rc
 
     def getResultSummary(self):
@@ -3469,12 +4040,17 @@ class RunWebKitTestsInStressMode(RunWebKitTests):
     name = 'run-layout-tests-in-stress-mode'
     suffix = 'stress-mode'
     EXIT_AFTER_FAILURES = '10'
+    ENABLE_ADDITIONAL_ARGUMENTS = False
+    FAILURE_MSG_IN_STRESS_MODE = 'Found test failures in stress mode'
 
-    def __init__(self, num_iterations=100):
+    def __init__(self, num_iterations=100, layout_test_class=RunWebKitTests):
         self.num_iterations = num_iterations
+        self.layout_test_class = layout_test_class
         super().__init__()
 
     def setLayoutTestCommand(self):
+        if self.layout_test_class == RunWebKit1Tests:
+            self.setProperty('use-dump-render-tree', True)
         RunWebKitTests.setLayoutTestCommand(self)
 
         self.setCommand(self.command + ['--iterations', self.num_iterations])
@@ -3490,7 +4066,7 @@ class RunWebKitTestsInStressMode(RunWebKitTests):
             self.build.results = SUCCESS
             self.setProperty('build_summary', message)
         else:
-            self.setProperty('build_summary', 'Found test failures')
+            self.setProperty('build_summary', self.FAILURE_MSG_IN_STRESS_MODE)
             self.build.addStepsAfterCurrentStep([
                 ArchiveTestResults(),
                 UploadTestResults(identifier=self.suffix),
@@ -3524,6 +4100,7 @@ class ReRunWebKitTests(RunWebKitTests):
         num_flaky_failures = len(flaky_failures)
         flaky_failures = sorted(list(flaky_failures))[:self.NUM_FAILURES_TO_DISPLAY]
         flaky_failures_string = ', '.join(flaky_failures)
+        previous_build_summary = self.getProperty('build_summary', '')
 
         if rc == SUCCESS or rc == WARNINGS:
             message = 'Passed layout tests'
@@ -3534,13 +4111,15 @@ class ReRunWebKitTests(RunWebKitTests):
                 message = 'Found flaky test{}: {}'.format(pluralSuffix, flaky_failures_string)
                 for flaky_failure in flaky_failures:
                     self.send_email_for_flaky_failure(flaky_failure)
-            self.setProperty('build_summary', message)
+            if RunWebKitTestsInStressMode.FAILURE_MSG_IN_STRESS_MODE not in previous_build_summary:
+                self.setProperty('build_summary', message)
         elif (self.preexisting_failures_in_results_db and len(self.failing_tests_filtered) == 0):
             # This means all the tests which failed in this run were also failing or flaky in results database
             message = f"Ignored pre-existing failure: {', '.join(self.preexisting_failures_in_results_db)}"
             self.descriptionDone = message
             self.build.results = SUCCESS
-            self.setProperty('build_summary', message)
+            if RunWebKitTestsInStressMode.FAILURE_MSG_IN_STRESS_MODE not in previous_build_summary:
+                self.setProperty('build_summary', message)
             self.build.addStepsAfterCurrentStep([ArchiveTestResults(),
                                                 UploadTestResults(identifier='rerun'),
                                                 ExtractTestResults(identifier='rerun')])
@@ -3556,7 +4135,8 @@ class ReRunWebKitTests(RunWebKitTests):
                     self.send_email_for_flaky_failure(flaky_failure)
                 self.descriptionDone = message
                 self.build.results = SUCCESS
-                self.setProperty('build_summary', message)
+                if RunWebKitTestsInStressMode.FAILURE_MSG_IN_STRESS_MODE not in previous_build_summary:
+                    self.setProperty('build_summary', message)
                 self.build.addStepsAfterCurrentStep([ArchiveTestResults(),
                                                     UploadTestResults(identifier='rerun'),
                                                     ExtractTestResults(identifier='rerun')])
@@ -3686,8 +4266,8 @@ class AnalyzeLayoutTestsResults(buildstep.BuildStep, BugzillaMixin, GitHubMixin)
     descriptionDone = ['analyze-layout-tests-results']
     NUM_FAILURES_TO_DISPLAY = 10
 
+    @defer.inlineCallbacks
     def report_failure(self, new_failures=None, exceed_failure_limit=False, failure_message=''):
-        self.finished(FAILURE)
         self.build.results = FAILURE
         if not new_failures:
             message = 'Found unexpected failure with change' if not failure_message else failure_message
@@ -3701,7 +4281,7 @@ class AnalyzeLayoutTestsResults(buildstep.BuildStep, BugzillaMixin, GitHubMixin)
             message += ' {} new test failure{}: {}'.format(len(new_failures), pluralSuffix, new_failures_string)
             if len(new_failures) > self.NUM_FAILURES_TO_DISPLAY:
                 message += ' ...'
-            self.send_email_for_new_test_failures(new_failures, exceed_failure_limit)
+            yield self.send_email_for_new_test_failures(new_failures, exceed_failure_limit)
         self.descriptionDone = message
         self.setProperty('build_finish_summary', message)
 
@@ -3710,12 +4290,12 @@ class AnalyzeLayoutTestsResults(buildstep.BuildStep, BugzillaMixin, GitHubMixin)
             self.build.addStepsAfterCurrentStep([LeaveComment(), SetCommitQueueMinusFlagOnPatch()])
         else:
             self.build.addStepsAfterCurrentStep([SetCommitQueueMinusFlagOnPatch(), BlockPullRequest()])
-        return defer.succeed(None)
+        defer.returnValue(FAILURE)
 
     def report_pre_existing_failures(self, clean_tree_failures, flaky_failures):
-        self.finished(SUCCESS)
         self.build.results = SUCCESS
         self.descriptionDone = 'Passed layout tests'
+        previous_build_summary = self.getProperty('build_summary', '')
         message = ''
         if clean_tree_failures:
             clean_tree_failures_string = ', '.join(sorted(clean_tree_failures)[:self.NUM_FAILURES_TO_DISPLAY])
@@ -3735,8 +4315,9 @@ class AnalyzeLayoutTestsResults(buildstep.BuildStep, BugzillaMixin, GitHubMixin)
             for flaky_failure in list(flaky_failures)[:self.NUM_FAILURES_TO_DISPLAY]:
                 self.send_email_for_flaky_failure(flaky_failure)
 
-        self.setProperty('build_summary', message)
-        return defer.succeed(None)
+        if RunWebKitTestsInStressMode.FAILURE_MSG_IN_STRESS_MODE not in previous_build_summary:
+            self.setProperty('build_summary', message)
+        return SUCCESS
 
     def retry_build(self, message=''):
         if not message:
@@ -3755,11 +4336,10 @@ class AnalyzeLayoutTestsResults(buildstep.BuildStep, BugzillaMixin, GitHubMixin)
                 pull_request=bool(self.getProperty('github.number')),
             )])
             self.setProperty('build_summary', message)
-            self.finished(SUCCESS)
+            return SUCCESS
         else:
-            self.finished(RETRY)
             self.build.buildFinished([message], RETRY)
-        return defer.succeed(None)
+            return RETRY
 
     def _results_failed_different_tests(self, first_results_failing_tests, second_results_failing_tests):
         return first_results_failing_tests != second_results_failing_tests
@@ -3794,18 +4374,23 @@ class AnalyzeLayoutTestsResults(buildstep.BuildStep, BugzillaMixin, GitHubMixin)
         except Exception as e:
             print('Error in sending email for pre-existing failure: {}'.format(e))
 
+    @defer.inlineCallbacks
     def send_email_for_new_test_failures(self, test_names, exceed_failure_limit=False):
         try:
             patch_id = self.getProperty('patch_id', '')
             pr_number = self.getProperty('github.number', '')
             sha = self.getProperty('github.head.sha', '')[:HASH_LENGTH_TO_DISPLAY]
 
-            if patch_id and not self.should_send_email_for_patch(patch_id):
-                return
-            if pr_number and not self.should_send_email_for_pr(pr_number, self.getProperty('repository')):
-                return
+            if patch_id:
+                should_send_email = yield self.should_send_email_for_patch(patch_id)
+                if not should_send_email:
+                    return
+            if pr_number:
+                should_send_email = yield self.should_send_email_for_pr(pr_number, self.getProperty('repository'))
+                if not should_send_email:
+                    return
             if not patch_id and not (pr_number and sha):
-                self._addToLog('stderr', 'Unrecognized change type')
+                yield self._addToLog('stderr', 'Unrecognized change type')
                 return
 
             change_string = None
@@ -3815,13 +4400,12 @@ class AnalyzeLayoutTestsResults(buildstep.BuildStep, BugzillaMixin, GitHubMixin)
                 change_string = 'Patch {}'.format(patch_id)
             elif pr_number and sha:
                 change_string = 'Hash {}'.format(sha)
-                change_author, errors = GitHub.email_for_owners(self.getProperty('owners', []))
+                change_author, errors = yield GitHub.email_for_owners(self.getProperty('owners', []))
                 for error in errors:
-                    print(error)
-                    self._addToLog('stdio', error)
+                    yield self._addToLog('stdio', error)
 
             if not change_author:
-                self._addToLog('stderr', 'Unable to determine email address for {} from metadata/contributors.json. Skipping sending email.'.format(self.getProperty('owners', [])))
+                yield self._addToLog('stderr', 'Unable to determine email address for {} from metadata/contributors.json. Skipping sending email.'.format(self.getProperty('owners', [])))
                 return
 
             builder_name = self.getProperty('buildername', '')
@@ -3852,7 +4436,7 @@ class AnalyzeLayoutTestsResults(buildstep.BuildStep, BugzillaMixin, GitHubMixin)
                 email_text += '\n\nAditionally the failure limit has been exceeded, so the test suite has been terminated early. It is likely that there would be more failures than the ones listed below.'
             email_text += '\n\nLayout test failure{}:\n{}'.format(pluralSuffix, test_names_string)
             email_text += '\n\nTo unsubscribe from these notifications or to provide any feedback please email aakash_jain@apple.com'
-            self._addToLog('stdio', 'Sending email notification to {}'.format(change_author))
+            yield self._addToLog('stdio', 'Sending email notification to {}'.format(change_author))
             send_email_to_patch_author(change_author, email_subject, email_text, patch_id or self.getProperty('github.head.sha', ''))
         except Exception as e:
             print('Error in sending email for new layout test failures: {}'.format(e))
@@ -3861,7 +4445,8 @@ class AnalyzeLayoutTestsResults(buildstep.BuildStep, BugzillaMixin, GitHubMixin)
         # TODO: implement this
         pass
 
-    def start(self):
+    @defer.inlineCallbacks
+    def run(self):
         first_results_did_exceed_test_failure_limit = self.getProperty('first_results_exceed_failure_limit')
         first_results_failing_tests = set(self.getProperty('first_run_failures', []))
         second_results_did_exceed_test_failure_limit = self.getProperty('second_results_exceed_failure_limit')
@@ -3877,33 +4462,37 @@ class AnalyzeLayoutTestsResults(buildstep.BuildStep, BugzillaMixin, GitHubMixin)
             # there should have been some test failures. Otherwise there is some unexpected issue.
             clean_tree_run_status = self.getProperty('clean_tree_run_status', FAILURE)
             if clean_tree_run_status == SUCCESS:
-                return self.report_failure(set())
+                rc = yield self.report_failure(set())
+                return defer.returnValue(rc)
             self.send_email_for_infrastructure_issue('Both first and second layout-test runs with patch generated no list of results but exited with error, and the clean_tree without change retry also failed.')
-            return self.retry_build('Unexpected infrastructure issue, retrying build')
+            return defer.returnValue(self.retry_build('Unexpected infrastructure issue, retrying build'))
 
         if first_results_did_exceed_test_failure_limit and second_results_did_exceed_test_failure_limit:
             if (len(first_results_failing_tests) - len(clean_tree_results_failing_tests)) <= 5:
                 # If we've made it here, then many tests are failing with the patch applied, but
                 # if the clean tree is also failing many tests, even if it's not quite as many,
                 # then we can't be certain that the discrepancy isn't due to flakiness, and hence we must defer judgement.
-                return self.retry_build()
-            return self.report_failure(first_results_failing_tests)
+                return defer.returnValue(self.retry_build())
+            rc = yield self.report_failure(first_results_failing_tests)
+            return defer.returnValue(rc)
 
         if second_results_did_exceed_test_failure_limit:
             if clean_tree_results_did_exceed_test_failure_limit:
-                return self.retry_build()
+                return defer.returnValue(self.retry_build())
             failures_introduced_by_patch = first_results_failing_tests - clean_tree_results_failing_tests
             if failures_introduced_by_patch:
-                return self.report_failure(failures_introduced_by_patch)
-            return self.retry_build()
+                rc = yield self.report_failure(failures_introduced_by_patch)
+                return defer.returnValue(rc)
+            return defer.returnValue(self.retry_build())
 
         if first_results_did_exceed_test_failure_limit:
             if clean_tree_results_did_exceed_test_failure_limit:
-                return self.retry_build()
+                return defer.returnValue(self.retry_build())
             failures_introduced_by_patch = second_results_failing_tests - clean_tree_results_failing_tests
             if failures_introduced_by_patch:
-                return self.report_failure(failures_introduced_by_patch)
-            return self.retry_build()
+                rc = yield self.report_failure(failures_introduced_by_patch)
+                return defer.returnValue(rc)
+            return defer.returnValue(self.retry_build())
 
         # FIXME: Here it could be a good idea to also use the info of results.flaky_tests from the runs
         if self._results_failed_different_tests(first_results_failing_tests, second_results_failing_tests):
@@ -3916,28 +4505,31 @@ class AnalyzeLayoutTestsResults(buildstep.BuildStep, BugzillaMixin, GitHubMixin)
             tests_that_consistently_failed = first_results_failing_tests.intersection(second_results_failing_tests)
             if tests_that_consistently_failed:
                 if clean_tree_results_did_exceed_test_failure_limit:
-                    return self.retry_build()
+                    return defer.returnValue(self.retry_build())
                 failures_introduced_by_patch = tests_that_consistently_failed - clean_tree_results_failing_tests
                 if failures_introduced_by_patch:
-                    return self.report_failure(failures_introduced_by_patch)
+                    rc = yield self.report_failure(failures_introduced_by_patch)
+                    return defer.returnValue(rc)
             elif num_flaky_failures > 10:
-                return self.report_failure(failure_message=f'Too many flaky failures: {flaky_failures_string}')
+                rc = yield self.report_failure(failure_message=f'Too many flaky failures: {flaky_failures_string}')
+                return defer.returnValue(rc)
 
             # At this point we know that at least one test flaked, but no consistent failures
             # were introduced. This is a bit of a grey-zone. It's possible that the patch introduced some flakiness.
             # We still mark the build as SUCCESS.
-            return self.report_pre_existing_failures(clean_tree_results_failing_tests, flaky_failures)
+            return defer.returnValue(self.report_pre_existing_failures(clean_tree_results_failing_tests, flaky_failures))
 
         if clean_tree_results_did_exceed_test_failure_limit:
-            return self.retry_build()
+            return defer.returnValue(self.retry_build())
         failures_introduced_by_patch = first_results_failing_tests - clean_tree_results_failing_tests
         if failures_introduced_by_patch:
-            return self.report_failure(failures_introduced_by_patch)
+            rc = yield self.report_failure(failures_introduced_by_patch)
+            return defer.returnValue(rc)
 
         # At this point, we know that the first and second runs had the exact same failures,
         # and that those failures are all present on the clean tree, so we can say with certainty
         # that the patch is good.
-        return self.report_pre_existing_failures(clean_tree_results_failing_tests, flaky_failures)
+        return defer.returnValue(self.report_pre_existing_failures(clean_tree_results_failing_tests, flaky_failures))
 
 
 class RunWebKit1Tests(RunWebKitTests):
@@ -4007,6 +4599,8 @@ class RunWebKitTestsRepeatFailuresRedTree(RunWebKitTestsRedTree):
 
     def setLayoutTestCommand(self):
         super().setLayoutTestCommand()
+        # On the repeat steps we don't enable coredump generation (makes the run much slower if there are crashes)
+        self.setCommand([arg for arg in self.command if arg != '--enable-core-dumps-nolimit'])
         first_results_failing_tests = set(self.getProperty('first_run_failures', []))
         self.setCommand(self.command + ['--fully-parallel', '--repeat-each=%s' % self.NUM_REPEATS_PER_TEST] + sorted(first_results_failing_tests))
 
@@ -4034,8 +4628,9 @@ class RunWebKitTestsRepeatFailuresRedTree(RunWebKitTestsRedTree):
             self.build.addStepsAfterCurrentStep(next_steps)
         return rc
 
-    def commandComplete(self, cmd):
-        shell.Test.commandComplete(self, cmd)
+    @defer.inlineCallbacks
+    def runCommand(self, command):
+        yield shell.Test.runCommand(self, command)
         logText = self.log_observer.getStdout() + self.log_observer.getStderr()
         logTextJson = self.log_observer_json.getStdout()
         with_change_repeat_failures_results = LayoutTestFailures.results_from_string(logTextJson)
@@ -4065,6 +4660,8 @@ class RunWebKitTestsRepeatFailuresWithoutChangeRedTree(RunWebKitTestsRedTree):
 
     def setLayoutTestCommand(self):
         super().setLayoutTestCommand()
+        # On the repeat steps we don't enable coredump generation (makes the run much slower if there are crashes)
+        self.setCommand([arg for arg in self.command if arg != '--enable-core-dumps-nolimit'])
         with_change_nonflaky_failures = set(self.getProperty('with_change_repeat_failures_results_nonflaky_failures', []))
         first_run_failures = set(self.getProperty('first_run_failures', []))
         with_change_repeat_failures_timedout = self.getProperty('with_change_repeat_failures_timedout', False)
@@ -4081,8 +4678,9 @@ class RunWebKitTestsRepeatFailuresWithoutChangeRedTree(RunWebKitTestsRedTree):
         self.build.addStepsAfterCurrentStep([ArchiveTestResults(), UploadTestResults(identifier='repeat-failures-without-change'), ExtractTestResults(identifier='repeat-failures-without-change'), AnalyzeLayoutTestsResultsRedTree()])
         return rc
 
-    def commandComplete(self, cmd):
-        shell.Test.commandComplete(self, cmd)
+    @defer.inlineCallbacks
+    def runCommand(self, command):
+        yield shell.Test.runCommand(self, command)
         logText = self.log_observer.getStdout() + self.log_observer.getStderr()
         logTextJson = self.log_observer_json.getStdout()
         without_change_repeat_failures_results = LayoutTestFailures.results_from_string(logTextJson)
@@ -4115,19 +4713,17 @@ class AnalyzeLayoutTestsResultsRedTree(AnalyzeLayoutTestsResults):
     MAX_RETRY = 3
 
     def report_success(self):
-        self.finished(SUCCESS)
         self.build.results = SUCCESS
         self.descriptionDone = 'Passed layout tests'
         message = ''
         self.setProperty('build_summary', message)
-        return defer.succeed(None)
+        return SUCCESS
 
     def report_warning(self, message):
-        self.finished(WARNINGS)
         self.build.results = WARNINGS
         self.descriptionDone = message
         self.setProperty('build_summary', message)
-        return defer.succeed(None)
+        return WARNINGS
 
     def report_infrastructure_issue_and_maybe_retry_build(self, message):
         retry_count = int(self.getProperty('retry_count', 0))
@@ -4186,7 +4782,8 @@ class AnalyzeLayoutTestsResultsRedTree(AnalyzeLayoutTestsResults):
         except Exception as e:
             print('Error in sending email for flaky failure: {}'.format(e))
 
-    def start(self):
+    @defer.inlineCallbacks
+    def run(self):
         # Run with change, running the whole layout test suite
         first_results_exceed_failure_limit = self.getProperty('first_results_exceed_failure_limit', False)
         first_run_failures = set(self.getProperty('first_run_failures', []))
@@ -4209,7 +4806,7 @@ class AnalyzeLayoutTestsResultsRedTree(AnalyzeLayoutTestsResults):
             # If we are not on the last retry, then try to retry the whole testing with the hope it was a random infrastructure error.
             retry_count = int(self.getProperty('retry_count', 0))
             if retry_count < self.MAX_RETRY:
-                return self.report_infrastructure_issue_and_maybe_retry_build('The layout-test run with change generated no list of results and exited with error, retrying with the hope it was a random infrastructure error.')
+                return defer.returnValue(self.report_infrastructure_issue_and_maybe_retry_build('The layout-test run with change generated no list of results and exited with error, retrying with the hope it was a random infrastructure error.'))
             # Otherwise (last retry) report and error or a warning, since we already gave it enough retries for the issue to not be caused by a random infrastructure error.
             # The clean tree run that only happens when the first run gives an error code without generating a list of failures or flakies.
             clean_tree_run_failures = set(self.getProperty('clean_tree_run_failures', []))
@@ -4217,15 +4814,16 @@ class AnalyzeLayoutTestsResultsRedTree(AnalyzeLayoutTestsResults):
             clean_tree_run_status = self.getProperty('clean_tree_run_status', FAILURE)
             # If the clean-tree run generated some results then we assume this change broke the script run-webkit-tests or something like that.
             if (clean_tree_run_status in [SUCCESS, WARNINGS]) or clean_tree_run_failures or clean_tree_run_flakies:
-                return self.report_failure(set(), first_results_exceed_failure_limit)
+                rc = yield self.report_failure(set(), first_results_exceed_failure_limit)
+                return defer.returnValue(rc)
             # This will end the testing as retry_count will be now self.MAX_RETRY and a warning will be reported.
-            return self.report_infrastructure_issue_and_maybe_retry_build('The layout-test run with change generated no list of results and exited with error, and the clean_tree without change run did the same thing.')
+            return defer.returnValue(self.report_infrastructure_issue_and_maybe_retry_build('The layout-test run with change generated no list of results and exited with error, and the clean_tree without change run did the same thing.'))
 
         if with_change_repeat_failures_results_exceed_failure_limit or without_change_repeat_failures_results_exceed_failure_limit:
-            return self.report_infrastructure_issue_and_maybe_retry_build('One of the steps for retrying the failed tests has exited early, but this steps should run without "--exit-after-n-failures" switch, so they should not exit early.')
+            return defer.returnValue(self.report_infrastructure_issue_and_maybe_retry_build('One of the steps for retrying the failed tests has exited early, but this steps should run without "--exit-after-n-failures" switch, so they should not exit early.'))
 
         if without_change_repeat_failures_timedout:
-            return self.report_infrastructure_issue_and_maybe_retry_build('The step "layout-tests-repeat-failures-without-change" was interrumped because it reached the timeout.')
+            return defer.returnValue(self.report_infrastructure_issue_and_maybe_retry_build('The step "layout-tests-repeat-failures-without-change" was interrumped because it reached the timeout.'))
 
         if with_change_repeat_failures_timedout:
             # The change is causing the step 'layout-tests-repeat-failures-with-change' to timeout, likely the change is adding many failures or long timeouts needing lot of time to test the repeats.
@@ -4233,20 +4831,21 @@ class AnalyzeLayoutTestsResultsRedTree(AnalyzeLayoutTestsResults):
             # There is no point in repeating this run, it would happen the same on next runs and consume lot of time.
             likely_new_non_flaky_failures = first_run_failures - without_change_repeat_failures_results_nonflaky_failures.union(without_change_repeat_failures_results_flakies)
             self.send_email_for_infrastructure_issue('The step "layout-tests-repeat-failures-with-change" reached the timeout but the step "layout-tests-repeat-failures-without-change" ended. Not trying to repeat this. Reporting {} failures from the first run.'.format(len(likely_new_non_flaky_failures)))
-            return self.report_failure(likely_new_non_flaky_failures, first_results_exceed_failure_limit)
+            rc = yield self.report_failure(likely_new_non_flaky_failures, first_results_exceed_failure_limit)
+            return defer.returnValue(rc)
 
         # The checks below need to be after the timeout ones (above) because when a timeout is trigerred no results will be generated for the step.
         # The step with_change_repeat_failures generated no list of failures or flakies, which should only happen when the return code of the step is SUCESS or WARNINGS.
         if not with_change_repeat_failures_results_nonflaky_failures and not with_change_repeat_failures_results_flakies:
             with_change_repeat_failures_retcode = self.getProperty('with_change_repeat_failures_retcode', FAILURE)
             if with_change_repeat_failures_retcode not in [SUCCESS, WARNINGS]:
-                return self.report_infrastructure_issue_and_maybe_retry_build('The step "layout-tests-repeat-failures" failed to generate any list of failures or flakies and returned an error code.')
+                return defer.returnValue(self.report_infrastructure_issue_and_maybe_retry_build('The step "layout-tests-repeat-failures" failed to generate any list of failures or flakies and returned an error code.'))
 
         # Check the same for the step without_change_repeat_failures
         if not without_change_repeat_failures_results_nonflaky_failures and not without_change_repeat_failures_results_flakies:
             without_change_repeat_failures_retcode = self.getProperty('without_change_repeat_failures_retcode', FAILURE)
             if without_change_repeat_failures_retcode not in [SUCCESS, WARNINGS]:
-                return self.report_infrastructure_issue_and_maybe_retry_build('The step "layout-tests-repeat-failures-without-change" failed to generate any list of failures or flakies and returned an error code.')
+                return defer.returnValue(self.report_infrastructure_issue_and_maybe_retry_build('The step "layout-tests-repeat-failures-without-change" failed to generate any list of failures or flakies and returned an error code.'))
 
         # Warn EWS bot watchers about flakies so they can garden those. Include the step where the flaky was found in the e-mail to know if it was found with change or without it.
         # Due to the way this class works most of the flakies are filtered on the step with change even when those were pre-existent issues (so this is also useful for bot watchers).
@@ -4271,12 +4870,13 @@ class AnalyzeLayoutTestsResultsRedTree(AnalyzeLayoutTestsResults):
         # Finally check if there are new consistent (non-flaky) failures caused by the change and warn the change author stetting the status for the build.
         new_non_flaky_failures = with_change_repeat_failures_results_nonflaky_failures - without_change_repeat_failures_results_nonflaky_failures.union(without_change_repeat_failures_results_flakies)
         if new_non_flaky_failures:
-            return self.report_failure(new_non_flaky_failures, first_results_exceed_failure_limit)
+            rc = yield self.report_failure(new_non_flaky_failures, first_results_exceed_failure_limit)
+            return defer.returnValue(rc)
 
-        return self.report_success()
+        return defer.returnValue(self.report_success())
 
 
-class ArchiveBuiltProduct(shell.ShellCommand):
+class ArchiveBuiltProduct(shell.ShellCommandNewStyle):
     command = ['python3', 'Tools/CISupport/built-product-archive',
                WithProperties('--platform=%(fullPlatform)s'), WithProperties('--%(configuration)s'), 'archive']
     name = 'archive-built-product'
@@ -4308,7 +4908,86 @@ class UploadBuiltProduct(transfer.FileUpload):
         return super().getResultSummary()
 
 
-class TransferToS3(master.MasterShellCommand):
+class UploadFileToS3(shell.ShellCommandNewStyle, AddToLogMixin):
+    name = 'upload-file-to-s3'
+    descriptionDone = name
+    haltOnFailure = False
+    flunkOnFailure = False
+
+    def __init__(self, **kwargs):
+        super().__init__(timeout=6 * 60, logEnviron=False, **kwargs)
+
+    @defer.inlineCallbacks
+    def run(self):
+        s3url = self.build.s3url
+        steps_to_add = [UploadBuiltProduct(), TransferToS3()]
+        if not s3url:
+            rc = FAILURE
+            yield self._addToLog('stdio', f'Failed to get s3url: {s3url}')
+            self.build.addStepsAfterCurrentStep(steps_to_add)
+            return defer.returnValue(rc)
+
+        self.env = dict(UPLOAD_URL=s3url)
+        configuration = self.getProperty('configuration')
+        workersrc = f'WebKitBuild/{configuration}.zip'
+
+        self.command = ['python3', 'Tools/Scripts/upload-file-to-url', '--filename', workersrc]
+        rc = yield super().run()
+        if rc in [FAILURE, EXCEPTION]:
+            self.build.addStepsAfterCurrentStep(steps_to_add)
+        return defer.returnValue(rc)
+
+    def doStepIf(self, step):
+        return CURRENT_HOSTNAME == EWS_BUILD_HOSTNAME
+
+
+class GenerateS3URL(master.MasterShellCommandNewStyle):
+    name = 'generate-s3-url'
+    descriptionDone = ['Generated S3 URL']
+    identifier = WithProperties('%(fullPlatform)s-%(architecture)s-%(configuration)s')
+    change_id = WithProperties('%(change_id)s')
+    command = ['python3', '../Shared/generate-s3-url', '--change-id', change_id, '--identifier', identifier]
+    haltOnFailure = False
+    flunkOnFailure = False
+
+    def __init__(self, **kwargs):
+        kwargs['command'] = self.command
+        super().__init__(logEnviron=False, **kwargs)
+
+    @defer.inlineCallbacks
+    def run(self):
+        self.log_observer = logobserver.BufferLogObserver(wantStderr=True)
+        self.addLogObserver('stdio', self.log_observer)
+
+        rc = yield super().run()
+
+        log_text = self.log_observer.getStdout() + self.log_observer.getStderr()
+        match = re.search(r'S3 URL: (?P<url>[^\s]+)', log_text)
+        # Sample log: S3 URL: https://s3-us-west-2.amazonaws.com/ews-archives.webkit.org/ios-simulator-12-x86_64-release/123456.zip
+
+        self.build.s3url = ''
+        build_url = f'{self.master.config.buildbotURL}#/builders/{self.build._builderid}/builds/{self.build.number}'
+        if match:
+            self.build.s3url = match.group('url')
+            print(f'build: {build_url}, url for GenerateS3URL: {self.build.s3url}')
+            defer.returnValue(rc)
+        else:
+            print(f'build: {build_url}, logs for GenerateS3URL:\n{log_text}')
+            defer.returnValue(FAILURE)
+
+    def hideStepIf(self, results, step):
+        return results == SUCCESS
+
+    def doStepIf(self, step):
+        return CURRENT_HOSTNAME == EWS_BUILD_HOSTNAME
+
+    def getResultSummary(self):
+        if self.results == FAILURE:
+            return {'step': 'Failed to generate S3 URL'}
+        return super().getResultSummary()
+
+
+class TransferToS3(master.MasterShellCommandNewStyle):
     name = 'transfer-to-s3'
     description = ['transferring to s3']
     descriptionDone = ['Transferred archive to S3']
@@ -4323,18 +5002,20 @@ class TransferToS3(master.MasterShellCommand):
         kwargs['command'] = self.command
         super().__init__(logEnviron=False, **kwargs)
 
-    def start(self):
+    @defer.inlineCallbacks
+    def run(self):
         self.log_observer = logobserver.BufferLogObserver(wantStderr=True)
         self.addLogObserver('stdio', self.log_observer)
-        return super().start()
 
-    def finished(self, results):
+        rc = yield super().run()
+
         log_text = self.log_observer.getStdout() + self.log_observer.getStderr()
         match = re.search(r'S3 URL: (?P<url>[^\s]+)', log_text)
         # Sample log: S3 URL: https://s3-us-west-2.amazonaws.com/ews-archives.webkit.org/ios-simulator-12-x86_64-release/123456.zip
         if match:
             self.addURL('uploaded archive', match.group('url'))
-        return super().finished(results)
+
+        defer.returnValue(rc)
 
     def doStepIf(self, step):
         return CURRENT_HOSTNAME == EWS_BUILD_HOSTNAME
@@ -4404,7 +5085,7 @@ class DownloadBuiltProductFromMaster(transfer.FileDownload):
         return super().getResultSummary()
 
 
-class ExtractBuiltProduct(shell.ShellCommand):
+class ExtractBuiltProduct(shell.ShellCommandNewStyle):
     command = ['python3', 'Tools/CISupport/built-product-archive',
                WithProperties('--platform=%(fullPlatform)s'), WithProperties('--%(configuration)s'), 'extract']
     name = 'extract-built-product'
@@ -4417,7 +5098,7 @@ class ExtractBuiltProduct(shell.ShellCommand):
         super().__init__(logEnviron=False, **kwargs)
 
 
-class RunAPITests(TestWithFailureCount, AddToLogMixin):
+class RunAPITests(shell.TestNewStyle, AddToLogMixin):
     name = 'run-api-tests'
     description = ['api tests running']
     descriptionDone = ['api-tests']
@@ -4429,6 +5110,11 @@ class RunAPITests(TestWithFailureCount, AddToLogMixin):
     command = ['python3', 'Tools/Scripts/run-api-tests', '--no-build',
                WithProperties('--%(configuration)s'), '--verbose', '--json-output={0}'.format(jsonFileName)]
     failedTestsFormatString = '%d api test%s failed or timed out'
+    failedTestCount = 0
+    cancelled_due_to_huge_logs = False
+    line_count = 0
+    THRESHOLD_FOR_EXCESSIVE_LOGS_API_TESTS = 100000
+    MSG_FOR_EXCESSIVE_LOGS_API_TEST = f'Stopped due to excessive logging, limit: {THRESHOLD_FOR_EXCESSIVE_LOGS_API_TESTS}'
 
     def __init__(self, **kwargs):
         super().__init__(logEnviron=False, **kwargs)
@@ -4440,15 +5126,21 @@ class RunAPITests(TestWithFailureCount, AddToLogMixin):
         self.log_observer_json = logobserver.BufferLogObserver()
         self.addLogObserver('json', self.log_observer_json)
 
+        self.log_observer = ParseByLineLogObserver(self.parseOutputLine)
+        self.addLogObserver('stdio', self.log_observer)
+
         platform = self.getProperty('platform')
-        if platform == 'gtk':
-            self.command = ['python3', 'Tools/Scripts/run-gtk-tests',
+        if platform in ['gtk', 'wpe']:
+            self.command = ['python3', f'Tools/Scripts/run-{platform}-tests',
                            '--{0}'.format(self.getProperty('configuration')),
                            '--json-output={0}'.format(self.jsonFileName)]
         else:
             self.command = self.command + customBuildFlag(platform, self.getProperty('fullPlatform'))
 
         rc = yield super().run()
+
+        if self.failedTestCount:
+            rc = FAILURE
 
         yield self.analyze_failures_using_results_db()
 
@@ -4469,6 +5161,37 @@ class RunAPITests(TestWithFailureCount, AddToLogMixin):
 
         defer.returnValue(rc)
 
+    def parseOutputLine(self, line):
+        self.line_count += 1
+        if self.line_count == self.THRESHOLD_FOR_EXCESSIVE_LOGS_API_TESTS:
+            self.handleExcessiveLogging()
+            return
+
+        match = re.search(r'Ran (?P<ran>\d+) tests of (?P<total>\d+) with (?P<passed>\d+) successful', line)
+        if match:
+            self.failedTestCount = int(match.group('ran')) - int(match.group('passed'))
+
+    def handleExcessiveLogging(self):
+        build_url = f'{self.master.config.buildbotURL}#/builders/{self.build._builderid}/builds/{self.build.number}'
+        print(f'\n{self.MSG_FOR_EXCESSIVE_LOGS_API_TEST}, {build_url}\n')
+        self.cancelled_due_to_huge_logs = True
+        self.build.stopBuild(reason=self.MSG_FOR_EXCESSIVE_LOGS_API_TEST, results=FAILURE)
+        self.build.buildFinished([self.MSG_FOR_EXCESSIVE_LOGS_API_TEST], FAILURE)
+
+    def getResultSummary(self):
+        if self.cancelled_due_to_huge_logs:
+            return {'step': MSG_FOR_EXCESSIVE_LOGS, 'build': MSG_FOR_EXCESSIVE_LOGS}
+
+        status = self.name
+        if self.results != SUCCESS:
+            if self.failedTestCount:
+                self.failedTestPluralSuffix = '' if self.failedTestCount == 1 else 's'
+                status = self.failedTestsFormatString % (self.failedTestCount, self.failedTestPluralSuffix)
+            else:
+                status += ' ({})'.format(Results[self.results])
+
+        return {'step': status}
+
     @defer.inlineCallbacks
     def analyze_failures_using_results_db(self):
         logTextJson = self.log_observer_json.getStdout()
@@ -4480,14 +5203,6 @@ class RunAPITests(TestWithFailureCount, AddToLogMixin):
             yield self.filter_api_test_failures_using_results_db(failures)
             self.setProperty(f'{self.suffix}_failures_filtered', sorted(self.failing_tests_filtered))
             self.setProperty(f'results-db_{self.suffix}_pre_existing', sorted(self.preexisting_failures_in_results_db))
-
-    def countFailures(self, returncode):
-        log_text = self.log_observer.getStdout() + self.log_observer.getStderr()
-
-        match = re.search(r'Ran (?P<ran>\d+) tests of (?P<total>\d+) with (?P<passed>\d+) successful', log_text)
-        if not match:
-            return 0
-        return int(match.group('ran')) - int(match.group('passed'))
 
     def doOnFailure(self):
         self.build.addStepsAfterCurrentStep([
@@ -4735,7 +5450,7 @@ class AnalyzeAPITestsResults(buildstep.BuildStep, AddToLogMixin):
             print('Error in sending email for pre-existing failure: {}'.format(e))
 
 
-class ArchiveTestResults(shell.ShellCommand):
+class ArchiveTestResults(shell.ShellCommandNewStyle):
     command = ['python3', 'Tools/CISupport/test-result-archive',
                Interpolate('--platform=%(prop:platform)s'), Interpolate('--%(prop:configuration)s'), 'archive']
     name = 'archive-test-results'
@@ -4763,7 +5478,7 @@ class UploadTestResults(transfer.FileUpload):
         super().__init__(**kwargs)
 
 
-class ExtractTestResults(master.MasterShellCommand):
+class ExtractTestResults(master.MasterShellCommandNewStyle):
     name = 'extract-test-results'
     descriptionDone = ['Extracted test results']
     renderables = ['resultDirectory', 'zipFile']
@@ -4801,9 +5516,11 @@ class ExtractTestResults(master.MasterShellCommand):
         step.addURL('view layout test results', self.resultDirectoryURL() + 'results.html')
         step.addURL('download layout test results', self.resultsDownloadURL())
 
-    def finished(self, result):
+    @defer.inlineCallbacks
+    def run(self):
+        rc = yield super().run()
         self.addCustomURLs()
-        return master.MasterShellCommand.finished(self, result)
+        defer.returnValue(rc)
 
 
 class PrintConfiguration(steps.ShellSequence):
@@ -4842,6 +5559,7 @@ class PrintConfiguration(steps.ShellSequence):
             return 'Unknown'
 
         build_to_name_mapping = {
+            '14': 'Sonoma',
             '13': 'Ventura',
             '12': 'Monterey',
             '11': 'Big Sur'
@@ -4904,7 +5622,7 @@ class CleanGitRepo(steps.ShellSequence, ShellMixin):
             ['git', 'checkout', '{}/{}'.format(self.git_remote, self.default_branch), '-f'],  # Checkout branch from specific remote
             ['git', 'branch', '-D', self.default_branch],  # Delete any local cache of the specified branch
             ['git', 'branch', self.default_branch],  # Create local instance of branch from remote, but don't track it
-            self.shell_command("git branch | grep -v ' {}$' | xargs git branch -D || {}".format(self.default_branch, self.shell_exit_0())),
+            self.shell_command("git branch | grep -v ' {}$' | grep -v 'HEAD detached at' | xargs git branch -D || {}".format(self.default_branch, self.shell_exit_0())),
             self.shell_command("git remote | grep -v '{}$' | xargs -L 1 git remote rm || {}".format(self.git_remote, self.shell_exit_0())),
             ['git', 'prune'],
         ]:
@@ -4917,7 +5635,7 @@ class CleanGitRepo(steps.ShellSequence, ShellMixin):
         return {'step': 'Cleaned up git repository'}
 
 
-class ApplyWatchList(shell.ShellCommand):
+class ApplyWatchList(shell.ShellCommandNewStyle):
     name = 'apply-watch-list'
     description = ['applying watchilist']
     descriptionDone = ['Applied WatchList']
@@ -4951,6 +5669,11 @@ class SetBuildSummary(buildstep.BuildStep):
     def start(self):
         build_summary = self.getProperty('build_summary', 'build successful')
         self.finished(SUCCESS)
+        previous_build_summary = self.getProperty('build_summary', '')
+        if RunWebKitTestsInStressMode.FAILURE_MSG_IN_STRESS_MODE in previous_build_summary:
+            self.build.results = FAILURE
+        elif 'Committed ' in previous_build_summary and '@' in previous_build_summary:
+            self.build.results = SUCCESS
         self.build.buildFinished([build_summary], self.build.results)
         return defer.succeed(None)
 
@@ -5007,8 +5730,8 @@ class PushCommitToWebKitRepo(shell.ShellCommand):
                         ShowIdentifier(),
                         CheckOutPullRequest(),
                         AddReviewerToCommitMessage(),
-                        ValidateChange(verifyMergeQueue=True, verifyNoDraftForMergeQueue=True, verifyObsolete=False, enableSkipEWSLabel=False),
                         Canonicalize(),
+                        ValidateChange(verifyMergeQueue=True, verifyNoDraftForMergeQueue=True, verifyObsolete=False, enableSkipEWSLabel=False),
                         PushPullRequestBranch(),
                         UpdatePullRequest(),
                         PushCommitToWebKitRepo(),
@@ -5022,8 +5745,8 @@ class PushCommitToWebKitRepo(shell.ShellCommand):
                         ShowIdentifier(),
                         CommitPatch(),
                         AddReviewerToCommitMessage(),
-                        ValidateChange(addURLs=False, verifycqplus=True),
                         Canonicalize(),
+                        ValidateChange(addURLs=False, verifycqplus=True),
                         PushCommitToWebKitRepo(),
                     ])
                 return rc
@@ -5056,7 +5779,7 @@ class PushCommitToWebKitRepo(shell.ShellCommand):
 class DetermineLandedIdentifier(shell.ShellCommandNewStyle):
     name = 'determine-landed-identifier'
     descriptionDone = ['Determined landed identifier']
-    command = ['git', 'log', '-1', '--no-decorate']
+    command = ['/bin/sh', '-c', "git log -1 --no-decorate | grep 'Canonical link: https://commits\\.webkit\\.org/'"]
     CANONICAL_LINK_RE = re.compile(r'\ACanonical link: https://commits\.webkit\.org/(?P<identifier>\d+.?\d*@\S+)\Z')
     haltOnFailure = False
 
@@ -5080,7 +5803,9 @@ class DetermineLandedIdentifier(shell.ShellCommandNewStyle):
 
         loglines = self.log_observer.getStdout().splitlines()
 
-        for line in loglines[4:]:
+        for line in loglines:
+            if not line:
+                continue
             match = self.CANONICAL_LINK_RE.match(line[4:])
             if match:
                 self.identifier = match.group('identifier')
@@ -5090,7 +5815,9 @@ class DetermineLandedIdentifier(shell.ShellCommandNewStyle):
         if not self.identifier:
             yield task.deferLater(reactor, 60, lambda: None)  # It takes time for commits.webkit.org to digest commits
             self.identifier = yield self.identifier_for_hash(landed_hash)
-            if not self.identifier or '@' not in self.identifier:
+            if self.identifier and '@' in self.identifier:
+                rc = SUCCESS
+            else:
                 rc = FAILURE
 
         self.setProperty('comment_text', self.comment_text_for_bug(landed_hash, self.identifier))
@@ -5137,9 +5864,6 @@ class DetermineLandedIdentifier(shell.ShellCommandNewStyle):
         if pr_number:
             comment += f'\n\nReviewed commits have been landed. Closing PR #{pr_number} and removing active labels.'
         return comment
-
-    def hideStepIf(self, results, step):
-        return self.getProperty('sensitive', False)
 
 
 class CheckStatusOnEWSQueues(buildstep.BuildStep, BugzillaMixin):
@@ -5319,7 +6043,7 @@ class ValidateSquashed(shell.ShellCommand):
     def start(self, BufferLogObserverClass=logobserver.BufferLogObserver):
         base_ref = self.getProperty('github.base.ref', f'{DEFAULT_REMOTE}/{DEFAULT_BRANCH}')
         head_ref = self.getProperty('github.head.ref', 'HEAD')
-        self.command = ['git', 'log', '--oneline', head_ref, f'^{base_ref}', '--max-count=2']
+        self.command = ['git', 'log', '--format=format:"%H"', head_ref, f'^{base_ref}', f'--max-count={MAX_COMMITS_IN_PR_SERIES + 1}']
 
         self.log_observer = BufferLogObserverClass(wantStderr=True)
         self.addLogObserver('stdio', self.log_observer)
@@ -5352,17 +6076,34 @@ class ValidateSquashed(shell.ShellCommand):
             return rc
 
         log_text = self.log_observer.getStdout()
-        if len(log_text.splitlines()) == 1:
-            self.summary = 'Verified commit is squashed'
-            return SUCCESS
+        commit_count = len(log_text.splitlines())
+        self.setProperty('commit_count', commit_count)
 
-        self.summary = 'Can only land squashed commits'
-        comment = 'This change contains multiple commits which are not squashed together'
-        if pr_number:
-            comment = f"{comment}, blocking PR #{pr_number}"
-        elif patch_id:
-            comment = f"{comment}, rejecting attachment {patch_id} from commit queue"
-        comment += '. Please squash the commits to land.'
+        classification = self.getProperty('classification', [])
+        if not isinstance(classification, list):
+            classification = []
+
+        if ['Cherry-pick'] == classification:
+            if commit_count > 0 and commit_count < MAX_COMMITS_IN_PR_SERIES:
+                self.summary = 'Commit sequence is entirely cherry-picks'
+                return SUCCESS
+
+            self.summary = 'Too many commits in a pull-request'
+            comment = 'Policy allows for multiple cherry-picks to be landed simultaneously ' \
+                      f'but there is a limit of {MAX_COMMITS_IN_PR_SERIES}, blocking PR #{pr_number} because it has {commit_count} commits. ' \
+                      'Please break this change into multiple pull requests.'
+        else:
+            if commit_count == 1:
+                self.summary = 'Verified commit is squashed'
+                return SUCCESS
+
+            self.summary = 'Can only land squashed commits'
+            comment = 'This change contains multiple commits which are not squashed together'
+            if pr_number:
+                comment = f"{comment}, blocking PR #{pr_number}"
+            elif patch_id:
+                comment = f"{comment}, rejecting attachment {patch_id} from commit queue"
+            comment += '. Please squash the commits to land.'
 
         self.setProperty('comment_text', comment)
         self.setProperty('build_finish_summary', self.summary)
@@ -5376,6 +6117,7 @@ class ValidateSquashed(shell.ShellCommand):
 class AddReviewerMixin(object):
     NOBODY_SED = 's/NOBODY (OO*PP*S!*)/{}/g'
 
+    @defer.inlineCallbacks
     def gitCommitEnvironment(self):
         owners = self.getProperty('owners', [])
         if not owners:
@@ -5385,7 +6127,7 @@ class AddReviewerMixin(object):
                 FILTER_BRANCH_SQUELCH_WARNING='1',
             )
 
-        contributors, _ = Contributors.load()
+        contributors, _ = yield Contributors.load()
         return dict(
             GIT_COMMITTER_NAME=contributors.get(owners[0].lower(), {}).get('name', 'EWS'),
             GIT_COMMITTER_EMAIL=contributors.get(owners[0].lower(), {}).get('email', FROM_EMAIL),
@@ -5408,7 +6150,8 @@ class AddReviewerToCommitMessage(shell.ShellCommand, AddReviewerMixin):
     def __init__(self, **kwargs):
         super().__init__(logEnviron=False, timeout=60, **kwargs)
 
-    def start(self, BufferLogObserverClass=logobserver.BufferLogObserver):
+    @defer.inlineCallbacks
+    def run(self, BufferLogObserverClass=logobserver.BufferLogObserver):
         base_ref = self.getProperty('github.base.ref', f'{DEFAULT_REMOTE}/{DEFAULT_BRANCH}')
         head_ref = self.getProperty('github.head.ref', 'HEAD')
 
@@ -5421,10 +6164,12 @@ class AddReviewerToCommitMessage(shell.ShellCommand, AddReviewerMixin):
             f'{head_ref}...{base_ref}',
         ]
 
-        for key, value in self.gitCommitEnvironment().items():
+        commit_environment = yield self.gitCommitEnvironment()
+        for key, value in commit_environment.items():
             self.workerEnvironment[key] = value
 
-        return super().start()
+        rc = yield super().run()
+        defer.returnValue(rc)
 
     def getResultSummary(self):
         if self.results == FAILURE:
@@ -5434,7 +6179,10 @@ class AddReviewerToCommitMessage(shell.ShellCommand, AddReviewerMixin):
         return super().getResultSummary()
 
     def doStepIf(self, step):
-        return self.getProperty('reviewers_full_names')
+        classification = self.getProperty('classification', [])
+        if not isinstance(classification, list):
+            classification = []
+        return self.getProperty('reviewers_full_names') and ['Cherry-pick'] != classification
 
     def hideStepIf(self, results, step):
         return not self.doStepIf(step)
@@ -5522,9 +6270,8 @@ class ValidateCommitMessage(steps.ShellSequence, ShellMixin, AddToLogMixin):
             defer.returnValue(rc)
             return
 
-        self.contributors, errors = Contributors.load(use_network=True)
+        self.contributors, errors = yield Contributors.load(use_network=True)
         for error in errors:
-            print(error)
             self._addToLog('stdio', error)
 
         reviewers, log_text = self.extract_reviewers(self.log_observer.getStdout())
@@ -5572,19 +6319,24 @@ class Canonicalize(steps.ShellSequence, ShellMixin, AddToLogMixin):
     description = ['canonicalize-commit']
     descriptionDone = ['Canonicalize Commit']
     haltOnFailure = True
-    env = dict(FILTER_BRANCH_SQUELCH_WARNING='1')
 
     def __init__(self, rebase_enabled=True, **kwargs):
         super().__init__(logEnviron=False, timeout=300, **kwargs)
         self.rebase_enabled = rebase_enabled
         self.contributors = {}
 
+    def number_commits_to_canonicalize(self):
+        commit_count = self.getProperty('commit_count', 1)
+        if not self.rebase_enabled:
+            commit_count += 2
+        return commit_count
+
+    @defer.inlineCallbacks
     def run(self):
         self.commands = []
-        self.contributors, errors = Contributors.load(use_network=True)
+        self.contributors, errors = yield Contributors.load(use_network=True)
         for error in errors:
-            print(error)
-            self._addToLog('stdio', error)
+            yield self._addToLog('stdio', error)
 
         base_ref = self.getProperty('github.base.ref', DEFAULT_BRANCH)
         head_ref = self.getProperty('github.head.ref', None)
@@ -5596,7 +6348,7 @@ class Canonicalize(steps.ShellSequence, ShellMixin, AddToLogMixin):
             if head_ref:
                 commands += [['git', 'branch', '-f', base_ref, head_ref]]
             commands += [['git', 'checkout', base_ref]]
-        commands.append(['python3', 'Tools/Scripts/git-webkit', 'canonicalize', '-n', '1' if self.rebase_enabled else '3'])
+        commands.append(['python3', 'Tools/Scripts/git-webkit', 'canonicalize', '-n', str(self.number_commits_to_canonicalize())])
 
         if self.getProperty('github.number', ''):
             committer = (self.getProperty('owners', []) or [''])[0]
@@ -5612,15 +6364,23 @@ class Canonicalize(steps.ShellSequence, ShellMixin, AddToLogMixin):
         commands.append([
             'git', 'filter-branch', '-f',
             '--env-filter', f"GIT_AUTHOR_DATE='{date}';GIT_COMMITTER_DATE='{date}';GIT_COMMITTER_NAME='{committer_name}';GIT_COMMITTER_EMAIL='{committer_email}'",
-            f'HEAD...HEAD~1',
+            f"HEAD...HEAD~{self.getProperty('commit_count', 1)}",
         ])
+
+        username, access_token = GitHub.credentials(user=GitHub.user_for_queue(self.getProperty('buildername', '')))
+        self.env = dict(
+            GIT_USER=username,
+            GIT_PASSWORD=access_token,
+            FILTER_BRANCH_SQUELCH_WARNING='1',
+        )
 
         for command in commands:
             self.commands.append(util.ShellArg(command=command, logname='stdio', haltOnFailure=True))
-        return super().run()
+        rc = yield super().run()
+        defer.returnValue(rc)
 
     def getResultSummary(self):
-        commit_pluralized = "commit" if self.rebase_enabled else "commits"
+        commit_pluralized = "commit" if self.number_commits_to_canonicalize() == 1 else "commits"
         if self.results == SUCCESS:
             return {'step': f'Canonicalized {commit_pluralized}'}
         if self.results == FAILURE:
@@ -5628,23 +6388,23 @@ class Canonicalize(steps.ShellSequence, ShellMixin, AddToLogMixin):
         return super().getResultSummary()
 
 
-class PushPullRequestBranch(shell.ShellCommand):
+class PushPullRequestBranch(shell.ShellCommandNewStyle):
     name = 'push-pull-request-branch'
     haltOnFailure = True
 
     def __init__(self, **kwargs):
         super().__init__(logEnviron=False, timeout=300, **kwargs)
 
-    def start(self, BufferLogObserverClass=logobserver.BufferLogObserver):
+    def run(self, BufferLogObserverClass=logobserver.BufferLogObserver):
         remote = self.getProperty('github.head.repo.full_name').split('/')[0]
         head_ref = self.getProperty('github.head.ref')
         self.command = ['git', 'push', '-f', remote, f'HEAD:{head_ref}']
 
         username, access_token = GitHub.credentials(user=GitHub.user_for_queue(self.getProperty('buildername', '')))
-        self.workerEnvironment['GIT_USER'] = username
-        self.workerEnvironment['GIT_PASSWORD'] = access_token
+        self.env['GIT_USER'] = username
+        self.env['GIT_PASSWORD'] = access_token
 
-        return super().start()
+        return super().run()
 
     def getResultSummary(self):
         if self.results == SUCCESS:
@@ -5660,10 +6420,10 @@ class PushPullRequestBranch(shell.ShellCommand):
         return not self.doStepIf(step)
 
 
-class UpdatePullRequest(shell.ShellCommand, GitHubMixin, AddToLogMixin):
+class UpdatePullRequest(shell.ShellCommandNewStyle, GitHubMixin, AddToLogMixin):
     name = 'update-pull-request'
     haltOnFailure = False
-    command = ['git', 'log', '-1', '--no-decorate']
+    command = ['git', 'log', '--no-decorate']
     ESCAPE_TABLE = {
         '"': '&quot;',
         "'": '&apos;',
@@ -5682,16 +6442,11 @@ class UpdatePullRequest(shell.ShellCommand, GitHubMixin, AddToLogMixin):
     @classmethod
     def escape_html(cls, message):
         message = ''.join(cls.ESCAPE_TABLE.get(c, c) for c in message)
-        return re.sub(r'(https?://[^\s<>,:;]+?)(?=[\s<>,:;]|(&gt))', r'<a href="\1">\1</a>', message)
+        message = re.sub(r'(https?://[^\s<>,:;]+?)(?=[\s<>,:;]|(&gt))', r'<a href="\1">\1</a>', message)
+        return re.sub(r'rdar://([^\s<>,:;]+?)(?=[\s<>,:;]|(&gt))', r'<a href="https://rdar.apple.com/\1">rdar://\1</a>', message)
 
     def __init__(self, **kwargs):
         super().__init__(logEnviron=False, timeout=300, **kwargs)
-
-    def start(self, BufferLogObserverClass=logobserver.BufferLogObserver):
-        self.log_observer = BufferLogObserverClass(wantStderr=True)
-        self.addLogObserver('stdio', self.log_observer)
-
-        return super().start()
 
     def getResultSummary(self):
         if self.results == SUCCESS:
@@ -5717,36 +6472,56 @@ class UpdatePullRequest(shell.ShellCommand, GitHubMixin, AddToLogMixin):
                 return True
         return False
 
-    def evaluateCommand(self, cmd):
-        rc = super().evaluateCommand(cmd)
+    @defer.inlineCallbacks
+    def run(self, BufferLogObserverClass=logobserver.BufferLogObserver):
+        self.log_observer = BufferLogObserverClass(wantStderr=True)
+        self.addLogObserver('stdio', self.log_observer)
 
-        loglines = self.log_observer.getStdout().splitlines()
+        title = None
+        description = None
+        rc = 0
 
-        title = loglines[4][4:].rstrip()
-        description = f'#### {loglines[0].split()[1]}\n<pre>\n'
-        for line in loglines[4:]:
-            description += self.escape_html(line[4:] + '\n')
-        description += '</pre>\n'
+        if not self.setProperty('sensitive', False):
+            self.command.append('-{}'.format(self.getProperty('commit_count', 1)))
+            rc = yield super().run()
 
-        bug_id = self.bug_id_from_log(loglines)
-        if bug_id:
-            self.setProperty('bug_id', bug_id)
-        self.setProperty('is_test_gardening', self.is_test_gardening(loglines))
+            loglines = self.log_observer.getStdout().splitlines()
+
+            title = loglines[4][4:].rstrip()
+            description = ''
+            index = 0
+            while index < len(loglines):
+                line = loglines[index]
+                if line.startswith('commit'):
+                    if description:
+                        description = description[:-1] + f'</pre>\n{70 * "-"}\n'
+                    description += f'#### {line.split()[1]}\n<pre>\n'
+                    index += 4
+                else:
+                    description += self.escape_html(line[4:] + '\n')
+                    index += 1
+            if description:
+                description += '</pre>\n'
+
+            bug_id = self.bug_id_from_log(loglines)
+            if bug_id:
+                self.setProperty('bug_id', bug_id)
+            self.setProperty('is_test_gardening', self.is_test_gardening(loglines))
 
         user = self.getProperty('github.head.user.login', '')
         head = self.getProperty('github.head.ref', '')
 
-        if not self.update_pr(
+        did_update_pr = yield self.update_pr(
             self.getProperty('github.number'),
             title=title,
             description=description,
             base=self.getProperty('github.base.ref', ''),
             head=f"{user}:{head}" if user and head else None,
             repository_url=self.getProperty('repository', ''),
-        ):
-            return FAILURE
-
-        return rc
+        )
+        if not did_update_pr:
+            return defer.returnValue(FAILURE)
+        return defer.returnValue(rc)
 
     def doStepIf(self, step):
         return CURRENT_HOSTNAME == EWS_BUILD_HOSTNAME and self.getProperty('github.number')

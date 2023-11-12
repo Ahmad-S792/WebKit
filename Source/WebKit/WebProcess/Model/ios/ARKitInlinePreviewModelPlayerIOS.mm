@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2021 Apple Inc. All rights reserved.
+ * Copyright (C) 2021-2023 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -31,6 +31,7 @@
 #import "WebPage.h"
 #import "WebPageProxyMessages.h"
 #import <WebCore/GraphicsLayer.h>
+#import <wtf/WeakHashSet.h>
 
 namespace WebKit {
 
@@ -39,48 +40,48 @@ Ref<ARKitInlinePreviewModelPlayerIOS> ARKitInlinePreviewModelPlayerIOS::create(W
     return adoptRef(*new ARKitInlinePreviewModelPlayerIOS(page, client));
 }
 
-static HashSet<ARKitInlinePreviewModelPlayerIOS*>& instances()
+static WeakHashSet<ARKitInlinePreviewModelPlayerIOS>& instances()
 {
-    static NeverDestroyed<HashSet<ARKitInlinePreviewModelPlayerIOS*>> instances;
+    static NeverDestroyed<WeakHashSet<ARKitInlinePreviewModelPlayerIOS>> instances;
     return instances;
 }
 
 ARKitInlinePreviewModelPlayerIOS::ARKitInlinePreviewModelPlayerIOS(WebPage& page, WebCore::ModelPlayerClient& client)
     : ARKitInlinePreviewModelPlayer(page, client)
 {
-    instances().add(this);
+    instances().add(*this);
 }
 
 ARKitInlinePreviewModelPlayerIOS::~ARKitInlinePreviewModelPlayerIOS()
 {
-    instances().remove(this);
+    instances().remove(*this);
 }
 
-ARKitInlinePreviewModelPlayerIOS* ARKitInlinePreviewModelPlayerIOS::modelPlayerForPageAndLayerID(WebPage& page, GraphicsLayer::PlatformLayerID layerID)
+ARKitInlinePreviewModelPlayerIOS* ARKitInlinePreviewModelPlayerIOS::modelPlayerForPageAndLayerID(WebPage& page, PlatformLayerIdentifier layerID)
 {
-    for (auto* modelPlayer : instances()) {
-        if (!modelPlayer || !modelPlayer->client())
+    for (auto& modelPlayer : instances()) {
+        if (!modelPlayer.client())
             continue;
 
-        if (&page != modelPlayer->page())
+        if (&page != modelPlayer.page())
             continue;
 
-        if (modelPlayer->client()->platformLayerID() != layerID)
+        if (modelPlayer.client()->platformLayerID() != layerID)
             continue;
 
-        return modelPlayer;
+        return &modelPlayer;
     }
 
     return nullptr;
 }
 
-void ARKitInlinePreviewModelPlayerIOS::pageLoadedModelInlinePreview(WebPage& page, GraphicsLayer::PlatformLayerID layerID)
+void ARKitInlinePreviewModelPlayerIOS::pageLoadedModelInlinePreview(WebPage& page, PlatformLayerIdentifier layerID)
 {
     if (auto* modelPlayer = modelPlayerForPageAndLayerID(page, layerID))
         modelPlayer->client()->didFinishLoading(*modelPlayer);
 }
 
-void ARKitInlinePreviewModelPlayerIOS::pageFailedToLoadModelInlinePreview(WebPage& page, WebCore::GraphicsLayer::PlatformLayerID layerID, const WebCore::ResourceError& error)
+void ARKitInlinePreviewModelPlayerIOS::pageFailedToLoadModelInlinePreview(WebPage& page, PlatformLayerIdentifier layerID, const WebCore::ResourceError& error)
 {
     if (auto* modelPlayer = modelPlayerForPageAndLayerID(page, layerID))
         modelPlayer->client()->didFailLoading(*modelPlayer, error);

@@ -29,19 +29,60 @@
 
 #include "HWndDC.h"
 #include "SharedBuffer.h"
+#include <cairo-dwrite.h>
 #include <wtf/HashMap.h>
 #include <wtf/RetainPtr.h>
 #include <wtf/Vector.h>
 #include <wtf/text/StringHash.h>
 #include <wtf/text/WTFString.h>
 
-#include <cairo-win32.h>
-
 namespace WebCore {
 
-void FontPlatformData::platformDataInit(HFONT font, float size, HDC hdc, WCHAR* faceName)
+static IDWriteGdiInterop* getDWriteGdiInterop()
 {
-    cairo_font_face_t* fontFace = cairo_win32_font_face_create_for_hfont(font);
+    static COMPtr<IDWriteGdiInterop> gdiInterop;
+    if (gdiInterop)
+        return gdiInterop.get();
+    COMPtr<IDWriteFactory> factory;
+    HRESULT hr = DWriteCreateFactory(DWRITE_FACTORY_TYPE_SHARED, __uuidof(IDWriteFactory), reinterpret_cast<IUnknown**>(&factory));
+    RELEASE_ASSERT(SUCCEEDED(hr));
+    hr = factory->GetGdiInterop(&gdiInterop);
+    RELEASE_ASSERT(SUCCEEDED(hr));
+    return gdiInterop.get();
+}
+
+cairo_font_face_t*
+createCairoDWriteFontFace(HFONT font)
+{
+    IDWriteGdiInterop* gdiInterop = getDWriteGdiInterop();
+
+    bool retry = false;
+    GDIObject<HFONT> retryFont;
+    COMPtr<IDWriteFontFace> dwFace;
+    HWndDC hdc(nullptr);
+    while (font) {
+        HGDIOBJ oldFont = SelectObject(hdc, font);
+        HRESULT hr = gdiInterop->CreateFontFaceFromHdc(hdc, &dwFace);
+        SelectObject(hdc, oldFont);
+        if (SUCCEEDED(hr))
+            break;
+        if (retry)
+            break;
+        // CreateFontFaceFromHdc may fail if the font size is too large. Retry it by creating a smaller font.
+        LOGFONT logfont;
+        GetObject(font, sizeof(logfont), &logfont);
+        logfont.lfHeight = -32;
+        retryFont = adoptGDIObject(CreateFontIndirect(&logfont));
+        font = retryFont.get();
+        retry = true;
+    }
+    RELEASE_ASSERT(dwFace);
+    return cairo_dwrite_font_face_create_for_dwrite_fontface(dwFace.get());
+}
+
+void FontPlatformData::platformDataInit(HFONT font, float size, WCHAR* faceName)
+{
+    cairo_font_face_t* fontFace = createCairoDWriteFontFace(font);
 
     cairo_matrix_t sizeMatrix, ctm;
     cairo_matrix_init_identity(&ctm);
@@ -56,12 +97,12 @@ void FontPlatformData::platformDataInit(HFONT font, float size, HDC hdc, WCHAR* 
     m_scaledFont = adoptRef(cairo_scaled_font_create(fontFace, &sizeMatrix, &ctm, fontOptions));
     cairo_font_face_destroy(fontFace);
 
-    if (!m_useGDI && m_size)
+    if (m_size)
         m_isSystemFont = !wcscmp(faceName, L"Lucida Grande");
 }
 
-FontPlatformData::FontPlatformData(GDIObject<HFONT> font, cairo_font_face_t* fontFace, float size, bool bold, bool oblique, const CreationData* creationData)
-    : FontPlatformData(size, bold, oblique, FontOrientation::Horizontal, FontWidthVariant::RegularWidth, TextRenderingMode::AutoTextRendering, creationData)
+FontPlatformData::FontPlatformData(GDIObject<HFONT> font, cairo_font_face_t* fontFace, float size, bool bold, bool oblique, const FontCustomPlatformData* customPlatformData)
+    : FontPlatformData(size, bold, oblique, FontOrientation::Horizontal, FontWidthVariant::RegularWidth, TextRenderingMode::AutoTextRendering, customPlatformData)
 {
     m_font = SharedGDIObject<HFONT>::create(WTFMove(font));
 
@@ -94,8 +135,7 @@ unsigned FontPlatformData::hash() const
 bool FontPlatformData::platformIsEqual(const FontPlatformData& other) const
 {
     return m_font == other.m_font
-        && m_scaledFont == other.m_scaledFont
-        && m_useGDI == other.m_useGDI;
+        && m_scaledFont == other.m_scaledFont;
 }
 
 RefPtr<SharedBuffer> FontPlatformData::openTypeTable(uint32_t table) const
@@ -113,12 +153,10 @@ String FontPlatformData::description() const
 String FontPlatformData::familyName() const
 {
     HWndDC hdc(0);
-    SaveDC(hdc);
-    cairo_win32_scaled_font_select_font(scaledFont(), hdc);
+    HGDIOBJ oldFont = SelectObject(hdc, m_font.get());
     wchar_t faceName[LF_FACESIZE];
     GetTextFace(hdc, LF_FACESIZE, faceName);
-    cairo_win32_scaled_font_done_font(scaledFont());
-    RestoreDC(hdc, -1);
+    SelectObject(hdc, oldFont);
     return faceName;
 }
 

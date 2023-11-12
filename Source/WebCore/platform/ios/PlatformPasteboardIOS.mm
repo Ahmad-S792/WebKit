@@ -30,6 +30,7 @@
 
 #import "ColorCocoa.h"
 #import "Image.h"
+#import "NSURLUtilities.h"
 #import "Pasteboard.h"
 #import "RuntimeApplicationChecks.h"
 #import "SharedBuffer.h"
@@ -50,7 +51,6 @@
 
 #define PASTEBOARD_SUPPORTS_ITEM_PROVIDERS (PLATFORM(IOS_FAMILY) && !(PLATFORM(WATCHOS) || PLATFORM(APPLETV)))
 #define PASTEBOARD_SUPPORTS_PRESENTATION_STYLE_AND_TEAM_DATA (PASTEBOARD_SUPPORTS_ITEM_PROVIDERS && !PLATFORM(MACCATALYST))
-#define NSURL_SUPPORTS_TITLE (!PLATFORM(MACCATALYST))
 
 namespace WebCore {
 
@@ -81,9 +81,7 @@ void PlatformPasteboard::getTypes(Vector<String>& types) const
 
 RefPtr<SharedBuffer> PlatformPasteboard::bufferForType(const String& type) const
 {
-    if (NSData *data = [m_pasteboard dataForPasteboardType:type])
-        return SharedBuffer::create(data);
-    return nullptr;
+    return readBuffer(0, type);
 }
 
 void PlatformPasteboard::performAsDataOwner(DataOwnerType type, Function<void()>&& actions)
@@ -211,18 +209,18 @@ std::optional<PasteboardItemInfo> PlatformPasteboard::informationForItemAtIndex(
 
         info.pathsForFileUpload.reserveInitialCapacity(urls.count);
         for (NSURL *url in urls)
-            info.pathsForFileUpload.uncheckedAppend(url.path);
+            info.pathsForFileUpload.append(url.path);
 
         info.platformTypesForFileUpload.reserveInitialCapacity(fileTypes.count);
         for (NSString *fileType in fileTypes)
-            info.platformTypesForFileUpload.uncheckedAppend(fileType);
+            info.platformTypesForFileUpload.append(fileType);
     } else {
         NSArray *fileTypes = itemProvider.web_fileUploadContentTypes;
         info.platformTypesForFileUpload.reserveInitialCapacity(fileTypes.count);
         info.pathsForFileUpload.reserveInitialCapacity(fileTypes.count);
         for (NSString *fileType in fileTypes) {
-            info.platformTypesForFileUpload.uncheckedAppend(fileType);
-            info.pathsForFileUpload.uncheckedAppend({ });
+            info.platformTypesForFileUpload.append(fileType);
+            info.pathsForFileUpload.append({ });
         }
     }
 
@@ -243,7 +241,7 @@ std::optional<PasteboardItemInfo> PlatformPasteboard::informationForItemAtIndex(
     NSArray<NSString *> *registeredTypeIdentifiers = itemProvider.registeredTypeIdentifiers;
     info.platformTypesByFidelity.reserveInitialCapacity(registeredTypeIdentifiers.count);
     for (NSString *typeIdentifier in registeredTypeIdentifiers) {
-        info.platformTypesByFidelity.uncheckedAppend(typeIdentifier);
+        info.platformTypesByFidelity.append(typeIdentifier);
         CFStringRef cfTypeIdentifier = (CFStringRef)typeIdentifier;
 ALLOW_DEPRECATED_DECLARATIONS_BEGIN
         if (!UTTypeIsDeclared(cfTypeIdentifier))
@@ -426,7 +424,12 @@ static void addRepresentationsForPlainText(WebItemProviderRegistrationInfoList *
     if (plainText.isEmpty())
         return;
 
+#if HAVE(NSURL_ENCODING_INVALID_CHARACTERS)
+    NSURL *platformURL = [NSURL URLWithString:plainText encodingInvalidCharacters:NO];
+#else
     NSURL *platformURL = [NSURL URLWithString:plainText];
+#endif
+
     if (URL(platformURL).isValid())
         [itemsToRegister addRepresentingObject:platformURL];
 
@@ -527,8 +530,8 @@ void PlatformPasteboard::write(const PasteboardImage& pasteboardImage)
     // the URL (i.e. the anchor's href attribute) to be a higher fidelity representation.
     auto& pasteboardURL = pasteboardImage.url;
     if (NSURL *nsURL = pasteboardURL.url) {
-#if NSURL_SUPPORTS_TITLE
-        nsURL._title = pasteboardURL.title.isEmpty() ? WTF::userVisibleString(pasteboardURL.url) : (NSString *)pasteboardURL.title;
+#if HAVE(NSURL_TITLE)
+        [nsURL _web_setTitle:pasteboardURL.title.isEmpty() ? WTF::userVisibleString(pasteboardURL.url) : (NSString *)pasteboardURL.title];
 #endif
         [representationsToRegister addRepresentingObject:nsURL];
     }
@@ -561,9 +564,9 @@ void PlatformPasteboard::write(const PasteboardURL& url)
     [representationsToRegister setPreferredPresentationStyle:WebPreferredPresentationStyleInline];
 
     if (NSURL *nsURL = url.url) {
-#if NSURL_SUPPORTS_TITLE
+#if HAVE(NSURL_TITLE)
         if (!url.title.isEmpty())
-            nsURL._title = url.title;
+            [nsURL _web_setTitle:url.title];
 #endif
         [representationsToRegister addRepresentingObject:nsURL];
         [representationsToRegister addRepresentingObject:(NSString *)url.url.string()];
@@ -736,17 +739,22 @@ Vector<String> PlatformPasteboard::allStringsForType(const String& type) const
     for (int index = 0; index < numberOfItems; ++index) {
         String value = readString(index, type);
         if (!value.isEmpty())
-            strings.uncheckedAppend(WTFMove(value));
+            strings.append(WTFMove(value));
     }
     return strings;
 }
 
+static bool isDisallowedTypeForReadBuffer(NSString *type)
+{
+    return [type isEqualToString:UIImagePboardType];
+}
+
 RefPtr<SharedBuffer> PlatformPasteboard::readBuffer(std::optional<size_t> index, const String& type) const
 {
-    if (!index)
-        return bufferForType(type);
+    if (isDisallowedTypeForReadBuffer(type))
+        return nullptr;
 
-    NSInteger integerIndex = *index;
+    NSInteger integerIndex = index.value_or(0);
     if (integerIndex < 0 || integerIndex >= [m_pasteboard numberOfItems])
         return nullptr;
 
@@ -756,7 +764,10 @@ RefPtr<SharedBuffer> PlatformPasteboard::readBuffer(std::optional<size_t> index,
 
     if (![pasteboardItem count])
         return nullptr;
-    return SharedBuffer::create([pasteboardItem objectAtIndex:0]);
+
+    if (NSData *data = [pasteboardItem firstObject])
+        return SharedBuffer::create(data);
+    return nullptr;
 }
 
 String PlatformPasteboard::readString(size_t index, const String& type) const
@@ -817,8 +828,8 @@ ALLOW_DEPRECATED_DECLARATIONS_END
     if (!allowReadingURLAtIndex(url.get(), index))
         return { };
 
-#if PASTEBOARD_SUPPORTS_ITEM_PROVIDERS && NSURL_SUPPORTS_TITLE
-    title = [url _title];
+#if PASTEBOARD_SUPPORTS_ITEM_PROVIDERS && HAVE(NSURL_TITLE)
+    title = [url _web_title];
 #else
     UNUSED_PARAM(title);
 #endif

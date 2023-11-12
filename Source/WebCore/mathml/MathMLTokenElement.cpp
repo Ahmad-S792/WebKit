@@ -42,9 +42,8 @@ WTF_MAKE_ISO_ALLOCATED_IMPL(MathMLTokenElement);
 using namespace MathMLNames;
 
 MathMLTokenElement::MathMLTokenElement(const QualifiedName& tagName, Document& document)
-    : MathMLPresentationElement(tagName, document)
+    : MathMLPresentationElement(tagName, document, CreateMathMLTokenElement)
 {
-    setHasCustomStyleResolveCallbacks();
 }
 
 Ref<MathMLTokenElement> MathMLTokenElement::create(const QualifiedName& tagName, Document& document)
@@ -72,18 +71,18 @@ RenderPtr<RenderElement> MathMLTokenElement::createElementRenderer(RenderStyle&&
 {
     ASSERT(hasTagName(MathMLNames::miTag) || hasTagName(MathMLNames::mnTag) || hasTagName(MathMLNames::msTag) || hasTagName(MathMLNames::mtextTag));
 
-    return createRenderer<RenderMathMLToken>(*this, WTFMove(style));
+    return createRenderer<RenderMathMLToken>(RenderObject::Type::MathMLToken, *this, WTFMove(style));
 }
 
 bool MathMLTokenElement::childShouldCreateRenderer(const Node& child) const
 {
     // The HTML specification defines <mi>, <mo>, <mn>, <ms> and <mtext> as insertion points.
-    return isPhrasingContent(child) && StyledElement::childShouldCreateRenderer(child);
+    return StyledElement::childShouldCreateRenderer(child);
 }
 
 std::optional<UChar32> MathMLTokenElement::convertToSingleCodePoint(StringView string)
 {
-    auto codePoints = stripLeadingAndTrailingHTTPSpaces(string).codePoints();
+    auto codePoints = string.trim(isASCIIWhitespaceWithoutFF<UChar>).codePoints();
     auto iterator = codePoints.begin();
     if (iterator == codePoints.end())
         return std::nullopt;

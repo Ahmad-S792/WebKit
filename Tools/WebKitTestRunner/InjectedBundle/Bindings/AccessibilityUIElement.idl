@@ -30,10 +30,6 @@
     readonly attribute DOMString domIdentifier;
     readonly attribute boolean isIsolatedObject;
 
-    // Document information
-    readonly attribute DOMString documentEncoding;
-    readonly attribute DOMString documentURI;
-
     // Element access.
     AccessibilityUIElement elementAtPoint(long x, long y);
     AccessibilityUIElement childAtIndex(unsigned long index);
@@ -61,8 +57,10 @@
     readonly attribute DOMString liveRegionRelevant;
     readonly attribute DOMString liveRegionStatus;
     readonly attribute DOMString orientation;
+    readonly attribute unsigned long numberOfCharacters;
     readonly attribute long insertionPointLineNumber;
     readonly attribute DOMString selectedTextRange;
+    readonly attribute DOMString textInputMarkedRange;
 
     DOMString stringDescriptionOfAttributeValue(DOMString attr);
     DOMString stringAttributeValue(DOMString attr);
@@ -159,6 +157,7 @@
     // Table info.
     DOMString attributesOfColumnHeaders();
     DOMString attributesOfRowHeaders();
+    object columns();
     DOMString attributesOfColumns();
     DOMString attributesOfRows();
     DOMString attributesOfVisibleCells();
@@ -180,6 +179,7 @@
     object columnHeaders();
     object rowHeaders();
     readonly attribute DOMString customContent;
+    object selectedCells();
 
     object detailsElements();
     object errorMessageElements();
@@ -230,15 +230,21 @@
 
     // Text markers.
     AccessibilityTextMarkerRange lineTextMarkerRangeForTextMarker(AccessibilityTextMarker textMarker);
+    AccessibilityTextMarkerRange rightLineTextMarkerRangeForTextMarker(AccessibilityTextMarker textMarker);
+    AccessibilityTextMarkerRange leftLineTextMarkerRangeForTextMarker(AccessibilityTextMarker textMarker);
+    AccessibilityTextMarker previousLineStartTextMarkerForTextMarker(AccessibilityTextMarker textMarker);
+    AccessibilityTextMarker nextLineEndTextMarkerForTextMarker(AccessibilityTextMarker textMarker);
     long lineIndexForTextMarker(AccessibilityTextMarker textMarker);
     AccessibilityTextMarkerRange misspellingTextMarkerRange(AccessibilityTextMarkerRange start, boolean forward);
     AccessibilityTextMarkerRange textMarkerRangeForElement(AccessibilityUIElement element);
     AccessibilityTextMarkerRange textMarkerRangeForMarkers(AccessibilityTextMarker startMarker, AccessibilityTextMarker endMarker);
+    AccessibilityTextMarkerRange textMarkerRangeForUnorderedMarkers(AccessibilityTextMarker startMarker, AccessibilityTextMarker endMarker);
     AccessibilityTextMarkerRange textMarkerRangeForRange(unsigned long location, unsigned long length);
     AccessibilityTextMarkerRange selectedTextMarkerRange();
     undefined resetSelectedTextMarkerRange();
     boolean replaceTextInRange(DOMString string, long position, long length);
     boolean insertText(DOMString text);
+    AccessibilityTextMarkerRange textInputMarkedTextMarkerRange();
     AccessibilityTextMarker startTextMarkerForTextMarkerRange(AccessibilityTextMarkerRange range);
     AccessibilityTextMarker endTextMarkerForTextMarkerRange(AccessibilityTextMarkerRange range);
     AccessibilityTextMarker endTextMarkerForBounds(long x, long y, long width, long height);
@@ -255,6 +261,7 @@
     boolean attributedStringForTextMarkerRangeContainsAttribute(DOMString attr, AccessibilityTextMarkerRange range);
     long indexForTextMarker(AccessibilityTextMarker marker);
     boolean isTextMarkerValid(AccessibilityTextMarker marker);
+    boolean isTextMarkerNull(AccessibilityTextMarker marker);
     AccessibilityTextMarker textMarkerForIndex(long textIndex);
     readonly attribute AccessibilityTextMarker startTextMarker;
     readonly attribute AccessibilityTextMarker endTextMarker;
@@ -285,7 +292,6 @@
     readonly attribute long elementTextPosition;
     readonly attribute long elementTextLength;
     readonly attribute DOMString stringForSelection;
-    object elementsForRange(unsigned long location, unsigned long length);
     undefined increaseTextSelection();
     undefined decreaseTextSelection();
     AccessibilityUIElement linkedElement();
@@ -295,6 +301,7 @@
     readonly attribute boolean isSearchField;
     readonly attribute boolean isTextArea;
     readonly attribute boolean isMarkAnnotation;
+    readonly attribute boolean supportsExpanded;
 
     readonly attribute boolean hasDocumentRoleAncestor;
     readonly attribute boolean hasWebApplicationAncestor;
@@ -302,6 +309,7 @@
     readonly attribute boolean isInDescriptionListTerm;
 
     readonly attribute boolean hasContainedByFieldsetTrait;
+    readonly attribute boolean hasTextEntryTrait;
     AccessibilityUIElement fieldsetAncestorElement();
     AccessibilityUIElement focusableAncestor();
     AccessibilityUIElement editableAncestor();

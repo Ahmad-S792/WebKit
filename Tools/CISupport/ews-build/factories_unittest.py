@@ -21,7 +21,7 @@
 # OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-import loadConfig
+from . import loadConfig
 import os
 import unittest
 
@@ -92,7 +92,7 @@ class TestExpectedBuildSteps(unittest.TestCase):
             'layout-tests',
             'set-build-summary'
         ],
-        'iOS-16-Build-EWS': [
+        'iOS-17-Build-EWS': [
             'configure-build',
             'validate-change',
             'configuration',
@@ -107,7 +107,7 @@ class TestExpectedBuildSteps(unittest.TestCase):
             'validate-change',
             'compile-webkit'
         ],
-        'iOS-16-Simulator-Build-EWS': [
+        'iOS-17-Simulator-Build-EWS': [
             'configure-build',
             'validate-change',
             'configuration',
@@ -122,7 +122,7 @@ class TestExpectedBuildSteps(unittest.TestCase):
             'validate-change',
             'compile-webkit'
         ],
-        'iOS-16-Simulator-WK2-Tests-EWS': [
+        'iOS-17-Simulator-WK2-Tests-EWS': [
             'configure-build',
             'validate-change',
             'configuration',
@@ -143,7 +143,28 @@ class TestExpectedBuildSteps(unittest.TestCase):
             'trigger-crash-log-submission',
             'set-build-summary'
         ],
-        'macOS-AppleSilicon-Ventura-Debug-Build-EWS': [
+        'iOS-17-Simulator-WPT-WK2-Tests-EWS': [
+            'configure-build',
+            'validate-change',
+            'configuration',
+            'clean-up-git-repo',
+            'checkout-source',
+            'fetch-branch-references',
+            'checkout-specific-revision',
+            'show-identifier',
+            'apply-patch',
+            'checkout-pull-request',
+            'download-built-product',
+            'extract-built-product',
+            'wait-for-crash-collection',
+            'kill-old-processes',
+            'find-modified-layout-tests',
+            'run-layout-tests-in-stress-mode',
+            'layout-tests',
+            'trigger-crash-log-submission',
+            'set-build-summary'
+        ],
+        'macOS-AppleSilicon-Sonoma-Debug-Build-EWS': [
             'configure-build',
             'check-change-relevance',
             'validate-change',
@@ -159,7 +180,7 @@ class TestExpectedBuildSteps(unittest.TestCase):
             'validate-change',
             'compile-webkit'
         ],
-        'macOS-AppleSilicon-Ventura-Debug-WK2-Tests-EWS': [
+        'macOS-AppleSilicon-Sonoma-Debug-WK2-Tests-EWS': [
             'configure-build',
             'validate-change',
             'configuration',
@@ -180,7 +201,7 @@ class TestExpectedBuildSteps(unittest.TestCase):
             'trigger-crash-log-submission',
             'set-build-summary'
         ],
-        'macOS-BigSur-Release-Build-EWS': [
+        'macOS-Monterey-Release-Build-EWS': [
             'configure-build',
             'validate-change',
             'configuration',
@@ -195,7 +216,7 @@ class TestExpectedBuildSteps(unittest.TestCase):
             'validate-change',
             'compile-webkit'
         ],
-        'macOS-BigSur-Release-WK1-Tests-EWS': [
+        'macOS-Monterey-Release-WK1-Tests-EWS': [
             'configure-build',
             'check-change-relevance',
             'validate-change',
@@ -217,7 +238,7 @@ class TestExpectedBuildSteps(unittest.TestCase):
             'trigger-crash-log-submission',
             'set-build-summary'
         ],
-        'macOS-BigSur-Release-WK2-Tests-EWS': [
+        'macOS-Monterey-Release-WK2-Tests-EWS': [
             'configure-build',
             'validate-change',
             'configuration',
@@ -258,7 +279,7 @@ class TestExpectedBuildSteps(unittest.TestCase):
             'trigger-crash-log-submission',
             'set-build-summary'
         ],
-        'watchOS-9-Build-EWS': [
+        'watchOS-10-Build-EWS': [
             'configure-build',
             'validate-change',
             'configuration',
@@ -273,7 +294,7 @@ class TestExpectedBuildSteps(unittest.TestCase):
             'validate-change',
             'compile-webkit'
         ],
-        'watchOS-9-Simulator-Build-EWS': [
+        'watchOS-10-Simulator-Build-EWS': [
             'configure-build',
             'validate-change',
             'configuration',
@@ -288,7 +309,7 @@ class TestExpectedBuildSteps(unittest.TestCase):
             'validate-change',
             'compile-webkit'
         ],
-        'tvOS-16-Build-EWS': [
+        'tvOS-17-Build-EWS': [
             'configure-build',
             'validate-change',
             'configuration',
@@ -303,7 +324,7 @@ class TestExpectedBuildSteps(unittest.TestCase):
             'validate-change',
             'compile-webkit'
         ],
-        'tvOS-16-Simulator-Build-EWS': [
+        'tvOS-17-Simulator-Build-EWS': [
             'configure-build',
             'validate-change',
             'configuration',
@@ -333,7 +354,7 @@ class TestExpectedBuildSteps(unittest.TestCase):
             'validate-change',
             'compile-webkit'
         ],
-        'WPE-EWS': [
+        'WPE-Build-EWS': [
             'configure-build',
             'validate-change',
             'configuration',
@@ -348,6 +369,26 @@ class TestExpectedBuildSteps(unittest.TestCase):
             'jhbuild',
             'validate-change',
             'compile-webkit'
+        ],
+        'WPE-WK2-Tests-EWS': [
+            'configure-build',
+            'validate-change',
+            'configuration',
+            'clean-up-git-repo',
+            'checkout-source',
+            'fetch-branch-references',
+            'checkout-specific-revision',
+            'show-identifier',
+            'apply-patch',
+            'checkout-pull-request',
+            'jhbuild',
+            'download-built-product',
+            'extract-built-product',
+            'kill-old-processes',
+            'find-modified-layout-tests',
+            'run-layout-tests-in-stress-mode',
+            'layout-tests',
+            'set-build-summary'
         ],
         'JSC-Tests-arm64-EWS': [
             'configure-build',
@@ -381,39 +422,6 @@ class TestExpectedBuildSteps(unittest.TestCase):
             'kill-old-processes',
             'validate-change',
             'compile-jsc',
-            'jscore-test'
-        ],
-        'JSC-MIPSEL-32bits-Build-EWS': [
-            'configure-build',
-            'check-change-relevance',
-            'validate-change',
-            'configuration',
-            'clean-up-git-repo',
-            'checkout-source',
-            'fetch-branch-references',
-            'checkout-specific-revision',
-            'show-identifier',
-            'apply-patch',
-            'checkout-pull-request',
-            'kill-old-processes',
-            'validate-change',
-            'compile-jsc'
-        ],
-        'JSC-MIPSEL-32bits-Tests-EWS': [
-            'configure-build',
-            'check-change-relevance',
-            'validate-change',
-            'configuration',
-            'clean-up-git-repo',
-            'checkout-source',
-            'fetch-branch-references',
-            'checkout-specific-revision',
-            'show-identifier',
-            'apply-patch',
-            'checkout-pull-request',
-            'download-built-product',
-            'extract-built-product',
-            'kill-old-processes',
             'jscore-test'
         ],
         'JSC-ARMv7-32bits-Build-EWS': [
@@ -560,6 +568,23 @@ class TestExpectedBuildSteps(unittest.TestCase):
             'kill-old-processes',
             'run-api-tests'
         ],
+        'API-Tests-WPE-EWS': [
+            'configure-build',
+            'validate-change',
+            'configuration',
+            'clean-up-git-repo',
+            'checkout-source',
+            'fetch-branch-references',
+            'checkout-specific-revision',
+            'show-identifier',
+            'apply-patch',
+            'checkout-pull-request',
+            'jhbuild',
+            'download-built-product',
+            'extract-built-product',
+            'kill-old-processes',
+            'run-api-tests'
+        ],
         'Services-EWS': [
             'configure-build',
             'check-change-relevance',
@@ -589,6 +614,7 @@ class TestExpectedBuildSteps(unittest.TestCase):
             'fetch-branch-references',
             'update-working-directory',
             'show-identifier',
+            'install-hooks',
             'commit-patch',
             'validate-squashed',
             'add-reviewer-to-commit-message',
@@ -607,6 +633,7 @@ class TestExpectedBuildSteps(unittest.TestCase):
         'Merge-Queue': [
             'configure-build',
             'validate-change',
+            'determine-label-owner',
             'validate-commiter-and-reviewer',
             'configuration',
             'clean-up-git-repo',
@@ -615,6 +642,7 @@ class TestExpectedBuildSteps(unittest.TestCase):
             'map-branch-alias',
             'update-working-directory',
             'show-identifier',
+            'install-hooks',
             'checkout-pull-request',
             'validate-remote',
             'validate-squashed',
@@ -636,6 +664,7 @@ class TestExpectedBuildSteps(unittest.TestCase):
         'Unsafe-Merge-Queue': [
             'configure-build',
             'validate-change',
+            'determine-label-owner',
             'validate-commiter-and-reviewer',
             'configuration',
             'clean-up-git-repo',
@@ -644,17 +673,23 @@ class TestExpectedBuildSteps(unittest.TestCase):
             'map-branch-alias',
             'update-working-directory',
             'show-identifier',
+            'install-hooks',
             'checkout-pull-request',
             'validate-remote',
             'validate-squashed',
             'add-reviewer-to-commit-message',
             'validate-commit-message',
-            'validate-change',
             'canonicalize-commit',
+            'validate-change',
             'push-pull-request-branch',
             'update-pull-request',
             'push-commit-to-webkit-repo',
             'set-build-summary'
+        ],
+        'Safe-Merge-Queue': [
+            'retrieve-pr-data-from-label',
+            'retrieve-pr-data-from-label',
+            'retrieve-pr-data-from-label'
         ],
     }
 

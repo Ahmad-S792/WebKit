@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2013-2019 Apple Inc. All rights reserved.
+ * Copyright (C) 2013-2023 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -50,9 +50,9 @@ static CCCryptorStatus getPublicKeyComponents(const PlatformRSAKeyContainer& rsa
 {
     ASSERT(CCRSAGetKeyType(rsaKey.get()) == ccRSAKeyPublic || CCRSAGetKeyType(rsaKey.get()) == ccRSAKeyPrivate);
     bool keyIsPublic = CCRSAGetKeyType(rsaKey.get()) == ccRSAKeyPublic;
-    ALLOW_DEPRECATED_DECLARATIONS_BEGIN
+ALLOW_DEPRECATED_DECLARATIONS_BEGIN
     PlatformRSAKeyContainer publicKeyFromPrivateKey(keyIsPublic ? nullptr : CCRSACryptorGetPublicKeyFromPrivateKey(rsaKey.get()));
-    ALLOW_DEPRECATED_DECLARATIONS_END
+ALLOW_DEPRECATED_DECLARATIONS_END
 
     modulus.resize(16384);
     size_t modulusLength = modulus.size();
@@ -325,7 +325,7 @@ RefPtr<CryptoKeyRSA> CryptoKeyRSA::importSpki(CryptoAlgorithmIdentifier identifi
 ExceptionOr<Vector<uint8_t>> CryptoKeyRSA::exportSpki() const
 {
     if (type() != CryptoKeyType::Public)
-        return Exception { InvalidAccessError };
+        return Exception { ExceptionCode::InvalidAccessError };
 
     // The current SecLibrary cannot output a valid SPKI format binary. Hence, we need the following hack.
     // This hack can be removed when <rdar://problem/29523286> is resolved.
@@ -334,7 +334,7 @@ ExceptionOr<Vector<uint8_t>> CryptoKeyRSA::exportSpki() const
     Vector<uint8_t> keyBytes(keySizeInBits() / 4);
     size_t keySize = keyBytes.size();
     if (CCRSACryptorExport(platformKey(), keyBytes.data(), &keySize))
-        return Exception { OperationError };
+        return Exception { ExceptionCode::OperationError };
     keyBytes.shrink(keySize);
 
     // RSAOIDHeader + BitStringMark + Length + keySize + InitialOctet
@@ -382,7 +382,7 @@ RefPtr<CryptoKeyRSA> CryptoKeyRSA::importPkcs8(CryptoAlgorithmIdentifier identif
 ExceptionOr<Vector<uint8_t>> CryptoKeyRSA::exportPkcs8() const
 {
     if (type() != CryptoKeyType::Private)
-        return Exception { InvalidAccessError };
+        return Exception { ExceptionCode::InvalidAccessError };
 
     // The current SecLibrary cannot output a valid PKCS8 format binary. Hence, we need the following hack.
     // This hack can be removed when <rdar://problem/29523286> is resolved.
@@ -393,7 +393,7 @@ ExceptionOr<Vector<uint8_t>> CryptoKeyRSA::exportPkcs8() const
     Vector<uint8_t> keyBytes(keySizeInBits());
     size_t keySize = keyBytes.size();
     if (CCRSACryptorExport(platformKey(), keyBytes.data(), &keySize))
-        return Exception { OperationError };
+        return Exception { ExceptionCode::OperationError };
     keyBytes.shrink(keySize);
 
     // Version + RSAOIDHeader + OctetStringMark + Length + keySize

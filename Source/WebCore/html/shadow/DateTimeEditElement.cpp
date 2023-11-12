@@ -38,6 +38,7 @@
 #include "Event.h"
 #include "HTMLNames.h"
 #include "PlatformLocale.h"
+#include "RenderElement.h"
 #include "ScriptDisallowedScope.h"
 #include "ShadowPseudoIds.h"
 #include "Text.h"
@@ -362,6 +363,13 @@ bool DateTimeEditElement::isFieldOwnerReadOnly() const
     return m_editControlOwner && m_editControlOwner->isEditControlOwnerReadOnly();
 }
 
+bool DateTimeEditElement::isFieldOwnerHorizontal() const
+{
+    if (CheckedPtr renderer = fieldsWrapperElement().renderer())
+        return renderer->isHorizontalWritingMode();
+    return true;
+}
+
 AtomString DateTimeEditElement::localeIdentifier() const
 {
     return m_editControlOwner ? m_editControlOwner->localeIdentifier() : nullAtom();
@@ -402,6 +410,15 @@ DateTimeFieldsState DateTimeEditElement::valueAsDateTimeFieldsState() const
     for (auto& field : m_fields)
         field->populateDateTimeFieldsState(dateTimeFieldsState);
     return dateTimeFieldsState;
+}
+
+bool DateTimeEditElement::editableFieldsHaveValues() const
+{
+    for (auto& field : m_fields) {
+        if (field->hasValue())
+            return true;
+    }
+    return false;
 }
 
 } // namespace WebCore

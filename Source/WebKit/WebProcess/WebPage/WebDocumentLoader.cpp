@@ -27,26 +27,23 @@
 #include "WebDocumentLoader.h"
 
 #include "WebFrame.h"
-
 #include <WebCore/FrameDestructionObserverInlines.h>
+#include <WebCore/FrameLoader.h>
 
 namespace WebKit {
 using namespace WebCore;
 
 WebDocumentLoader::WebDocumentLoader(const ResourceRequest& request, const SubstituteData& substituteData)
     : DocumentLoader(request, substituteData)
-    , m_navigationID(0)
 {
 }
 
-void WebDocumentLoader::detachFromFrame()
+void WebDocumentLoader::detachFromFrame(LoadWillContinueInAnotherProcess loadWillContinueInAnotherProcess)
 {
-    if (m_navigationID)
-        WebFrame::fromCoreFrame(*frame())->documentLoaderDetached(m_navigationID);
+    if (auto navigationID = std::exchange(m_navigationID, 0))
+        WebFrame::fromCoreFrame(*frame())->documentLoaderDetached(navigationID, loadWillContinueInAnotherProcess == LoadWillContinueInAnotherProcess::Yes);
 
-    m_navigationID = 0;
-
-    DocumentLoader::detachFromFrame();
+    DocumentLoader::detachFromFrame(loadWillContinueInAnotherProcess);
 }
 
 void WebDocumentLoader::setNavigationID(uint64_t navigationID)
@@ -54,6 +51,17 @@ void WebDocumentLoader::setNavigationID(uint64_t navigationID)
     ASSERT(navigationID);
 
     m_navigationID = navigationID;
+}
+
+RefPtr<WebDocumentLoader> WebDocumentLoader::loaderForWebsitePolicies(const LocalFrame& frame, CanIncludeCurrentDocumentLoader canIncludeCurrentDocumentLoader)
+{
+    Ref protectedFrame { frame };
+    RefPtr loader = static_cast<WebDocumentLoader*>(protectedFrame->loader().policyDocumentLoader());
+    if (!loader)
+        loader = static_cast<WebDocumentLoader*>(protectedFrame->loader().provisionalDocumentLoader());
+    if (!loader && canIncludeCurrentDocumentLoader == CanIncludeCurrentDocumentLoader::Yes)
+        loader = static_cast<WebDocumentLoader*>(protectedFrame->loader().documentLoader());
+    return loader;
 }
 
 } // namespace WebKit

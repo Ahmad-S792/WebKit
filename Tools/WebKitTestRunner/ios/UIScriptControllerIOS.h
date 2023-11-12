@@ -31,6 +31,9 @@
 #import <wtf/BlockPtr.h>
 
 typedef struct CGRect CGRect;
+OBJC_CLASS UITextSelectionDisplayInteraction;
+
+@protocol UICoordinateSpace;
 
 namespace WebCore {
 class FloatPoint;
@@ -111,11 +114,12 @@ private:
     std::optional<bool> stableStateOverride() const override;
     void setStableStateOverride(std::optional<bool> overrideValue) override;
     JSObjectRef contentVisibleRect() const override;
-    JSObjectRef textSelectionRangeRects() const override;
-    JSObjectRef textSelectionCaretRect() const override;
     JSObjectRef selectionStartGrabberViewRect() const override;
     JSObjectRef selectionEndGrabberViewRect() const override;
+    JSObjectRef selectionEndGrabberViewShapePathDescription() const override;
     JSObjectRef selectionCaretViewRect() const override;
+    JSObjectRef selectionCaretViewRectInGlobalCoordinates() const override;
+    JSObjectRef selectionCaretViewRect(id<UICoordinateSpace>) const;
     JSObjectRef selectionRangeViewRects() const override;
     JSObjectRef inputViewBounds() const override;
     JSRetainPtr<JSStringRef> scrollingTreeAsText() const override;
@@ -124,6 +128,7 @@ private:
     void simulateRotation(DeviceOrientation*, JSValueRef) override;
     void simulateRotationLikeSafari(DeviceOrientation*, JSValueRef) override;
     bool isShowingPopover() const override;
+    bool isShowingFormValidationBubble() const override;
     JSObjectRef rectForMenuAction(JSStringRef) const override;
     JSObjectRef contextMenuRect() const override;
     JSObjectRef menuRect() const override;
@@ -137,6 +142,7 @@ private:
     void setSelectedColorForColorPicker(double, double, double) override;
     void setKeyboardInputModeIdentifier(JSStringRef) override;
     void toggleCapsLock(JSValueRef) override;
+    unsigned keyboardWillHideCount() const override;
     bool keyboardIsAutomaticallyShifted() const override;
     bool isAnimatingDragCancel() const override;
     JSRetainPtr<JSStringRef> selectionCaretBackgroundColor() const override;
@@ -148,8 +154,9 @@ private:
     void setAllowsViewportShrinkToFit(bool) override;
     void copyText(JSStringRef) override;
     void installTapGestureOnWindow(JSValueRef) override;
-    void setSpellCheckerResults(JSValueRef) override { }
     void setScrollViewKeyboardAvoidanceEnabled(bool) override;
+
+    bool isZoomingOrScrolling() const final;
 
     bool mayContainEditableElementsInRect(unsigned x, unsigned y, unsigned width, unsigned height) override;
 
@@ -183,6 +190,10 @@ private:
     void resignFirstResponder() override;
 
     void simulateRotation(DeviceOrientation, JSValueRef callback);
+
+#if HAVE(UI_TEXT_SELECTION_DISPLAY_INTERACTION)
+    UITextSelectionDisplayInteraction *textSelectionDisplayInteraction() const;
+#endif
 };
 
 }

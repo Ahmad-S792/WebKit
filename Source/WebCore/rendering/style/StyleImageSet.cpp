@@ -25,21 +25,26 @@
 #include "config.h"
 #include "StyleImageSet.h"
 
+#include "CSSImageSetOptionValue.h"
 #include "CSSImageSetValue.h"
 #include "CSSPrimitiveValue.h"
 #include "Document.h"
+#include "MIMETypeRegistry.h"
 #include "Page.h"
+#include "StyleInvalidImage.h"
 
 namespace WebCore {
 
-Ref<StyleImageSet> StyleImageSet::create(Vector<ImageWithScale> images)
-{ 
-    return adoptRef(*new StyleImageSet(WTFMove(images)));
+Ref<StyleImageSet> StyleImageSet::create(Vector<ImageWithScale>&& images, Vector<size_t>&& sortedIndices)
+{
+    ASSERT(images.size() == sortedIndices.size());
+    return adoptRef(*new StyleImageSet(WTFMove(images), WTFMove(sortedIndices)));
 }
 
-StyleImageSet::StyleImageSet(Vector<ImageWithScale>&& images)
+StyleImageSet::StyleImageSet(Vector<ImageWithScale>&& images, Vector<size_t>&& sortedIndices)
     : StyleMultiImage { Type::ImageSet }
     , m_images { WTFMove(images) }
+    , m_sortedIndices { WTFMove(sortedIndices) }
 {
 }
 
@@ -57,14 +62,10 @@ bool StyleImageSet::equals(const StyleImageSet& other) const
 
 Ref<CSSValue> StyleImageSet::computedStyleValue(const RenderStyle& style) const
 {
-    auto result = CSSImageSetValue::create();
-
-    for (auto& image : m_images) {
-        result->append(image.image->computedStyleValue(style));
-        result->append(CSSPrimitiveValue::create(image.scaleFactor, CSSUnitType::CSS_DPPX));
-    }
-
-    return result;
+    auto builder = WTF::map<CSSValueListBuilderInlineCapacity>(m_images, [&](auto& image) -> Ref<CSSValue> {
+        return CSSImageSetOptionValue::create(image.image->computedStyleValue(style), CSSPrimitiveValue::create(image.scaleFactor, CSSUnitType::CSS_DPPX), image.mimeType);
+    });
+    return CSSImageSetValue::create(WTFMove(builder));
 }
 
 ImageWithScale StyleImageSet::selectBestFitImage(const Document& document)
@@ -82,11 +83,22 @@ ImageWithScale StyleImageSet::selectBestFitImage(const Document& document)
 ImageWithScale StyleImageSet::bestImageForScaleFactor()
 {
     ImageWithScale result;
-    for (auto& image : m_images) {
+    for (auto index : m_sortedIndices) {
+        const auto& image = m_images[index];
+        if (!image.mimeType.isNull() && !MIMETypeRegistry::isSupportedImageMIMEType(image.mimeType))
+            continue;
+        if (!result.image->isInvalidImage() && result.scaleFactor == image.scaleFactor)
+            continue;
         if (image.scaleFactor >= m_deviceScaleFactor)
             return image;
+
         result = image;
     }
+
+    ASSERT(result.scaleFactor >= 0);
+    if (result.image->isInvalidImage() || !result.scaleFactor)
+        result = ImageWithScale { StyleInvalidImage::create(), 1, String() };
+
     return result;
 }
 

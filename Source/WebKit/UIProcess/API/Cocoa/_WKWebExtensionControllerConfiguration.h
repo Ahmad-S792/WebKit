@@ -29,18 +29,19 @@
 
 NS_ASSUME_NONNULL_BEGIN
 
+@class WKWebViewConfiguration;
 @class _WKWebExtensionController;
 
 /*!
  @abstract A `WKWebExtensionControllerConfiguration` object with which to initialize a web extension controller.
  @discussion Contains properties used to configure a @link WKWebExtensionController @/link.
 */
-WK_CLASS_AVAILABLE(macos(WK_MAC_TBA), ios(WK_IOS_TBA))
+WK_CLASS_AVAILABLE(macos(13.3), ios(16.4))
 NS_SWIFT_NAME(_WKWebExtensionController.Configuration)
 @interface _WKWebExtensionControllerConfiguration : NSObject <NSSecureCoding, NSCopying>
 
-- (instancetype)init NS_UNAVAILABLE;
 + (instancetype)new NS_UNAVAILABLE;
+- (instancetype)init NS_UNAVAILABLE;
 
 /*!
  @abstract Returns a new default configuration that is persistent and not unique.
@@ -69,8 +70,11 @@ NS_SWIFT_NAME(_WKWebExtensionController.Configuration)
 /*! @abstract A Boolean value indicating if this context will write data to the the file system. */
 @property (nonatomic, readonly, getter=isPersistent) BOOL persistent;
 
-/*! @abstract A unique identifier used for persistent configuration storage, or `nil` when it is the default or not persistent. */
-@property (nonatomic, nullable, readonly) NSUUID *identifier;
+/*! @abstract The unique identifier used for persistent configuration storage, or `nil` when it is the default or not persistent. */
+@property (nonatomic, nullable, readonly, copy) NSUUID *identifier;
+
+/*! @abstract The web view configuration to be used as a basis for configuring web views in extension contexts. */
+@property (nonatomic, null_resettable, copy) WKWebViewConfiguration *webViewConfiguration;
 
 @end
 

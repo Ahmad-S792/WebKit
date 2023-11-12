@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2004-2020 Apple Inc.  All rights reserved.
+ * Copyright (C) 2004-2023 Apple Inc.  All rights reserved.
  * Copyright (C) 2007-2008 Torch Mobile, Inc.
  * Copyright (C) 2012 Company 100 Inc.
  *
@@ -28,51 +28,43 @@
 #pragma once
 
 #include "Color.h"
+#include "ImagePaintingOptions.h"
 #include "IntSize.h"
 #include "PlatformImage.h"
-#include "RenderingResourceIdentifier.h"
-#include <wtf/HashMap.h>
-#include <wtf/HashSet.h>
-#include <wtf/RefCounted.h>
-#include <wtf/WeakPtr.h>
+#include "RenderingResource.h"
 
 namespace WebCore {
 
-class NativeImage : public ThreadSafeRefCounted<NativeImage>, public CanMakeWeakPtr<NativeImage> {
+class GraphicsContext;
+
+class NativeImage final : public RenderingResource {
     WTF_MAKE_FAST_ALLOCATED;
 public:
-    class Observer {
-    public:
-        virtual ~Observer() = default;
-        virtual void releaseNativeImage(RenderingResourceIdentifier) = 0;
-    protected:
-        Observer() = default;
-    };
-
     static WEBCORE_EXPORT RefPtr<NativeImage> create(PlatformImagePtr&&, RenderingResourceIdentifier = RenderingResourceIdentifier::generate());
+    // Creates a NativeImage that is intended to be drawn once or only few times. Signals the platform to avoid generating any caches for the image.
+    static WEBCORE_EXPORT RefPtr<NativeImage> createTransient(PlatformImagePtr&&, RenderingResourceIdentifier = RenderingResourceIdentifier::generate());
 
-    WEBCORE_EXPORT ~NativeImage();
-
+    WEBCORE_EXPORT void setPlatformImage(PlatformImagePtr&&);
     const PlatformImagePtr& platformImage() const { return m_platformImage; }
-    RenderingResourceIdentifier renderingResourceIdentifier() const { return m_renderingResourceIdentifier; }
 
     WEBCORE_EXPORT IntSize size() const;
     bool hasAlpha() const;
     Color singlePixelSolidColor() const;
     WEBCORE_EXPORT DestinationColorSpace colorSpace() const;
 
-    void addObserver(Observer& observer) { m_observers.add(&observer); }
-    void removeObserver(Observer& observer) { m_observers.remove(&observer); }
-    
+    void draw(GraphicsContext&, const FloatSize& imageSize, const FloatRect& destRect, const FloatRect& srcRect, ImagePaintingOptions);
     void clearSubimages();
 
 private:
-    NativeImage(PlatformImagePtr&&);
     NativeImage(PlatformImagePtr&&, RenderingResourceIdentifier);
 
+    bool isNativeImage() const final { return true; }
+
     PlatformImagePtr m_platformImage;
-    HashSet<Observer*> m_observers;
-    RenderingResourceIdentifier m_renderingResourceIdentifier;
 };
 
 } // namespace WebCore
+
+SPECIALIZE_TYPE_TRAITS_BEGIN(WebCore::NativeImage)
+    static bool isType(const WebCore::RenderingResource& renderingResource) { return renderingResource.isNativeImage(); }
+SPECIALIZE_TYPE_TRAITS_END()

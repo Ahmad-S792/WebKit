@@ -29,14 +29,14 @@
 #include "CSSPropertyAnimation.h"
 #include "CSSPropertyParser.h"
 #include "CSSSelector.h"
-#include "CSSValueList.h"
 #include "CSSValuePool.h"
 #include "ComposedTreeAncestorIterator.h"
 #include "ComputedStyleExtractor.h"
 #include "DeprecatedCSSOMValue.h"
 #include "RenderBox.h"
 #include "RenderBoxModelObject.h"
-#include "RenderStyle.h"
+#include "RenderStyleInlines.h"
+#include "ShorthandSerializer.h"
 #include "StylePropertiesInlines.h"
 #include "StylePropertyShorthand.h"
 #include "StyleScope.h"
@@ -65,18 +65,6 @@ Ref<CSSComputedStyleDeclaration> CSSComputedStyleDeclaration::create(Element& el
     return adoptRef(*new CSSComputedStyleDeclaration(element, allowVisitedStyle, pseudoElementName));
 }
 
-void CSSComputedStyleDeclaration::ref()
-{
-    ++m_refCount;
-}
-
-void CSSComputedStyleDeclaration::deref()
-{
-    ASSERT(m_refCount);
-    if (!--m_refCount)
-        delete this;
-}
-
 String CSSComputedStyleDeclaration::cssText() const
 {
     return emptyString();
@@ -84,7 +72,7 @@ String CSSComputedStyleDeclaration::cssText() const
 
 ExceptionOr<void> CSSComputedStyleDeclaration::setCssText(const String&)
 {
-    return Exception { NoModificationAllowedError };
+    return Exception { ExceptionCode::NoModificationAllowedError };
 }
 
 // In CSS 2.1 the returned object should actually contain the "used values"
@@ -96,6 +84,8 @@ ExceptionOr<void> CSSComputedStyleDeclaration::setCssText(const String&)
 // https://developer.mozilla.org/en-US/docs/Web/API/Window/getComputedStyle#Notes
 RefPtr<CSSValue> CSSComputedStyleDeclaration::getPropertyCSSValue(CSSPropertyID propertyID, ComputedStyleExtractor::UpdateLayout updateLayout) const
 {
+    if (!isExposed(propertyID, settings()))
+        return nullptr;
     return ComputedStyleExtractor(m_element.ptr(), m_allowVisitedStyle, m_pseudoElementSpecifier).propertyValue(propertyID, updateLayout);
 }
 
@@ -116,6 +106,20 @@ const FixedVector<CSSPropertyID>& CSSComputedStyleDeclaration::exposedComputedCS
 
 String CSSComputedStyleDeclaration::getPropertyValue(CSSPropertyID propertyID) const
 {
+    auto canUseShorthandSerializerForPropertyValue = [&]() {
+        switch (propertyID) {
+        case CSSPropertyGridArea:
+        case CSSPropertyGridColumn:
+        case CSSPropertyGridRow:
+        case CSSPropertyGridTemplate:
+            return true;
+        default:
+            return false;
+        }
+    };
+    if (isShorthand(propertyID) && canUseShorthandSerializerForPropertyValue())
+        return serializeShorthandValue({ m_element.ptr(), m_allowVisitedStyle, m_pseudoElementSpecifier }, propertyID);
+
     auto value = getPropertyCSSValue(propertyID);
     if (!value)
         return emptyString(); // FIXME: Should this be null instead, as it is in StyleProperties::getPropertyValue?
@@ -147,14 +151,15 @@ String CSSComputedStyleDeclaration::item(unsigned i) const
 
     const auto& inheritedCustomProperties = style->inheritedCustomProperties();
 
-    if (i < exposedComputedCSSPropertyIDs().size() + inheritedCustomProperties.size()) {
-        auto results = copyToVector(inheritedCustomProperties.keys());
-        return results.at(i - exposedComputedCSSPropertyIDs().size());
-    }
+    // FIXME: findKeyAtIndex does a linear search for the property name, so if
+    // we are called in a loop over all item indexes, we'll spend quadratic time
+    // searching for keys.
+
+    if (i < exposedComputedCSSPropertyIDs().size() + inheritedCustomProperties.size())
+        return inheritedCustomProperties.findKeyAtIndex(i - exposedComputedCSSPropertyIDs().size());
 
     const auto& nonInheritedCustomProperties = style->nonInheritedCustomProperties();
-    auto results = copyToVector(nonInheritedCustomProperties.keys());
-    return results.at(i - inheritedCustomProperties.size() - exposedComputedCSSPropertyIDs().size());
+    return nonInheritedCustomProperties.findKeyAtIndex(i - inheritedCustomProperties.size() - exposedComputedCSSPropertyIDs().size());
 }
 
 CSSRule* CSSComputedStyleDeclaration::parentRule() const
@@ -214,12 +219,12 @@ bool CSSComputedStyleDeclaration::isPropertyImplicit(const String&)
 
 ExceptionOr<void> CSSComputedStyleDeclaration::setProperty(const String&, const String&, const String&)
 {
-    return Exception { NoModificationAllowedError };
+    return Exception { ExceptionCode::NoModificationAllowedError };
 }
 
 ExceptionOr<String> CSSComputedStyleDeclaration::removeProperty(const String&)
 {
-    return Exception { NoModificationAllowedError };
+    return Exception { ExceptionCode::NoModificationAllowedError };
 }
     
 String CSSComputedStyleDeclaration::getPropertyValueInternal(CSSPropertyID propertyID)
@@ -229,7 +234,7 @@ String CSSComputedStyleDeclaration::getPropertyValueInternal(CSSPropertyID prope
 
 ExceptionOr<void> CSSComputedStyleDeclaration::setPropertyInternal(CSSPropertyID, const String&, bool)
 {
-    return Exception { NoModificationAllowedError };
+    return Exception { ExceptionCode::NoModificationAllowedError };
 }
 
 } // namespace WebCore

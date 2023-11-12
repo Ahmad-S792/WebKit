@@ -1,6 +1,6 @@
 /*
  *  Copyright (C) 1999-2000 Harri Porten (porten@kde.org)
- *  Copyright (C) 2003-2021 Apple Inc. All rights reserved.
+ *  Copyright (C) 2003-2023 Apple Inc. All rights reserved.
  *
  *  This library is free software; you can redistribute it and/or
  *  modify it under the terms of the GNU Lesser General Public
@@ -46,6 +46,15 @@ ErrorInstance::ErrorInstance(VM& vm, Structure* structure, ErrorType errorType)
 {
 }
 
+ErrorInstance* ErrorInstance::create(JSGlobalObject* globalObject, String&& message, ErrorType errorType, unsigned line, unsigned column, String&& sourceURL, String&& stackString)
+{
+    VM& vm = globalObject->vm();
+    Structure* structure = globalObject->errorStructure(errorType);
+    ErrorInstance* instance = new (NotNull, allocateCell<ErrorInstance>(vm)) ErrorInstance(vm, structure, errorType);
+    instance->finishCreation(vm, WTFMove(message), line, column, WTFMove(sourceURL), WTFMove(stackString));
+    return instance;
+}
+
 ErrorInstance* ErrorInstance::create(JSGlobalObject* globalObject, Structure* structure, JSValue message, JSValue options, SourceAppender appender, RuntimeType type, ErrorType errorType, bool useCurrentFrame)
 {
     VM& vm = globalObject->vm();
@@ -74,9 +83,9 @@ static String appendSourceToErrorMessage(CodeBlock* codeBlock, ErrorInstance* ex
     if (!codeBlock->hasExpressionInfo() || message.isNull())
         return message;
     
-    int startOffset = 0;
-    int endOffset = 0;
-    int divotPoint = 0;
+    unsigned startOffset = 0;
+    unsigned endOffset = 0;
+    unsigned divotPoint = 0;
     unsigned line = 0;
     unsigned column = 0;
 
@@ -136,6 +145,19 @@ void ErrorInstance::finishCreation(VM& vm, JSGlobalObject* globalObject, const S
 
     if (!cause.isEmpty())
         putDirect(vm, vm.propertyNames->cause, cause, static_cast<unsigned>(PropertyAttribute::DontEnum));
+}
+
+void ErrorInstance::finishCreation(VM& vm, String&& message, unsigned line, unsigned column, String&& sourceURL, String&& stackString)
+{
+    Base::finishCreation(vm);
+    ASSERT(inherits(info()));
+
+    m_line = line;
+    m_column = column;
+    m_sourceURL = WTFMove(sourceURL);
+    m_stackString = WTFMove(stackString);
+    if (!message.isNull())
+        putDirect(vm, vm.propertyNames->message, jsString(vm, WTFMove(message)), static_cast<unsigned>(PropertyAttribute::DontEnum));
 }
 
 // Based on ErrorPrototype's errorProtoFuncToString(), but is modified to
@@ -203,10 +225,10 @@ String ErrorInstance::sanitizedToString(JSGlobalObject* globalObject)
     String messageString = sanitizedMessageString(globalObject);
     RETURN_IF_EXCEPTION(scope, String());
 
-    return makeString(nameString, nameString.isEmpty() || messageString.isEmpty() ? "" : ": ", messageString);
+    return makeString(nameString, nameString.isEmpty() || messageString.isEmpty() ? ""_s : ": "_s, messageString);
 }
 
-void ErrorInstance::finalizeUnconditionally(VM& vm)
+void ErrorInstance::finalizeUnconditionally(VM& vm, CollectionScope)
 {
     if (!m_stackTrace)
         return;

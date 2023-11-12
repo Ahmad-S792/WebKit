@@ -28,10 +28,12 @@
 
 #include "AXObjectCache.h"
 #include "DocumentInlines.h"
-#include "Frame.h"
 #include "FrameSelection.h"
 #include "LegacyRenderSVGContainer.h"
 #include "LegacyRenderSVGRoot.h"
+#include "LocalFrame.h"
+#include "LocalFrameView.h"
+#include "LocalFrameViewLayoutContext.h"
 #include "RenderButton.h"
 #include "RenderCounter.h"
 #include "RenderDescendantIterator.h"
@@ -53,6 +55,7 @@
 #include "RenderSVGInline.h"
 #include "RenderSVGRoot.h"
 #include "RenderSVGText.h"
+#include "RenderStyleInlines.h"
 #include "RenderTable.h"
 #include "RenderTableCell.h"
 #include "RenderTableRow.h"
@@ -74,9 +77,6 @@
 #include "RenderTreeMutationDisallowedScope.h"
 #include "RenderView.h"
 #include <wtf/SetForScope.h>
-
-#include "FrameView.h"
-#include "FrameViewLayoutContext.h"
 
 namespace WebCore {
 
@@ -317,6 +317,11 @@ void RenderTreeBuilder::attachInternal(RenderElement& parent, RenderPtr<RenderOb
         return;
     }
 
+    if (parent.style().display() == DisplayType::Ruby || parent.style().display() == DisplayType::RubyBlock) {
+        insertRecursiveIfNeeded(rubyBuilder().findOrCreateParentForStyleBasedRubyChild(parent, *child, beforeChild));
+        return;
+    }
+
     if (is<RenderBlockFlow>(parent)) {
         blockFlowBuilder().attach(downcast<RenderBlockFlow>(parent), WTFMove(child), beforeChild);
         return;
@@ -427,7 +432,7 @@ void RenderTreeBuilder::attachToRenderElementInternal(RenderElement& parent, Ren
     RELEASE_ASSERT_WITH_MESSAGE(!parent.view().frameView().layoutContext().layoutState(), "Layout must not mutate render tree");
     ASSERT(parent.canHaveChildren() || parent.canHaveGeneratedChildren());
     ASSERT(!child->parent());
-    ASSERT(!parent.isRenderBlockFlow() || (!child->isTableSection() && !child->isTableRow() && !child->isTableCell()));
+    ASSERT(!parent.isRenderBlockFlow() || (!child->isRenderTableSection() && !child->isRenderTableRow() && !child->isRenderTableCell()));
 
     while (beforeChild && beforeChild->parent() && beforeChild->parent() != &parent)
         beforeChild = beforeChild->parent();
@@ -446,9 +451,6 @@ void RenderTreeBuilder::attachToRenderElementInternal(RenderElement& parent, Ren
         if (m_internalMovesType == RenderObject::IsInternalMove::No) {
             if (auto* fragmentedFlow = newChild->enclosingFragmentedFlow(); is<RenderMultiColumnFlow>(fragmentedFlow))
                 multiColumnBuilder().multiColumnDescendantInserted(downcast<RenderMultiColumnFlow>(*fragmentedFlow), *newChild);
-
-            if (is<RenderElement>(*newChild))
-                RenderCounter::rendererSubtreeAttached(downcast<RenderElement>(*newChild));
         }
     }
 
@@ -461,7 +463,8 @@ void RenderTreeBuilder::attachToRenderElementInternal(RenderElement& parent, Ren
         cache->childrenChanged(&parent, newChild);
 
     if (parent.hasOutlineAutoAncestor() || parent.outlineStyleForRepaint().outlineStyleIsAuto() == OutlineIsAuto::On)
-        newChild->setHasOutlineAutoAncestor();
+        if (!is<RenderMultiColumnSet>(newChild->previousSibling())) 
+            newChild->setHasOutlineAutoAncestor();
 }
 
 void RenderTreeBuilder::move(RenderBoxModelObject& from, RenderBoxModelObject& to, RenderObject& child, RenderObject* beforeChild, NormalizeAfterInsertion normalizeAfterInsertion)
@@ -649,8 +652,8 @@ void RenderTreeBuilder::normalizeTreeAfterStyleChange(RenderElement& renderer, R
             auto clearDescendantFloats = [&] {
                 // These descendent floats can not intrude other, sibling block containers anymore.
                 for (auto& descendant : descendantsOfType<RenderBox>(renderer)) {
-                    if (descendant.isFloatingOrOutOfFlowPositioned())
-                        descendant.removeFloatingOrPositionedChildFromBlockLists();
+                    if (descendant.isFloating())
+                        descendant.removeFloatingAndInvalidateForLayout();
                 }
             };
             clearDescendantFloats();
@@ -832,7 +835,7 @@ void RenderTreeBuilder::destroyAndCleanUpAnonymousWrappers(RenderObject& rendere
     }
 
     auto isAnonymousAndSafeToDelete = [] (const auto& renderer) {
-        return renderer.isAnonymous() && !is<RenderRubyBase>(renderer) && !renderer.isRenderView() && !renderer.isRenderFragmentedFlow() && !renderer.isSVGViewportContainer();
+        return renderer.isAnonymous() && !is<RenderRubyBase>(renderer) && !renderer.isRenderView() && !renderer.isRenderFragmentedFlow() && !renderer.isRenderSVGViewportContainer();
     };
 
     auto destroyRootIncludingAnonymous = [&] () -> RenderObject& {
@@ -959,7 +962,7 @@ RenderPtr<RenderObject> RenderTreeBuilder::detachFromRenderElement(RenderElement
     else if (is<RenderText>(child))
         downcast<RenderText>(child).removeAndDestroyTextBoxes();
 
-    if (!parent.renderTreeBeingDestroyed() && is<RenderFlexibleBox>(parent) && !child.isFloatingOrOutOfFlowPositioned() && child.isBox())
+    if (!parent.renderTreeBeingDestroyed() && is<RenderFlexibleBox>(parent) && !child.isFloatingOrOutOfFlowPositioned() && child.isRenderBox())
         downcast<RenderFlexibleBox>(parent).clearCachedChildIntrinsicContentLogicalHeight(downcast<RenderBox>(child));
 
     // If child is the start or end of the selection, then clear the selection to
@@ -977,11 +980,6 @@ RenderPtr<RenderObject> RenderTreeBuilder::detachFromRenderElement(RenderElement
     // This is needed to avoid race conditions where willBeRemovedFromTree() would dirty the tree's structure
     // and the code running here would force an untimely rebuilding, leaving |child| dangling.
     auto childToTake = parent.detachRendererInternal(child);
-
-    // rendererRemovedFromTree() walks the whole subtree. We can improve performance
-    // by skipping this step when destroying the entire tree.
-    if (!parent.renderTreeBeingDestroyed() && is<RenderElement>(*childToTake))
-        RenderCounter::rendererRemovedFromTree(downcast<RenderElement>(*childToTake));
 
     if (!parent.renderTreeBeingDestroyed()) {
         if (AXObjectCache* cache = parent.document().existingAXObjectCache())
@@ -1022,7 +1020,7 @@ void RenderTreeBuilder::reportVisuallyNonEmptyContent(const RenderElement& paren
         m_view.frameView().incrementVisuallyNonEmptyPixelCount(roundedIntSize(replacedRenderer.intrinsicSize()));
         return;
     }
-    if (child.isSVGRootOrLegacySVGRoot()) {
+    if (child.isRenderOrLegacyRenderSVGRoot()) {
         auto fixedSize = [] (const auto& renderer) -> std::optional<IntSize> {
             auto& style = renderer.style();
             if (!style.width().isFixed() || !style.height().isFixed())

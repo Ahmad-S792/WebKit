@@ -37,11 +37,10 @@ list(APPEND WebCore_SOURCES
     platform/generic/KeyedDecoderGeneric.cpp
     platform/generic/KeyedEncoderGeneric.cpp
 
-    platform/graphics/GLContext.cpp
     platform/graphics/PlatformDisplay.cpp
 
-    platform/graphics/egl/GLContextEGL.cpp
-    platform/graphics/egl/GLContextEGLLibWPE.cpp
+    platform/graphics/egl/GLContext.cpp
+    platform/graphics/egl/GLContextLibWPE.cpp
 
     platform/graphics/libwpe/PlatformDisplayLibWPE.cpp
 
@@ -69,17 +68,12 @@ list(APPEND WebCore_SOURCES
 )
 
 list(APPEND WebCore_USER_AGENT_STYLE_SHEETS
-    ${WEBCORE_DIR}/Modules/mediacontrols/mediaControlsBase.css
     ${WEBCORE_DIR}/css/mediaControls.css
-)
-
-set(WebCore_USER_AGENT_SCRIPTS
-    ${WEBCORE_DIR}/en.lproj/mediaControlsLocalizedStrings.js
-    ${WEBCORE_DIR}/Modules/mediacontrols/mediaControlsBase.js
 )
 
 list(APPEND WebCore_LIBRARIES
     WPE::libwpe
+    WebKitRequirements::WebKitResources
 )
 
 if (ENABLE_GAMEPAD)
@@ -123,6 +117,7 @@ if (EGL_EXTRAS)
 endif ()
 
 set(WebCore_MODULES
+    Brotli
     CURL
     Cairo
     EGL
@@ -131,8 +126,11 @@ set(WebCore_MODULES
     HarfBuzz
     ICU
     JPEG
+    LibPSL
+    LibXml2
     OpenSSL
     PNG
+    SQLite
     WebKitRequirements
     WebP
 )
@@ -140,5 +138,11 @@ set(WebCore_MODULES
 if (USE_WPE_BACKEND_PLAYSTATION)
     list(APPEND WebCore_MODULES WPE)
 endif ()
+
+find_library(SHOWMAP_LIB showmap)
+list(APPEND WebCore_LIBRARIES ${SHOWMAP_LIB})
+
+find_path(SHOWMAP_INCLUDE_DIR NAMES showmap.h)
+list(APPEND WebCore_INCLUDE_DIRECTORIES ${SHOWMAP_INCLUDE_DIR})
 
 PLAYSTATION_COPY_MODULES(WebCore TARGETS ${WebCore_MODULES})

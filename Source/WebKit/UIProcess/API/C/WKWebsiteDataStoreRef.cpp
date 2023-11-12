@@ -77,7 +77,7 @@ void WKWebsiteDataStoreTerminateNetworkProcess(WKWebsiteDataStoreRef dataStore)
 
 WKProcessID WKWebsiteDataStoreGetNetworkProcessIdentifier(WKWebsiteDataStoreRef dataStore)
 {
-    return WebKit::toImpl(dataStore)->networkProcess().processIdentifier();
+    return WebKit::toImpl(dataStore)->networkProcess().processID();
 }
 
 void WKWebsiteDataStoreRemoveITPDataForDomain(WKWebsiteDataStoreRef dataStoreRef, WKStringRef host, void* context, WKWebsiteDataStoreRemoveITPDataForDomainFunction callback)
@@ -161,14 +161,8 @@ WKHTTPCookieStoreRef WKWebsiteDataStoreGetHTTPCookieStore(WKWebsiteDataStoreRef 
     return WebKit::toAPI(&WebKit::toImpl(dataStoreRef)->cookieStore());
 }
 
-void WKWebsiteDataStoreSetAllowsAnySSLCertificateForWebSocketTesting(WKWebsiteDataStoreRef dataStore, bool allows)
+void WKWebsiteDataStoreSetAllowsAnySSLCertificateForWebSocketTesting(WKWebsiteDataStoreRef, bool)
 {
-    WebKit::toImpl(dataStore)->setAllowsAnySSLCertificateForWebSocket(allows);
-}
-
-void WKWebsiteDataStoreClearCachedCredentials(WKWebsiteDataStoreRef dataStoreRef)
-{
-    WebKit::toImpl(dataStoreRef)->clearCachedCredentials();
 }
 
 void WKWebsiteDataStoreSetResourceLoadStatisticsDebugModeWithCompletionHandler(WKWebsiteDataStoreRef dataStoreRef, bool enable, void* context, WKWebsiteDataStoreStatisticsDebugModeFunction completionHandler)
@@ -475,6 +469,17 @@ void WKWebsiteDataStoreSetStatisticsNotifyPagesWhenDataRecordsWereScanned(WKWebs
 {
 #if ENABLE(TRACKING_PREVENTION)
     WebKit::toImpl(dataStoreRef)->setNotifyPagesWhenDataRecordsWereScanned(value, [] { });
+#endif
+}
+
+void WKWebsiteDataStoreSetResourceLoadStatisticsTimeAdvanceForTesting(WKWebsiteDataStoreRef dataStoreRef, double value, void* context, WKWebsiteDataStoreSetStatisticsIsRunningTestFunction callback)
+{
+#if ENABLE(TRACKING_PREVENTION)
+    WebKit::toImpl(dataStoreRef)->setResourceLoadStatisticsTimeAdvanceForTesting(Seconds { value }, [context, callback] {
+        callback(context);
+    });
+#else
+    callback(context);
 #endif
 }
 
@@ -894,11 +899,20 @@ void WKWebsiteDataStoreClearStorage(WKWebsiteDataStoreRef dataStoreRef, void* co
         WebKit::WebsiteDataType::IndexedDBDatabases,
         WebKit::WebsiteDataType::FileSystem,
         WebKit::WebsiteDataType::DOMCache,
+        WebKit::WebsiteDataType::Credentials,
 #if ENABLE(SERVICE_WORKER)
         WebKit::WebsiteDataType::ServiceWorkerRegistrations
 #endif
     };
     WebKit::toImpl(dataStoreRef)->removeData(dataTypes, -WallTime::infinity(), [context, callback] {
+        if (callback)
+            callback(context);
+    });
+}
+
+void WKWebsiteDataStoreSetOriginQuotaRatioEnabled(WKWebsiteDataStoreRef dataStoreRef, bool enabled, void* context, WKWebsiteDataStoreResetQuotaCallback callback)
+{
+    WebKit::toImpl(dataStoreRef)->setOriginQuotaRatioEnabledForTesting(enabled, [context, callback] {
         if (callback)
             callback(context);
     });

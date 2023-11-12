@@ -36,12 +36,11 @@
 #include "DragData.h"
 #include "Editor.h"
 #include "FileList.h"
-#include "Frame.h"
 #include "FrameDestructionObserverInlines.h"
 #include "FrameLoader.h"
 #include "HTMLImageElement.h"
-#include "HTMLParserIdioms.h"
 #include "Image.h"
+#include "LocalFrame.h"
 #include "Page.h"
 #include "PagePasteboardContext.h"
 #include "Pasteboard.h"
@@ -60,14 +59,14 @@ namespace WebCore {
 class DragImageLoader final : private CachedImageClient {
     WTF_MAKE_NONCOPYABLE(DragImageLoader); WTF_MAKE_FAST_ALLOCATED;
 public:
-    explicit DragImageLoader(DataTransfer*);
+    explicit DragImageLoader(DataTransfer&);
     void startLoading(CachedResourceHandle<CachedImage>&);
     void stopLoading(CachedResourceHandle<CachedImage>&);
     void moveToDataTransfer(DataTransfer&);
 
 private:
     void imageChanged(CachedImage*, const IntRect*) override;
-    DataTransfer* m_dataTransfer;
+    CheckedRef<DataTransfer> m_dataTransfer;
 };
 
 #endif
@@ -128,7 +127,7 @@ static String normalizeType(const String& type)
     if (type.isNull())
         return type;
 
-    String lowercaseType = stripLeadingAndTrailingHTMLSpaces(type).convertToASCIILowercase();
+    auto lowercaseType = type.trim(isASCIIWhitespace).convertToASCIILowercase();
     if (lowercaseType == "text"_s || lowercaseType.startsWith("text/plain;"_s))
         return textPlainContentTypeAtom();
     if (lowercaseType == "url"_s || lowercaseType.startsWith("text/uri-list;"_s))
@@ -153,17 +152,21 @@ void DataTransfer::clearData(const String& type)
         m_itemList->didClearStringData(normalizedType);
 }
 
-static String readURLsFromPasteboardAsString(Pasteboard& pasteboard, Function<bool(const String&)>&& shouldIncludeURL)
+static String readURLsFromPasteboardAsString(Page* page, Pasteboard& pasteboard, Function<bool(const String&)>&& shouldIncludeURL)
 {
     StringBuilder urlList;
-    for (const auto& urlString : pasteboard.readAllStrings("text/uri-list"_s)) {
-        if (!shouldIncludeURL(urlString))
-            continue;
-        if (!urlList.isEmpty())
-            urlList.append(newlineCharacter);
-        urlList.append(urlString);
+    auto urlStrings = pasteboard.readAllStrings("text/uri-list"_s);
+    if (page) {
+        urlStrings = urlStrings.map([&](auto& string) {
+            return page->applyLinkDecorationFiltering(string, LinkDecorationFilteringTrigger::Paste);
+        });
     }
-    return urlList.toString();
+
+    urlStrings.removeAllMatching([&](auto& string) {
+        return !shouldIncludeURL(string);
+    });
+
+    return makeStringByJoining(urlStrings, "\n"_s);
 }
 
 String DataTransfer::getDataForItem(Document& document, const String& type) const
@@ -171,10 +174,10 @@ String DataTransfer::getDataForItem(Document& document, const String& type) cons
     if (!canReadData())
         return { };
 
-    auto lowercaseType = stripLeadingAndTrailingHTMLSpaces(type).convertToASCIILowercase();
+    auto lowercaseType = type.trim(isASCIIWhitespace).convertToASCIILowercase();
     if (shouldSuppressGetAndSetDataToAvoidExposingFilePaths()) {
         if (lowercaseType == "text/uri-list"_s) {
-            return readURLsFromPasteboardAsString(*m_pasteboard, [] (auto& urlString) {
+            return readURLsFromPasteboardAsString(document.page(), *m_pasteboard, [] (auto& urlString) {
                 return Pasteboard::canExposeURLToDOMWhenPasteboardContainsFiles(urlString);
             });
         }
@@ -211,18 +214,22 @@ String DataTransfer::readStringFromPasteboard(Document& document, const String& 
     if (!is<StaticPasteboard>(*m_pasteboard) && lowercaseType == "text/html"_s) {
         if (!document.frame())
             return { };
-        WebContentMarkupReader reader { *document.frame() };
+        WebContentMarkupReader reader { document.protectedFrame().releaseNonNull() };
         m_pasteboard->read(reader, policy);
-        return reader.markup;
+        return reader.takeMarkup();
     }
 
     if (!is<StaticPasteboard>(*m_pasteboard) && lowercaseType == "text/uri-list"_s) {
-        return readURLsFromPasteboardAsString(*m_pasteboard, [] (auto&) {
+        return readURLsFromPasteboardAsString(document.checkedPage().get(), *m_pasteboard, [] (auto&) {
             return true;
         });
     }
 
-    return m_pasteboard->readString(lowercaseType);
+    auto string = m_pasteboard->readString(lowercaseType);
+    if (CheckedPtr page = document.page())
+        return page->applyLinkDecorationFiltering(string, LinkDecorationFilteringTrigger::Paste);
+
+    return string;
 }
 
 String DataTransfer::getData(Document& document, const String& type) const
@@ -272,8 +279,8 @@ void DataTransfer::setDataFromItemList(Document& document, const String& type, c
         sanitizedData = data; // Nothing to sanitize.
 
     if (type == "text/uri-list"_s || type == textPlainContentTypeAtom()) {
-        if (auto* page = document.page())
-            sanitizedData = page->sanitizeLookalikeCharacters(sanitizedData, LookalikeCharacterSanitizationTrigger::Copy);
+        if (CheckedPtr page = document.page())
+            sanitizedData = page->applyLinkDecorationFiltering(sanitizedData, LinkDecorationFilteringTrigger::Copy);
     }
 
     if (sanitizedData != data)
@@ -304,7 +311,7 @@ void DataTransfer::didAddFileToItemList()
 DataTransferItemList& DataTransfer::items(Document& document)
 {
     if (!m_itemList)
-        m_itemList = makeUnique<DataTransferItemList>(document, *this);
+        m_itemList = makeUniqueWithoutRefCountedCheck<DataTransferItemList>(document, *this);
     return *m_itemList;
 }
 
@@ -531,7 +538,7 @@ void DataTransfer::setDragImage(Element& element, int x, int y)
     if (!forDrag() || !canWriteData())
         return;
 
-    CachedImage* image = nullptr;
+    CachedResourceHandle<CachedImage> image;
     if (is<HTMLImageElement>(element) && !element.isConnected())
         image = downcast<HTMLImageElement>(element).cachedImage();
 
@@ -542,7 +549,7 @@ void DataTransfer::setDragImage(Element& element, int x, int y)
     m_dragImage = image;
     if (m_dragImage) {
         if (!m_dragImageLoader)
-            m_dragImageLoader = makeUnique<DragImageLoader>(this);
+            m_dragImageLoader = makeUnique<DragImageLoader>(*this);
         m_dragImageLoader->startLoading(m_dragImage);
     }
 
@@ -578,11 +585,11 @@ DragImageRef DataTransfer::createDragImage(IntPoint& location) const
     location = m_dragLocation;
 
     if (m_dragImage)
-        return createDragImageFromImage(m_dragImage->image(), ImageOrientation::Orientation::None);
+        return createDragImageFromImage(m_dragImage->protectedImage().get(), ImageOrientation::Orientation::None);
 
     if (m_dragImageElement) {
-        if (Frame* frame = m_dragImageElement->document().frame())
-            return createDragImageForNode(*frame, *m_dragImageElement);
+        if (RefPtr frame = m_dragImageElement->document().frame())
+            return createDragImageForNode(*frame, dragImageElement().releaseNonNull());
     }
 
     // We do not have enough information to create a drag image, use the default icon.
@@ -591,14 +598,14 @@ DragImageRef DataTransfer::createDragImage(IntPoint& location) const
 
 #endif
 
-DragImageLoader::DragImageLoader(DataTransfer* dataTransfer)
+DragImageLoader::DragImageLoader(DataTransfer& dataTransfer)
     : m_dataTransfer(dataTransfer)
 {
 }
 
 void DragImageLoader::moveToDataTransfer(DataTransfer& newDataTransfer)
 {
-    m_dataTransfer = &newDataTransfer;
+    m_dataTransfer = newDataTransfer;
 }
 
 void DragImageLoader::startLoading(CachedResourceHandle<WebCore::CachedImage>& image)

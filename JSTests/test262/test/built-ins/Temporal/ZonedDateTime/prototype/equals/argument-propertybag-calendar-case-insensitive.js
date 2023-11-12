@@ -14,4 +14,4 @@ const calendar = "IsO8601";
 
 const arg = { year: 1970, monthCode: "M01", day: 1, timeZone, calendar };
 const result = instance.equals(arg);
-assert.sameValue(result, true, `Calendar created from string "${calendar}"`);
+assert.sameValue(result, true, "Calendar is case-insensitive");

@@ -60,7 +60,7 @@ void PlaybackSessionModelMediaElement::setMediaElement(HTMLMediaElement* mediaEl
 {
     if (m_mediaElement == mediaElement) {
         if (m_mediaElement) {
-            for (auto client : m_clients)
+            for (auto& client : m_clients)
                 client->isPictureInPictureSupportedChanged(isPictureInPictureSupported());
         }
         return;
@@ -103,18 +103,19 @@ void PlaybackSessionModelMediaElement::setMediaElement(HTMLMediaElement* mediaEl
         textTracks.addEventListener(events.addtrackEvent, *this, false);
         textTracks.addEventListener(events.changeEvent, *this, false);
         textTracks.addEventListener(events.removetrackEvent, *this, false);
+        m_isListening = true;
     }
 
     updateForEventName(eventNameAll());
 
-    for (auto client : m_clients)
+    for (auto& client : m_clients)
         client->isPictureInPictureSupportedChanged(isPictureInPictureSupported());
 }
 
 void PlaybackSessionModelMediaElement::mediaEngineChanged()
 {
     bool wirelessVideoPlaybackDisabled = this->wirelessVideoPlaybackDisabled();
-    for (auto client : m_clients)
+    for (auto& client : m_clients)
         client->wirelessVideoPlaybackDisabledChanged(wirelessVideoPlaybackDisabled);
 }
 
@@ -133,19 +134,19 @@ void PlaybackSessionModelMediaElement::updateForEventName(const WTF::AtomString&
     if (all
         || eventName == eventNames().durationchangeEvent) {
         double duration = this->duration();
-        for (auto client : m_clients)
+        for (auto& client : m_clients)
             client->durationChanged(duration);
         // These is no standard event for minFastReverseRateChange; duration change is a reasonable proxy for it.
         // It happens every time a new item becomes ready to play.
         bool canPlayFastReverse = this->canPlayFastReverse();
-        for (auto client : m_clients)
+        for (auto& client : m_clients)
             client->canPlayFastReverseChanged(canPlayFastReverse);
     }
 
     if (all
         || eventName == eventNames().playEvent
         || eventName == eventNames().playingEvent) {
-        for (auto client : m_clients)
+        for (auto& client : m_clients)
             client->playbackStartedTimeChanged(playbackStartedTime());
     }
 
@@ -163,7 +164,7 @@ void PlaybackSessionModelMediaElement::updateForEventName(const WTF::AtomString&
 
         double playbackRate =  this->playbackRate();
         double defaultPlaybackRate = this->defaultPlaybackRate();
-        for (auto client : m_clients)
+        for (auto& client : m_clients)
             client->rateChanged(playbackState, playbackRate, defaultPlaybackRate);
     }
 
@@ -171,7 +172,7 @@ void PlaybackSessionModelMediaElement::updateForEventName(const WTF::AtomString&
         || eventName == eventNames().timeupdateEvent) {
         auto currentTime = this->currentTime();
         auto anchorTime = [[NSProcessInfo processInfo] systemUptime];
-        for (auto client : m_clients)
+        for (auto& client : m_clients)
             client->currentTimeChanged(currentTime, anchorTime);
     }
 
@@ -181,7 +182,7 @@ void PlaybackSessionModelMediaElement::updateForEventName(const WTF::AtomString&
         auto seekableRanges = this->seekableRanges();
         auto seekableTimeRangesLastModifiedTime = this->seekableTimeRangesLastModifiedTime();
         auto liveUpdateInterval = this->liveUpdateInterval();
-        for (auto client : m_clients) {
+        for (auto& client : m_clients) {
             client->bufferedTimeChanged(bufferedTime);
             client->seekableRangesChanged(seekableRanges, seekableTimeRangesLastModifiedTime, liveUpdateInterval);
         }
@@ -200,7 +201,7 @@ void PlaybackSessionModelMediaElement::updateForEventName(const WTF::AtomString&
 
         bool wirelessVideoPlaybackDisabled = this->wirelessVideoPlaybackDisabled();
 
-        for (auto client : m_clients) {
+        for (auto& client : m_clients) {
             client->externalPlaybackChanged(enabled, targetType, localizedDeviceName);
             client->wirelessVideoPlaybackDisabledChanged(wirelessVideoPlaybackDisabled);
         }
@@ -210,7 +211,7 @@ void PlaybackSessionModelMediaElement::updateForEventName(const WTF::AtomString&
         || eventName == eventNames().webkitpresentationmodechangedEvent) {
         bool isPictureInPictureActive = this->isPictureInPictureActive();
 
-        for (auto client : m_clients)
+        for (auto& client : m_clients)
             client->pictureInPictureActiveChanged(isPictureInPictureActive);
     }
 
@@ -222,7 +223,7 @@ void PlaybackSessionModelMediaElement::updateForEventName(const WTF::AtomString&
 
     if (all
         || eventName == eventNames().volumechangeEvent) {
-        for (auto client : m_clients) {
+        for (auto& client : m_clients) {
             client->mutedChanged(isMuted());
             client->volumeChanged(volume());
         }
@@ -405,7 +406,7 @@ void PlaybackSessionModelMediaElement::updateMediaSelectionOptions()
     auto legibleOptions = legibleMediaSelectionOptions();
     auto legibleIndex = legibleMediaSelectedIndex();
 
-    for (auto client : m_clients) {
+    for (auto& client : m_clients) {
         client->audioMediaSelectionOptionsChanged(audioOptions, audioIndex);
         client->legibleMediaSelectionOptionsChanged(legibleOptions, legibleIndex);
     }
@@ -416,7 +417,7 @@ void PlaybackSessionModelMediaElement::updateMediaSelectionIndices()
     auto audioIndex = audioMediaSelectedIndex();
     auto legibleIndex = legibleMediaSelectedIndex();
 
-    for (auto client : m_clients) {
+    for (auto& client : m_clients) {
         client->audioMediaSelectionIndexChanged(audioIndex);
         client->legibleMediaSelectionIndexChanged(legibleIndex);
     }
@@ -633,6 +634,19 @@ bool PlaybackSessionModelMediaElement::isPictureInPictureActive() const
 
     return (m_mediaElement->fullscreenMode() & HTMLMediaElementEnums::VideoFullscreenModePictureInPicture) == HTMLMediaElementEnums::VideoFullscreenModePictureInPicture;
 }
+
+#if !RELEASE_LOG_DISABLED
+const void* PlaybackSessionModelMediaElement::logIdentifier() const
+{
+    return m_mediaElement ? m_mediaElement->logIdentifier() : nullptr;
+}
+
+const Logger* PlaybackSessionModelMediaElement::loggerPtr() const
+{
+    return m_mediaElement ? &m_mediaElement->logger() : nullptr;
+}
+#endif
+
 
 }
 

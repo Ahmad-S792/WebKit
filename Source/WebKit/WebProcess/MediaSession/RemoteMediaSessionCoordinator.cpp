@@ -29,6 +29,7 @@
 #if ENABLE(MEDIA_SESSION_COORDINATOR)
 
 #include "Logging.h"
+#include "MessageSenderInlines.h"
 #include "RemoteMediaSessionCoordinatorMessages.h"
 #include "RemoteMediaSessionCoordinatorProxyMessages.h"
 #include "WebPage.h"
@@ -68,7 +69,7 @@ void RemoteMediaSessionCoordinator::join(CompletionHandler<void(std::optional<We
     ALWAYS_LOG_IF_POSSIBLE(LOGIDENTIFIER);
     m_page.sendWithAsyncReply(Messages::RemoteMediaSessionCoordinatorProxy::Join { }, [weakThis = WeakPtr { *this }, callback = WTFMove(callback)](auto&& exception) mutable {
         if (!weakThis) {
-            callback(Exception { InvalidStateError });
+            callback(Exception { ExceptionCode::InvalidStateError });
             return;
         }
 
@@ -91,7 +92,7 @@ void RemoteMediaSessionCoordinator::seekTo(double time, CompletionHandler<void(s
     ALWAYS_LOG_IF_POSSIBLE(LOGIDENTIFIER, time);
     m_page.sendWithAsyncReply(Messages::RemoteMediaSessionCoordinatorProxy::CoordinateSeekTo { time }, [weakThis = WeakPtr { *this }, callback = WTFMove(callback)](auto&& exception) mutable {
         if (!weakThis) {
-            callback(Exception { InvalidStateError });
+            callback(Exception { ExceptionCode::InvalidStateError });
             return;
         }
 
@@ -109,7 +110,7 @@ void RemoteMediaSessionCoordinator::play(CompletionHandler<void(std::optional<We
     ALWAYS_LOG_IF_POSSIBLE(LOGIDENTIFIER);
     m_page.sendWithAsyncReply(Messages::RemoteMediaSessionCoordinatorProxy::CoordinatePlay { }, [weakThis = WeakPtr { *this }, callback = WTFMove(callback)](auto&& exception) mutable {
         if (!weakThis) {
-            callback(Exception { InvalidStateError });
+            callback(Exception { ExceptionCode::InvalidStateError });
             return;
         }
 
@@ -127,7 +128,7 @@ void RemoteMediaSessionCoordinator::pause(CompletionHandler<void(std::optional<W
     ALWAYS_LOG_IF_POSSIBLE(LOGIDENTIFIER);
     m_page.sendWithAsyncReply(Messages::RemoteMediaSessionCoordinatorProxy::CoordinatePause { }, [weakThis = WeakPtr { *this }, callback = WTFMove(callback)](auto&& exception) mutable {
         if (!weakThis) {
-            callback(Exception { InvalidStateError });
+            callback(Exception { ExceptionCode::InvalidStateError });
             return;
         }
 
@@ -145,7 +146,7 @@ void RemoteMediaSessionCoordinator::setTrack(const String& trackIdentifier, Comp
     ALWAYS_LOG_IF_POSSIBLE(LOGIDENTIFIER);
     m_page.sendWithAsyncReply(Messages::RemoteMediaSessionCoordinatorProxy::CoordinateSetTrack { trackIdentifier }, [weakThis = WeakPtr { *this }, callback = WTFMove(callback)](auto&& exception) mutable {
         if (!weakThis) {
-            callback(Exception { InvalidStateError });
+            callback(Exception { ExceptionCode::InvalidStateError });
             return;
         }
 

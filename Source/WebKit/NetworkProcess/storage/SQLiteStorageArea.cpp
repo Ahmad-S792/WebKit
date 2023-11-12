@@ -27,10 +27,13 @@
 #include "SQLiteStorageArea.h"
 
 #include "Logging.h"
+#include <WebCore/SQLiteDatabase.h>
 #include <WebCore/SQLiteFileSystem.h>
 #include <WebCore/SQLiteStatement.h>
+#include <WebCore/SQLiteStatementAutoResetScope.h>
 #include <WebCore/SQLiteTransaction.h>
 #include <WebCore/StorageMap.h>
+#include <wtf/FileSystem.h>
 
 namespace WebKit {
 
@@ -162,9 +165,13 @@ bool SQLiteStorageArea::prepareDatabase(ShouldCreateIfNotExists shouldCreateIfNo
 
     m_database = makeUnique<WebCore::SQLiteDatabase>();
     FileSystem::makeAllDirectories(FileSystem::parentPath(m_path));
-    auto openResult  = m_database->open(m_path);
+    auto openResult  = m_database->open(m_path, WebCore::SQLiteDatabase::OpenMode::ReadWriteCreate, WebCore::SQLiteDatabase::OpenOptions::CanSuspendWhileLocked);
     if (!openResult && handleDatabaseCorruptionIfNeeded(m_database->lastError())) {
         databaseExists = false;
+        if (shouldCreateIfNotExists == ShouldCreateIfNotExists::No)
+            return true;
+
+        m_database = makeUnique<WebCore::SQLiteDatabase>();
         openResult = m_database->open(m_path);
     }
 

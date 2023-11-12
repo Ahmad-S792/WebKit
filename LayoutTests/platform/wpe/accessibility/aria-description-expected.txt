@@ -1,8 +1,0 @@
-This test ensures that aria-description maps to appropriate attributes.
-
-Custom content: null
-
-PASS successfullyParsed is true
-
-TEST COMPLETE
-button

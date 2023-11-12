@@ -171,11 +171,10 @@ WeakPtr<PlatformResourceMediaLoader> PlatformResourceMediaLoader::create(WebCore
     auto resource = loader.requestResource(WTFMove(request), PlatformMediaResourceLoader::LoadOption::DisallowCaching);
     if (!resource)
         return nullptr;
-    auto* resourcePointer = resource.get();
-    auto client = adoptRef(*new PlatformResourceMediaLoader { parent, resource.releaseNonNull() });
+    auto client = adoptRef(*new PlatformResourceMediaLoader { parent, Ref { *resource } });
     WeakPtr result = client;
 
-    resourcePointer->setClient(WTFMove(client));
+    resource->setClient(WTFMove(client));
     return result;
 }
 
@@ -233,7 +232,7 @@ DataURLResourceMediaLoader::DataURLResourceMediaLoader(WebCoreAVFResourceLoader&
 {
     RELEASE_ASSERT(request.url().protocolIsData());
 
-    if (auto result = DataURLDecoder::decode(request.url(), DataURLDecoder::Mode::ForgivingBase64)) {
+    if (auto result = DataURLDecoder::decode(request.url())) {
         m_response = ResourceResponse::dataURLResponse(request.url(), *result);
         m_buffer = SharedBuffer::create(WTFMove(result->data));
     }

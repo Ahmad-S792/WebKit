@@ -427,7 +427,7 @@ void InjectedBundle::didReceiveMessageToPage(WKBundlePageRef page, WKStringRef m
         for (size_t i = 0; i < size; ++i) {
             auto item = WKArrayGetItemAtIndex(domainsArray, i);
             if (item && WKGetTypeID(item) == WKStringGetTypeID())
-                domains.uncheckedAppend(toWTFString(static_cast<WKStringRef>(item)));
+                domains.append(toWTFString(static_cast<WKStringRef>(item)));
         }
 
         m_testRunner->callDidReceiveLoadedSubresourceDomainsCallback(WTFMove(domains));
@@ -501,6 +501,19 @@ void InjectedBundle::didReceiveMessageToPage(WKBundlePageRef page, WKStringRef m
         return;
     }
 
+    if (WKStringIsEqualToUTF8CString(messageName, "WheelEventMarker")) {
+        ASSERT(messageBody);
+        ASSERT(WKGetTypeID(messageBody) == WKStringGetTypeID());
+
+        auto bodyString = toWTFString(static_cast<WKStringRef>(messageBody));
+        // These match the strings in EventSenderProxy::sendWheelEvent().
+        if (bodyString == "SentWheelPhaseEndOrCancel"_s)
+            m_eventSendingController->sentWheelPhaseEndOrCancel();
+        else if (bodyString == "SentWheelMomentumPhaseEnd"_s)
+            m_eventSendingController->sentWheelMomentumPhaseEnd();
+        return;
+    }
+
     postPageMessage("Error", "Unknown");
 }
 
@@ -534,9 +547,14 @@ void InjectedBundle::beginTesting(WKDictionaryRef settings, BegingTestingMode te
     m_textInputController = TextInputController::create();
 #if ENABLE(ACCESSIBILITY)
     m_accessibilityController = AccessibilityController::create();
+    m_accessibilityController->setForceDeferredSpellChecking(false);
 #if ENABLE(ACCESSIBILITY_ISOLATED_TREE)
     m_accessibilityController->setIsolatedTreeMode(m_accessibilityIsolatedTreeMode);
 #endif
+#endif
+#if ENABLE(VIDEO)
+    if (!m_captionUserPreferencesTestingModeToken)
+        m_captionUserPreferencesTestingModeToken = WKBundlePageCreateCaptionUserPreferencesTestingModeToken(page()->page());
 #endif
 
 #if PLATFORM(IOS_FAMILY)
@@ -565,6 +583,9 @@ void InjectedBundle::beginTesting(WKDictionaryRef settings, BegingTestingMode te
     WKBundleResetOriginAccessAllowLists(m_bundle.get());
     clearResourceLoadStatistics();
 
+#if ENABLE(VIDEO)
+    WKBundlePageSetCaptionDisplayMode(page()->page(), stringValue(settings, "CaptionDisplayMode"));
+#endif
     // [WK2] REGRESSION(r128623): It made layout tests extremely slow
     // https://bugs.webkit.org/show_bug.cgi?id=96862
     // WKBundleSetDatabaseQuota(m_bundle.get(), 5 * 1024 * 1024);
@@ -748,6 +769,13 @@ bool InjectedBundle::isGeolocationProviderActive() const
     return booleanValue(adoptWK(result).get());
 }
 
+WKRetainPtr<WKStringRef> InjectedBundle::getBackgroundFetchIdentifier()
+{
+    WKTypeRef result = nullptr;
+    WKBundlePagePostSynchronousMessageForTesting(page()->page(), toWK("GetBackgroundFetchIdentifier").get(), 0, &result);
+    return static_cast<WKStringRef>(result);
+}
+
 unsigned InjectedBundle::imageCountInGeneralPasteboard() const
 {
     WKTypeRef result = nullptr;
@@ -755,9 +783,14 @@ unsigned InjectedBundle::imageCountInGeneralPasteboard() const
     return uint64Value(adoptWK(result).get());
 }
 
-void InjectedBundle::setUserMediaPermission(bool enabled)
+void InjectedBundle::setCameraPermission(bool enabled)
 {
-    postPageMessage("SetUserMediaPermission", adoptWK(WKBooleanCreate(enabled)));
+    postPageMessage("SetCameraPermission", adoptWK(WKBooleanCreate(enabled)));
+}
+
+void InjectedBundle::setMicrophonePermission(bool enabled)
+{
+    postPageMessage("SetMicrophonePermission", adoptWK(WKBooleanCreate(enabled)));
 }
 
 void InjectedBundle::resetUserMediaPermission()
@@ -901,6 +934,34 @@ void InjectedBundle::setAllowsAnySSLCertificate(bool allowsAnySSLCertificate)
 bool InjectedBundle::statisticsNotifyObserver()
 {
     return WKBundleResourceLoadStatisticsNotifyObserver(m_bundle.get());
+}
+
+WKRetainPtr<WKStringRef> InjectedBundle::lastAddedBackgroundFetchIdentifier() const
+{
+    WKTypeRef result = nullptr;
+    WKBundlePagePostSynchronousMessageForTesting(page()->page(), toWK("LastAddedBackgroundFetchIdentifier").get(), 0, &result);
+    return static_cast<WKStringRef>(result);
+}
+
+WKRetainPtr<WKStringRef> InjectedBundle::lastRemovedBackgroundFetchIdentifier() const
+{
+    WKTypeRef result = nullptr;
+    WKBundlePagePostSynchronousMessageForTesting(page()->page(), toWK("LastRemovedBackgroundFetchIdentifier").get(), 0, &result);
+    return static_cast<WKStringRef>(result);
+}
+
+WKRetainPtr<WKStringRef> InjectedBundle::lastUpdatedBackgroundFetchIdentifier() const
+{
+    WKTypeRef result = nullptr;
+    WKBundlePagePostSynchronousMessageForTesting(page()->page(), toWK("LastUpdatedBackgroundFetchIdentifier").get(), 0, &result);
+    return static_cast<WKStringRef>(result);
+}
+
+WKRetainPtr<WKStringRef> InjectedBundle::backgroundFetchState(WKStringRef identifier)
+{
+    WKTypeRef result = nullptr;
+    WKBundlePagePostSynchronousMessageForTesting(page()->page(), toWK("BackgroundFetchState").get(), identifier, &result);
+    return static_cast<WKStringRef>(result);
 }
 
 void InjectedBundle::textDidChangeInTextField()

@@ -1,6 +1,6 @@
 /*
  * Copyright (C) 2006 Samuel Weinig (sam.weinig@gmail.com)
- * Copyright (C) 2004, 2005, 2006, 2013 Apple Inc.  All rights reserved.
+ * Copyright (C) 2004-2023 Apple Inc.  All rights reserved.
  * Copyright (C) 2008-2009 Torch Mobile, Inc.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -83,6 +83,7 @@ public:
 
     EncodedDataStatus encodedDataStatus() const { return m_source->encodedDataStatus(); }
     size_t frameCount() const { return m_source->frameCount(); }
+    size_t primaryFrameIndex() const { return m_source->primaryFrameIndex(); }
     RepetitionCount repetitionCount() const { return m_source->repetitionCount(); }
     String uti() const override { return m_source->uti(); }
     String filenameExtension() const override { return m_source->filenameExtension(); }
@@ -116,8 +117,8 @@ public:
     bool canUseAsyncDecodingForLargeImages() const;
     bool shouldUseAsyncDecodingForAnimatedImages() const;
     void setClearDecoderAfterAsyncFrameRequestForTesting(bool value) { m_clearDecoderAfterAsyncFrameRequestForTesting = value; }
-    void setLargeImageAsyncDecodingEnabledForTesting(bool enabled) { m_largeImageAsyncDecodingEnabledForTesting = enabled; }
-    bool isLargeImageAsyncDecodingEnabledForTesting() const { return m_largeImageAsyncDecodingEnabledForTesting; }
+    void setAsyncDecodingEnabledForTesting(bool enabled) { m_asyncDecodingEnabledForTesting = enabled; }
+    bool isAsyncDecodingEnabledForTesting() const { return m_asyncDecodingEnabledForTesting; }
     void stopAsyncDecodingQueue() { m_source->stopAsyncDecodingQueue(); }
 
     DestinationColorSpace colorSpace() final;
@@ -127,7 +128,7 @@ public:
     // Accessors for native image formats.
 #if USE(APPKIT)
     NSImage *nsImage() override;
-    RetainPtr<NSImage> snapshotNSImage() override;
+    WEBCORE_EXPORT RetainPtr<NSImage> snapshotNSImage() override;
 #endif
 
 #if PLATFORM(COCOA)
@@ -162,7 +163,7 @@ private:
     WEBCORE_EXPORT BitmapImage(ImageObserver* = nullptr);
 
     RefPtr<NativeImage> frameImageAtIndex(size_t index) { return m_source->frameImageAtIndex(index); }
-    RefPtr<NativeImage> frameImageAtIndexCacheIfNeeded(size_t, SubsamplingLevel = SubsamplingLevel::Default);
+    RefPtr<NativeImage> frameImageAtIndexCacheIfNeeded(size_t, SubsamplingLevel = SubsamplingLevel::Default, const DecodingOptions& = { });
 
     // Called to invalidate cached data. When |destroyAll| is true, we wipe out
     // the entire frame buffer cache and tell the image source to destroy
@@ -179,8 +180,8 @@ private:
     FloatSize sourceSize(ImageOrientation orientation = ImageOrientation::Orientation::FromImage) const final { return m_source->sourceSize(orientation); }
     bool hasDensityCorrectedSize() const override { return m_source->hasDensityCorrectedSize(); }
 
-    ImageDrawResult draw(GraphicsContext&, const FloatRect& dstRect, const FloatRect& srcRect, const ImagePaintingOptions& = { }) override;
-    void drawPattern(GraphicsContext&, const FloatRect& destRect, const FloatRect& srcRect, const AffineTransform& patternTransform, const FloatPoint& phase, const FloatSize& spacing, const ImagePaintingOptions& = { }) override;
+    ImageDrawResult draw(GraphicsContext&, const FloatRect& dstRect, const FloatRect& srcRect, ImagePaintingOptions = { }) override;
+    void drawPattern(GraphicsContext&, const FloatRect& destRect, const FloatRect& srcRect, const AffineTransform& patternTransform, const FloatPoint& phase, const FloatSize& spacing, ImagePaintingOptions = { }) override;
 #if PLATFORM(WIN)
     void drawFrameMatchingSourceSize(GraphicsContext&, const FloatRect& dstRect, const IntSize& srcSize, CompositeOperator) override;
 #endif
@@ -247,7 +248,7 @@ private:
     bool m_showDebugBackground { false };
 
     bool m_clearDecoderAfterAsyncFrameRequestForTesting { false };
-    bool m_largeImageAsyncDecodingEnabledForTesting { false };
+    bool m_asyncDecodingEnabledForTesting { false };
 
 #if ASSERT_ENABLED || !LOG_DISABLED
     size_t m_lateFrameCount { 0 };
@@ -263,7 +264,7 @@ private:
 #if USE(CG)
     mutable RetainPtr<CFDataRef> m_tiffRep; // Cached TIFF rep for all the frames. Only built lazily if someone queries for one.
 #endif
-    RefPtr<Image> m_cachedImage;
+    RefPtr<NativeImage> m_cachedImage;
 };
 
 } // namespace WebCore

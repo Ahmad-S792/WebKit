@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2021-2022 Apple Inc. All rights reserved.
+ * Copyright (C) 2021-2023 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -94,6 +94,10 @@ void GPURenderPassEncoder::setBindGroup(GPUIndex32 index, const GPUBindGroup& bi
     GPUSize64 dynamicOffsetsDataStart,
     GPUSize32 dynamicOffsetsDataLength)
 {
+    auto offset = checkedSum<uint64_t>(dynamicOffsetsDataStart, dynamicOffsetsDataLength);
+    if (offset.hasOverflowed() || offset > dynamicOffsetsData.length())
+        return;
+
     m_backing->setBindGroup(index, bindGroup.backing(), dynamicOffsetsData.data(), dynamicOffsetsData.length(), dynamicOffsetsDataStart, dynamicOffsetsDataLength);
 }
 
@@ -147,13 +151,11 @@ void GPURenderPassEncoder::endOcclusionQuery()
 
 void GPURenderPassEncoder::executeBundles(Vector<RefPtr<GPURenderBundle>>&& bundles)
 {
-    Vector<std::reference_wrapper<PAL::WebGPU::RenderBundle>> result;
-    result.reserveInitialCapacity(bundles.size());
-    for (const auto& bundle : bundles) {
-        if (!bundle)
-            continue;
-        result.uncheckedAppend(bundle->backing());
-    }
+    auto result = WTF::compactMap(bundles, [](auto& bundle) -> std::optional<std::reference_wrapper<WebGPU::RenderBundle>> {
+        if (bundle)
+            return bundle->backing();
+        return std::nullopt;
+    });
     m_backing->executeBundles(WTFMove(result));
 }
 

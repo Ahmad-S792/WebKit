@@ -29,6 +29,7 @@
 #include <WebCore/FloatRect.h>
 #include <WebCore/FloatSize.h>
 #include <WebCore/IntRect.h>
+#include <wtf/Markable.h>
 
 #if USE(CG)
 #include <CoreGraphics/CoreGraphics.h>
@@ -568,38 +569,7 @@ TEST(FloatRect, Transpose)
     EXPECT_FLOAT_EQ(120.0f, transposed.maxY());
 }
 
-TEST(FloatRect, FitToPoints)
-{
-    WebCore::FloatRect rect(10.0f, 20.0f, 30.0f, 40.0f);
-
-    WebCore::FloatPoint p0(20.0f, 30.0f);
-    WebCore::FloatPoint p1(70.0f, 130.0f);
-    WebCore::FloatPoint p2(50.0f, 20.0f);
-    WebCore::FloatPoint p3(90.0f, 190.0f);
-
-    rect.fitToPoints(p0, p1);
-
-    EXPECT_FLOAT_EQ(20.0f, rect.x());
-    EXPECT_FLOAT_EQ(70.0f, rect.maxX());
-    EXPECT_FLOAT_EQ(30.0f, rect.y());
-    EXPECT_FLOAT_EQ(130.0f, rect.maxY());
-
-    rect.fitToPoints(p0, p1, p2);
-
-    EXPECT_FLOAT_EQ(20.0f, rect.x());
-    EXPECT_FLOAT_EQ(70.0f, rect.maxX());
-    EXPECT_FLOAT_EQ(20.0f, rect.y());
-    EXPECT_FLOAT_EQ(130.0f, rect.maxY());
-
-    rect.fitToPoints(p0, p1, p2, p3);
-
-    EXPECT_FLOAT_EQ(20.0f, rect.x());
-    EXPECT_FLOAT_EQ(90.0f, rect.maxX());
-    EXPECT_FLOAT_EQ(20.0f, rect.y());
-    EXPECT_FLOAT_EQ(190.0f, rect.maxY());
-}
-
-#if USE(CG) || PLATFORM(WIN)
+#if USE(CG)
 static void checkCastRect(const WebCore::FloatRect& rect)
 {
     EXPECT_FLOAT_EQ(10.0f, rect.x());
@@ -613,9 +583,9 @@ static void checkCastRect(const WebCore::FloatRect& rect)
 
 TEST(FloatRect, Casting)
 {
+#if USE(CG)
     WebCore::FloatRect rect(10.0f, 20.0f, 30.0f, 40.0f);
 
-#if USE(CG)
     CGRect cgRect = rect;
 
     EXPECT_FLOAT_EQ(10.0f, cgRect.origin.x);
@@ -764,6 +734,17 @@ TEST(FloatRect, RoundedIntRect)
     EXPECT_EQ(20, enclosed.y());
     EXPECT_EQ(1034, enclosed.maxX());
     EXPECT_EQ(789, enclosed.maxY());
+}
+
+TEST(FloatRect, Markable)
+{
+    WebCore::FloatRect rect(10.0f, 20.0f, 1024.3f, 768.6f);
+    Markable<WebCore::FloatRect, WebCore::FloatRect::MarkableTraits> optional;
+    EXPECT_FALSE(optional) << "nullopt";
+    optional = rect;
+    EXPECT_EQ((optional.value_or(WebCore::FloatRect { })), rect) << "retained";
+    optional = WebCore::FloatRect::nanRect();
+    EXPECT_FALSE(optional) << "nullopt";
 }
 
 }

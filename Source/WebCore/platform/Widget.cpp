@@ -26,8 +26,8 @@
 #include "config.h"
 #include "Widget.h"
 
-#include "FrameView.h"
 #include "IntRect.h"
+#include "LocalFrameView.h"
 #include "NotImplemented.h"
 #include <wtf/Assertions.h>
 
@@ -55,13 +55,13 @@ void Widget::setParent(ScrollView* view)
         setParentVisible(true);
 }
 
-FrameView* Widget::root() const
+LocalFrameView* Widget::root() const
 {
     const Widget* top = this;
     while (top->parent())
         top = top->parent();
-    if (is<FrameView>(*top))
-        return const_cast<FrameView*>(downcast<FrameView>(top));
+    if (is<LocalFrameView>(*top))
+        return const_cast<LocalFrameView*>(downcast<LocalFrameView>(top));
     return nullptr;
 }
     
@@ -226,8 +226,8 @@ IntRect Widget::convertToContainingView(const IntRect& localRect) const
 
 IntRect Widget::convertFromContainingView(const IntRect& parentRect) const
 {
-    if (const ScrollView* parentScrollView = parent()) {
-        IntRect localRect = parentRect;
+    if (const auto* parentScrollView = parent()) {
+        auto localRect = parentRect;
         localRect.setLocation(parentScrollView->convertSelfToChild(this, localRect.location()));
         return localRect;
     }
@@ -247,7 +247,7 @@ FloatRect Widget::convertFromContainingView(const FloatRect& parentRect) const
 
 IntPoint Widget::convertToContainingView(const IntPoint& localPoint) const
 {
-    if (const ScrollView* parentScrollView = parent())
+    if (const auto* parentScrollView = parent())
         return parentScrollView->convertChildToSelf(this, localPoint);
 
     return localPoint;
@@ -255,7 +255,7 @@ IntPoint Widget::convertToContainingView(const IntPoint& localPoint) const
 
 IntPoint Widget::convertFromContainingView(const IntPoint& parentPoint) const
 {
-    if (const ScrollView* parentScrollView = parent())
+    if (const auto* parentScrollView = parent())
         return parentScrollView->convertSelfToChild(this, parentPoint);
 
     return parentPoint;
@@ -288,7 +288,7 @@ void Widget::setFrameRect(const IntRect& rect)
     notImplemented();
 }
 
-void Widget::paint(GraphicsContext&, const IntRect&, SecurityOriginPaintPolicy, EventRegionContext*)
+void Widget::paint(GraphicsContext&, const IntRect&, SecurityOriginPaintPolicy, RegionContext*)
 {
     notImplemented();
 }

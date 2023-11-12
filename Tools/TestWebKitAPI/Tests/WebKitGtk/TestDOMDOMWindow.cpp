@@ -4,7 +4,7 @@
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
  * License as published by the Free Software Foundation; either
- * version 2,1 of the License, or (at your option) any later version.
+ * version 2.1 of the License, or (at your option) any later version.
  *
  * This library is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -144,7 +144,12 @@ static void testWebKitDOMDOMWindowGetComputedStyle(WebViewTest* test, gconstpoin
 void beforeAll()
 {
     status.testRunner = new WebProcessTestRunner();
-    webkit_web_context_set_web_extensions_directory(webkit_web_context_get_default(), WEBKIT_TEST_WEB_EXTENSIONS_DIR);
+
+#if ENABLE(2022_GLIB_API)
+    webkit_web_context_set_web_process_extensions_directory(webkit_web_context_get_default(), WEBKIT_TEST_WEB_PROCESS_EXTENSIONS_DIR);
+#else
+    webkit_web_context_set_web_extensions_directory(webkit_web_context_get_default(), WEBKIT_TEST_WEB_PROCESS_EXTENSIONS_DIR);
+#endif
 
     WebViewTest::add("WebKitDOMDOMWindow", "signals", testWebKitDOMDOMWindowSignals);
     WebViewTest::add("WebKitDOMDOMWindow", "dispatch-event", testWebKitDOMDOMWindowDispatchEvent);

@@ -27,9 +27,12 @@
 #include "HitTestResult.h"
 #include "InlineBoxPainter.h"
 #include "LegacyEllipsisBox.h"
+#include "LegacyInlineFlowBoxInlines.h"
 #include "LegacyInlineTextBox.h"
 #include "LegacyRootInlineBox.h"
 #include "RenderBlock.h"
+#include "RenderBoxInlines.h"
+#include "RenderElementInlines.h"
 #include "RenderInline.h"
 #include "RenderLayer.h"
 #include "RenderLineBreak.h"
@@ -43,6 +46,8 @@
 #include "Settings.h"
 #include "Text.h"
 #include "TextBoxPainter.h"
+#include "TextDecorationThickness.h"
+#include "TextUnderlineOffset.h"
 #include <math.h>
 #include <wtf/IsoMallocInlines.h>
 
@@ -127,7 +132,7 @@ void LegacyInlineFlowBox::addToLine(LegacyInlineBox* child)
         if (child->renderer().isReplacedOrInlineBlock())
             shouldClearDescendantsHaveSameLineHeightAndBaseline = true;
         else if (child->behavesLikeText()) {
-            if (child->renderer().isLineBreak() || child->renderer().parent() != &renderer()) {
+            if (child->renderer().isRenderLineBreak() || child->renderer().parent() != &renderer()) {
                 if (!parentStyle.fontCascade().metricsOfPrimaryFont().hasIdenticalAscentDescentAndLineGap(childStyle.fontCascade().metricsOfPrimaryFont())
                     || parentStyle.lineHeight() != childStyle.lineHeight()
                     || (parentStyle.verticalAlign() != VerticalAlign::Baseline && !isRootInlineBox()) || childStyle.verticalAlign() != VerticalAlign::Baseline)
@@ -136,7 +141,7 @@ void LegacyInlineFlowBox::addToLine(LegacyInlineBox* child)
             if (childStyle.hasTextCombine() || childStyle.textEmphasisMark() != TextEmphasisMark::None)
                 shouldClearDescendantsHaveSameLineHeightAndBaseline = true;
         } else {
-            if (child->renderer().isLineBreak()) {
+            if (child->renderer().isRenderLineBreak()) {
                 // FIXME: This isn't ideal. We only turn off because current layout test results expect the <br> to be 0-height on the baseline.
                 // Other than making a zillion tests have to regenerate results, there's no reason to ditch the optimization here.
                 auto childIsHardLinebreak = child->renderer().isBR();
@@ -173,7 +178,7 @@ void LegacyInlineFlowBox::addToLine(LegacyInlineBox* child)
             const RenderBox& box = downcast<RenderBox>(child->renderer());
             if (box.hasRenderOverflow() || box.hasSelfPaintingLayer())
                 child->clearKnownToHaveNoOverflow();
-        } else if (!child->renderer().isLineBreak() && (childStyle.boxShadow() || child->boxModelObject()->hasSelfPaintingLayer()
+        } else if (!child->renderer().isRenderLineBreak() && (childStyle.boxShadow() || child->boxModelObject()->hasSelfPaintingLayer()
             || (is<RenderListMarker>(child->renderer()) && !downcast<RenderListMarker>(child->renderer()).isInside())
             || childStyle.hasBorderImageOutsets()))
             child->clearKnownToHaveNoOverflow();
@@ -399,9 +404,9 @@ float LegacyInlineFlowBox::placeBoxRangeInInlineDirection(LegacyInlineBox* first
             auto& textBox = downcast<LegacyInlineTextBox>(*child);
             RenderText& renderText = textBox.renderer();
             if (renderText.text().length()) {
-                if (needsWordSpacing && isSpaceOrNewline(renderText.characterAt(textBox.start())))
+                if (needsWordSpacing && deprecatedIsSpaceOrNewline(renderText.characterAt(textBox.start())))
                     logicalLeft += textBox.lineStyle().fontCascade().wordSpacing();
-                needsWordSpacing = !isSpaceOrNewline(renderText.characterAt(textBox.end() - 1));
+                needsWordSpacing = !deprecatedIsSpaceOrNewline(renderText.characterAt(textBox.end() - 1));
             }
             textBox.setLogicalLeft(logicalLeft);
             if (knownToHaveNoOverflow())
@@ -475,14 +480,14 @@ bool LegacyInlineFlowBox::requiresIdeographicBaseline(const GlyphOverflowAndFall
             if (child->lineStyle().fontCascade().primaryFont().hasVerticalGlyphs())
                 return true;
             
-            const Vector<const Font*>* usedFonts = nullptr;
+            const Vector<WeakPtr<const Font>>* usedFonts = nullptr;
             if (is<LegacyInlineTextBox>(*child)) {
                 GlyphOverflowAndFallbackFontsMap::const_iterator it = textBoxDataMap.find(downcast<LegacyInlineTextBox>(child));
                 usedFonts = it == textBoxDataMap.end() ? nullptr : &it->value.first;
             }
 
             if (usedFonts) {
-                for (const Font* font : *usedFonts) {
+                for (auto& font : *usedFonts) {
                     if (font->hasVerticalGlyphs())
                         return true;
                 }
@@ -497,10 +502,10 @@ static bool verticalAlignApplies(const RenderObject& renderer)
 {
     // http://www.w3.org/TR/CSS2/visudet.html#propdef-vertical-align - vertical-align only applies to inline level and table-cell elements.
     // FIXME: Ideally we would only align inline level boxes which means that text inside an inline box would just sit on the box itself.
-    if (!renderer.isText())
+    if (!renderer.isRenderText())
         return true;
     auto& parentRenderer = *renderer.parent();
-    return (parentRenderer.isInline() && parentRenderer.style().display() != DisplayType::InlineBlock) || parentRenderer.isTableCell();
+    return (parentRenderer.isInline() && parentRenderer.style().display() != DisplayType::InlineBlock) || parentRenderer.isRenderTableCell();
 }
 
 void LegacyInlineFlowBox::adjustMaxAscentAndDescent(LayoutUnit& maxAscent, LayoutUnit& maxDescent, LayoutUnit maxPositionTop, LayoutUnit maxPositionBottom)
@@ -1104,7 +1109,7 @@ bool LegacyInlineFlowBox::nodeAtPoint(const HitTestRequest& request, HitTestResu
 
 void LegacyInlineFlowBox::paint(PaintInfo& paintInfo, const LayoutPoint& paintOffset, LayoutUnit lineTop, LayoutUnit lineBottom)
 {
-    if (paintInfo.phase != PaintPhase::Foreground && paintInfo.phase != PaintPhase::Selection && paintInfo.phase != PaintPhase::Outline && paintInfo.phase != PaintPhase::SelfOutline && paintInfo.phase != PaintPhase::ChildOutlines && paintInfo.phase != PaintPhase::TextClip && paintInfo.phase != PaintPhase::Mask && paintInfo.phase != PaintPhase::EventRegion)
+    if (paintInfo.phase != PaintPhase::Foreground && paintInfo.phase != PaintPhase::Selection && paintInfo.phase != PaintPhase::Outline && paintInfo.phase != PaintPhase::SelfOutline && paintInfo.phase != PaintPhase::ChildOutlines && paintInfo.phase != PaintPhase::TextClip && paintInfo.phase != PaintPhase::Mask && paintInfo.phase != PaintPhase::EventRegion && paintInfo.phase != PaintPhase::Accessibility)
         return;
 
     LayoutRect overflowRect(visualOverflowRect(lineTop, lineBottom));
@@ -1130,7 +1135,7 @@ void LegacyInlineFlowBox::paint(PaintInfo& paintInfo, const LayoutPoint& paintOf
     // Paint our children.
     if (paintPhase != PaintPhase::SelfOutline) {
         for (auto* curr = firstChild(); curr; curr = curr->nextOnLine()) {
-            if (curr->renderer().isText() || !curr->boxModelObject()->hasSelfPaintingLayer())
+            if (curr->renderer().isRenderText() || !curr->boxModelObject()->hasSelfPaintingLayer())
                 curr->paint(childInfo, paintOffset, lineTop, lineBottom);
         }
     }
@@ -1213,23 +1218,14 @@ LayoutUnit LegacyInlineFlowBox::computeOverAnnotationAdjustment(LayoutUnit allow
         
         if (child->renderer().isReplacedOrInlineBlock() && is<RenderRubyRun>(child->renderer()) && child->renderer().style().rubyPosition() == RubyPosition::Before) {
             auto& rubyRun = downcast<RenderRubyRun>(child->renderer());
-            RenderRubyText* rubyText = rubyRun.rubyText();
-            if (!rubyText)
-                continue;
-            
-            if (!rubyRun.style().isFlippedLinesWritingMode()) {
-                LayoutUnit topOfFirstRubyTextLine = rubyText->logicalTop() + (rubyText->firstRootBox() ? rubyText->firstRootBox()->lineTop() : 0_lu);
-                if (topOfFirstRubyTextLine >= 0)
-                    continue;
-                topOfFirstRubyTextLine += child->logicalTop();
-                result = std::max(result, allowedPosition - topOfFirstRubyTextLine);
-            } else {
-                LayoutUnit bottomOfLastRubyTextLine = rubyText->logicalTop() + (rubyText->lastRootBox() ? rubyText->lastRootBox()->lineBottom() : rubyText->logicalHeight());
-                if (bottomOfLastRubyTextLine <= child->logicalHeight())
-                    continue;
-                bottomOfLastRubyTextLine += child->logicalTop();
-                result = std::max(result, bottomOfLastRubyTextLine - allowedPosition);
-            }
+
+            auto [above, below] = rubyRun.annotationsAboveAndBelow();
+            auto top = LayoutUnit { child->logicalTop() - above };
+            auto bottom = LayoutUnit { child->logicalBottom() + below };
+            if (!rubyRun.style().isFlippedLinesWritingMode())
+                result = std::max(result, allowedPosition - top);
+            else
+                result = std::max(result, bottom - allowedPosition);
         }
 
         if (is<LegacyInlineTextBox>(*child)) {
@@ -1261,23 +1257,14 @@ LayoutUnit LegacyInlineFlowBox::computeUnderAnnotationAdjustment(LayoutUnit allo
 
         if (child->renderer().isReplacedOrInlineBlock() && is<RenderRubyRun>(child->renderer()) && child->renderer().style().rubyPosition() == RubyPosition::After) {
             auto& rubyRun = downcast<RenderRubyRun>(child->renderer());
-            RenderRubyText* rubyText = rubyRun.rubyText();
-            if (!rubyText)
-                continue;
 
-            if (rubyRun.style().isFlippedLinesWritingMode()) {
-                LayoutUnit topOfFirstRubyTextLine = rubyText->logicalTop() + (rubyText->firstRootBox() ? rubyText->firstRootBox()->lineTop() : 0_lu);
-                if (topOfFirstRubyTextLine >= 0)
-                    continue;
-                topOfFirstRubyTextLine += child->logicalTop();
-                result = std::max(result, allowedPosition - topOfFirstRubyTextLine);
-            } else {
-                LayoutUnit bottomOfLastRubyTextLine = rubyText->logicalTop() + (rubyText->lastRootBox() ? rubyText->lastRootBox()->lineBottom() : rubyText->logicalHeight());
-                if (bottomOfLastRubyTextLine <= child->logicalHeight())
-                    continue;
-                bottomOfLastRubyTextLine += child->logicalTop();
-                result = std::max(result, bottomOfLastRubyTextLine - allowedPosition);
-            }
+            auto [above, below] = rubyRun.annotationsAboveAndBelow();
+            auto top = LayoutUnit { child->logicalTop() - above };
+            auto bottom = LayoutUnit { child->logicalBottom() + below };
+            if (rubyRun.style().isFlippedLinesWritingMode())
+                result = std::max(result, allowedPosition - top);
+            else
+                result = std::max(result, bottom - allowedPosition);
         }
 
         if (is<LegacyInlineTextBox>(*child)) {
@@ -1295,20 +1282,6 @@ LayoutUnit LegacyInlineFlowBox::computeUnderAnnotationAdjustment(LayoutUnit allo
         }
     }
     return result;
-}
-
-void LegacyInlineFlowBox::computeReplacedAndTextLineTopAndBottom(LayoutUnit& lineTop, LayoutUnit& lineBottom) const
-{
-    for (const auto* box = firstChild(); box; box = box->nextOnLine()) {
-        if (is<LegacyInlineFlowBox>(*box))
-            downcast<LegacyInlineFlowBox>(*box).computeReplacedAndTextLineTopAndBottom(lineTop, lineBottom);
-        else {
-            if (box->logicalTop() < lineTop)
-                lineTop = box->logicalTop();
-            if (box->logicalBottom() > lineBottom)
-                lineBottom = box->logicalBottom();
-        }
-    }
 }
 
 #if ENABLE(TREE_DEBUGGING)

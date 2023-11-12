@@ -30,6 +30,11 @@
 #import "WebAccessibilityObjectWrapperBase.h"
 #import "WAKView.h"
 
+// NSAttributedStrings support.
+
+static NSString * const UIAccessibilityTextAttributeContext = @"UIAccessibilityTextAttributeContext";
+static NSString * const UIAccessibilityTextualContextSourceCode = @"UIAccessibilityTextualContextSourceCode";
+
 @interface WAKView (iOSAccessibility)
 - (BOOL)accessibilityIsIgnored;
 @end
@@ -57,7 +62,14 @@
 
 - (BOOL)isAttachment;
 
-- (void)postNotification:(NSString *)notificationName;
+// This interacts with Accessibility system to post-process some notifications.
+// FIXME: remove this first overload once the system Accessibility bundle has been updated to the second overload.
+- (void)accessibilityOverrideProcessNotification:(NSString *)notificationName;
+- (void)accessibilityOverrideProcessNotification:(NSString *)notificationName notificationData:(NSData *)notificationData;
+
+// This is called by the Accessibility system to relay back to the chrome.
+- (void)handleNotificationRelayToChrome:(NSString *)notificationName notificationData:(NSData *)notificationData;
+
 @end
 
 #endif // ENABLE(ACCESSIBILITY) && PLATFORM(IOS_FAMILY)

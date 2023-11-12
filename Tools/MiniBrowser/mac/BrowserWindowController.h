@@ -80,6 +80,9 @@
 
 - (IBAction)showHideWebInspector:(id)sender;
 
+- (IBAction)toggleMainThreadStalls:(id)sender;
+- (BOOL)mainThreadStallsEnabled;
+
 - (void)didChangeSettings;
 - (BOOL)webViewFillsWindow;
 - (void)setWebViewFillsWindow:(BOOL)fillWindow;
@@ -88,6 +91,8 @@
 - (NSView *)mainContentView;
 
 - (CGFloat)pageScaleForMenuItemTag:(NSInteger)tag;
+
+- (void)updateTitleForBadgeChange;
 
 @property (nonatomic, assign, getter=isEditable) BOOL editable;
 - (IBAction)toggleEditable:(id)sender;

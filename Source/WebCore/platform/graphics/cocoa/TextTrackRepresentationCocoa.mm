@@ -107,9 +107,17 @@
 
 namespace WebCore {
 
-std::unique_ptr<TextTrackRepresentation> TextTrackRepresentation::create(TextTrackRepresentationClient& client)
+std::unique_ptr<TextTrackRepresentation> TextTrackRepresentation::create(TextTrackRepresentationClient& client, HTMLMediaElement& mediaElement)
 {
+    if (TextTrackRepresentationCocoa::representationFactory())
+        return TextTrackRepresentationCocoa::representationFactory()(client, mediaElement);
     return makeUnique<TextTrackRepresentationCocoa>(client);
+}
+
+TextTrackRepresentationCocoa::TextTrackRepresentationFactory& TextTrackRepresentationCocoa::representationFactory()
+{
+    static NeverDestroyed<TextTrackRepresentationFactory> factory;
+    return factory.get();
 }
 
 TextTrackRepresentationCocoa::TextTrackRepresentationCocoa(TextTrackRepresentationClient& client)
@@ -132,7 +140,7 @@ TextTrackRepresentationCocoa::~TextTrackRepresentationCocoa()
 void TextTrackRepresentationCocoa::update()
 {
     if (auto representation = m_client.createTextTrackRepresentationImage())
-        [m_layer setContents:(__bridge id)representation->nativeImage()->platformImage().get()];
+        [m_layer setContents:(__bridge id)representation->platformImage().get()];
 }
 
 void TextTrackRepresentationCocoa::setContentScale(float scale)

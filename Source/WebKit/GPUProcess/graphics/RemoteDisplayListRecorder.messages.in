@@ -30,20 +30,22 @@ messages -> RemoteDisplayListRecorder NotRefCounted Stream {
     Scale(WebCore::FloatSize scale) StreamBatched
     SetCTM(WebCore::AffineTransform ctm) StreamBatched
     ConcatenateCTM(WebCore::AffineTransform ctm) StreamBatched
-    SetInlineFillColor(WebCore::DisplayList::SetInlineFillColor item) StreamBatched
-    SetInlineStrokeColor(WebCore::DisplayList::SetInlineStrokeColor item) StreamBatched
-    SetStrokeThickness(float thickness) StreamBatched
+    SetInlineFillColor(WebCore::DisplayList::SetInlineFillColor fillColorItem) StreamBatched
+    SetInlineStroke(WebCore::DisplayList::SetInlineStroke strokeItem) StreamBatched
     SetState(WebCore::DisplayList::SetState item) StreamBatched
     SetLineCap(enum:uint8_t WebCore::LineCap lineCap) StreamBatched
     SetLineDash(WebCore::DisplayList::SetLineDash item) StreamBatched
     SetLineJoin(enum:uint8_t WebCore::LineJoin lineJoin) StreamBatched
     SetMiterLimit(float limit) StreamBatched
-    ClearShadow()
+    ClearDropShadow()
     Clip(WebCore::FloatRect rect)
+    ClipRoundedRect(WebCore::FloatRoundedRect rect)
     ClipOut(WebCore::FloatRect rect)
+    ClipOutRoundedRect(WebCore::FloatRoundedRect rect)
     ClipToImageBuffer(WebCore::RenderingResourceIdentifier renderingResourceIdentifier, WebCore::FloatRect destinationRect)
     ClipOutToPath(WebCore::Path path)
-    ClipPath(WebCore::Path path, enum:uint8_t WebCore::WindRule windRule)
+    ClipPath(WebCore::Path path, enum:bool WebCore::WindRule windRule)
+    ResetClip()
     DrawGlyphs(WebCore::DisplayList::DrawGlyphs item)
     DrawDecomposedGlyphs(WebCore::RenderingResourceIdentifier fontIdentifier, WebCore::RenderingResourceIdentifier decomposedGlyphsIdentifier)
     DrawFilteredImageBuffer(std::optional<WebCore::RenderingResourceIdentifier> sourceImageIdentifier, WebCore::FloatRect sourceImageRect, Ref<WebCore::Filter> filter)
@@ -68,26 +70,26 @@ messages -> RemoteDisplayListRecorder NotRefCounted Stream {
     FillRoundedRect(WebCore::FloatRoundedRect rect, WebCore::Color color, enum:uint8_t WebCore::BlendMode blendMode)
     FillRectWithRoundedHole(WebCore::FloatRect rect, WebCore::FloatRoundedRect roundedHoleRect, WebCore::Color color)
 #if ENABLE(INLINE_PATH_DATA)
-    FillLine(struct WebCore::LineData data)
-    FillArc(struct WebCore::ArcData data)
-    FillQuadCurve(struct WebCore::QuadCurveData data)
-    FillBezierCurve(struct WebCore::BezierCurveData data)
+    FillLine(struct WebCore::PathDataLine line)
+    FillArc(struct WebCore::PathArc arc)
+    FillQuadCurve(struct WebCore::PathDataQuadCurve curve)
+    FillBezierCurve(struct WebCore::PathDataBezierCurve curve)
 #endif
+    FillPathSegment(WebCore::PathSegment segment) StreamBatched
     FillPath(WebCore::Path path)
     FillEllipse(WebCore::FloatRect rect)
-    ConvertToLuminanceMask()
-    TransformToColorSpace(WebCore::DestinationColorSpace colorSpace)
 #if ENABLE(VIDEO)
     PaintFrameForMedia(WebCore::MediaPlayerIdentifier identifier, WebCore::FloatRect destination)
 #endif
     StrokeRect(WebCore::FloatRect rect, float lineWidth)
 #if ENABLE(INLINE_PATH_DATA)
-    StrokeLine(struct WebCore::LineData data) StreamBatched
-    StrokeLineWithColorAndThickness(WebCore::DisplayList::SetInlineStrokeColor color, float thickness, struct WebCore::LineData data) StreamBatched
-    StrokeArc(struct WebCore::ArcData data) StreamBatched
-    StrokeQuadCurve(struct WebCore::QuadCurveData data) StreamBatched
-    StrokeBezierCurve(struct WebCore::BezierCurveData data) StreamBatched
+    StrokeLine(struct WebCore::PathDataLine line) StreamBatched
+    StrokeLineWithColorAndThickness(struct WebCore::PathDataLine line, WebCore::DisplayList::SetInlineStroke strokeItem) StreamBatched
+    StrokeArc(struct WebCore::PathArc arc) StreamBatched
+    StrokeQuadCurve(struct WebCore::PathDataQuadCurve curve) StreamBatched
+    StrokeBezierCurve(struct WebCore::PathDataBezierCurve curve) StreamBatched
 #endif
+    StrokePathSegment(WebCore::PathSegment segment) StreamBatched
     StrokePath(WebCore::Path path) StreamBatched
     StrokeEllipse(WebCore::FloatRect rect) StreamBatched
     ClearRect(WebCore::FloatRect rect)
@@ -97,7 +99,6 @@ messages -> RemoteDisplayListRecorder NotRefCounted Stream {
     ApplyFillPattern()
 #endif
     ApplyDeviceScaleFactor(float scaleFactor)
-    FlushContext(WebKit::DisplayListRecorderFlushIdentifier identifier)
 
 #if PLATFORM(COCOA) && ENABLE(VIDEO)
     PaintVideoFrame(struct WebKit::SharedVideoFrame frame, WebCore::FloatRect rect, bool shouldDiscardAlpha) NotStreamEncodable

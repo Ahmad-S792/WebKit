@@ -44,6 +44,7 @@ class Buildbot():
     QUEUE_TRIGGERS = {
         'api-ios': 'ios-sim',
         'ios-wk2': 'ios-sim',
+        'ios-wk2-wpt': 'ios-sim',
         'api-mac': 'mac',
         'mac-wk1': 'mac',
         'mac-wk2': 'mac',
@@ -52,7 +53,7 @@ class Buildbot():
         'mac-AS-debug-wk2': 'mac-AS-debug',
         'api-gtk': 'gtk',
         'gtk-wk2': 'gtk',
-        'jsc-mips-tests': 'jsc-mips',
+        'wpe-wk2': 'wpe',
         'jsc-armv7-tests': 'jsc-armv7',
     }
 
@@ -166,8 +167,8 @@ class Buildbot():
             return False
 
         build_url = 'https://{}/api/v2/builders/{}/builds/{}'.format(config.BUILDBOT_SERVER_HOST, builder_id, build_number)
-        username = os.getenv('EWS_ADMIN_USERNAME')
-        password = os.getenv('EWS_ADMIN_PASSWORD')
+        username = util.load_password('EWS_ADMIN_USERNAME')
+        password = util.load_password('EWS_ADMIN_PASSWORD')
         session = requests.Session()
         response = session.head('https://{}/auth/login'.format(config.BUILDBOT_SERVER_HOST), auth=(username, password))
         if (not response) or response.status_code not in (200, 302):

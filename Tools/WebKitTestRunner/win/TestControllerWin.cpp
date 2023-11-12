@@ -27,6 +27,7 @@
 #include "config.h"
 #include "TestController.h"
 
+#include "EventSenderProxy.h"
 #include <WebCore/NotImplemented.h>
 #include <WinBase.h>
 #include <fcntl.h>
@@ -35,6 +36,7 @@
 #include <string>
 #include <windows.h>
 #include <wtf/RunLoop.h>
+#include <wtf/WTFProcess.h>
 
 
 #define INJECTED_BUNDLE_DLL_NAME "TestRunnerInjectedBundle.dll"
@@ -119,11 +121,6 @@ void TestController::platformInitialize(const Options&)
     webProcessCrashingEvent = ::CreateEventA(0, FALSE, FALSE, webProcessCrashingEventName);
 }
 
-WKPreferencesRef TestController::platformPreferences()
-{
-    return WKPageGroupGetPreferences(m_pageGroup.get());
-}
-
 void TestController::platformDestroy()
 {
 }
@@ -163,7 +160,7 @@ void TestController::platformRunUntil(bool& condition, WTF::Seconds timeout)
     bool neverSetCondition = false;
     result = runRunLoopUntil(neverSetCondition, 0, maximumWaitForWebProcessToCrash);
     ASSERT_UNUSED(result, result == TimedOut);
-    exit(1);
+    exitProcess(1);
 }
 
 void TestController::platformDidCommitLoadForFrame(WKPageRef, WKFrameRef)
@@ -224,6 +221,8 @@ void TestController::platformConfigureViewForTest(const TestInvocation&)
 
 bool TestController::platformResetStateToConsistentValues(const TestOptions&)
 {
+    // Reset the mouse position not to dispatch a fake double-click event for a click in the next page.
+    m_eventSenderProxy->mouseMoveTo(0, 0, nullptr);
     return true;
 }
 

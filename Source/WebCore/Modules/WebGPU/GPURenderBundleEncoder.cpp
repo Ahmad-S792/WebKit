@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2021 Apple Inc. All rights reserved.
+ * Copyright (C) 2021-2023 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -95,6 +95,10 @@ void GPURenderBundleEncoder::setBindGroup(GPUIndex32 index, const GPUBindGroup& 
     GPUSize64 dynamicOffsetsDataStart,
     GPUSize32 dynamicOffsetsDataLength)
 {
+    auto offset = checkedSum<uint64_t>(dynamicOffsetsDataStart, dynamicOffsetsDataLength);
+    if (offset.hasOverflowed() || offset > dynamicOffsetsData.length())
+        return;
+
     m_backing->setBindGroup(index, bindGroup.backing(), dynamicOffsetsData.data(), dynamicOffsetsData.length(), dynamicOffsetsDataStart, dynamicOffsetsDataLength);
 }
 
@@ -113,7 +117,7 @@ void GPURenderBundleEncoder::insertDebugMarker(String&& markerLabel)
     m_backing->insertDebugMarker(WTFMove(markerLabel));
 }
 
-static PAL::WebGPU::RenderBundleDescriptor convertToBacking(const std::optional<GPURenderBundleDescriptor>& renderBundleDescriptor)
+static WebGPU::RenderBundleDescriptor convertToBacking(const std::optional<GPURenderBundleDescriptor>& renderBundleDescriptor)
 {
     if (!renderBundleDescriptor)
         return { };

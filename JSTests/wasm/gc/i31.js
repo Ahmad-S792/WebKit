@@ -22,11 +22,11 @@ function testI31New() {
     () => instantiate(`
       (module
         (func (export "f") (result i32)
-          (i31.new (f32.const 42.42)))
+          (ref.i31 (f32.const 42.42)))
       )
     `),
     WebAssembly.CompileError,
-    "WebAssembly.Module doesn't validate: i31.new value to type F32 expected I32, in function at index 0 (evaluating 'new WebAssembly.Module(binary)')"
+    "WebAssembly.Module doesn't validate: ref.i31 value to type F32 expected I32, in function at index 0 (evaluating 'new WebAssembly.Module(binary)')"
   )
 
   // Use i31 in global and also export to JS via global.
@@ -35,7 +35,7 @@ function testI31New() {
       (module
         (global (export "g") (mut i31ref) (ref.null i31))
         (func (export "f")
-          (global.set 0 (i31.new (i32.const 42))))
+          (global.set 0 (ref.i31 (i32.const 42))))
       )
     `);
     m.exports.f();
@@ -47,7 +47,7 @@ function testI31New() {
     let m = instantiate(`
       (module
         (func (export "f") (result i31ref)
-          (i31.new (i32.const 42)))
+          (ref.i31 (i32.const 42)))
       )
     `);
     assert.eq(m.exports.f(), 42);
@@ -59,7 +59,7 @@ function testI31New() {
       (module
         (import "m" "f" (func (param i31ref)))
         (func (export "g")
-          (call 0 (i31.new (i32.const 42))))
+          (call 0 (ref.i31 (i32.const 42))))
       )`,
       { m: { f: (i31) => assert.eq(i31, 42) } }
     );
@@ -72,7 +72,7 @@ function testI31Get() {
     let m = instantiate(`
       (module
         (func (export "f") (result i32)
-          (i31.get_s (i31.new (i32.const 42))))
+          (i31.get_s (ref.i31 (i32.const 42))))
       )
     `);
     assert.eq(m.exports.f(), 42);
@@ -82,7 +82,7 @@ function testI31Get() {
     let m = instantiate(`
       (module
         (func (export "f") (result i32)
-          (i31.get_u (i31.new (i32.const 42))))
+          (i31.get_u (ref.i31 (i32.const 42))))
       )
     `);
     assert.eq(m.exports.f(), 42);
@@ -92,7 +92,7 @@ function testI31Get() {
     let m = instantiate(`
       (module
         (func (export "f") (result i32)
-          (i31.get_s (i31.new (i32.const 0x4000_0000))))
+          (i31.get_s (ref.i31 (i32.const 0x4000_0000))))
       )
     `);
     assert.eq(m.exports.f(), -0x40000000);
@@ -102,7 +102,7 @@ function testI31Get() {
     let m = instantiate(
       `(module
          (func (export "f") (result i32)
-           (i31.get_u (i31.new (i32.const 0x4000_0000))))
+           (i31.get_u (ref.i31 (i32.const 0x4000_0000))))
        )
     `);
     assert.eq(m.exports.f(), 0x40000000);
@@ -112,7 +112,7 @@ function testI31Get() {
     let m = instantiate(`
       (module
         (func (export "f") (result i32)
-          (i31.get_s (i31.new (i32.const 0xaaaa_aaaa))))
+          (i31.get_s (ref.i31 (i32.const 0xaaaa_aaaa))))
       )
     `);
     assert.eq(m.exports.f(), 0x2aaaaaaa);
@@ -122,7 +122,7 @@ function testI31Get() {
     let m = instantiate(`
       (module
         (func (export "f") (result i32)
-          (i31.get_u (i31.new (i32.const 0xaaaa_aaaa))))
+          (i31.get_u (ref.i31 (i32.const 0xaaaa_aaaa))))
       )
     `);
     assert.eq(m.exports.f(), 0x2aaaaaaa);
@@ -132,7 +132,7 @@ function testI31Get() {
     let m = instantiate(`
       (module
         (func (export "f") (result i32)
-          (i31.get_s (i31.new (i32.const -1))))
+          (i31.get_s (ref.i31 (i32.const -1))))
       )
     `);
     assert.eq(m.exports.f(), -1);
@@ -142,10 +142,36 @@ function testI31Get() {
     let m = instantiate(`
       (module
         (func (export "f") (result i32)
-          (i31.get_u (i31.new (i32.const -1))))
+          (i31.get_u (ref.i31 (i32.const -1))))
       )
     `);
     assert.eq(m.exports.f(), 0x7fffffff);
+  }
+
+  {
+    let m = instantiate(`
+      (module
+        (func (export "f") (param $arg i32) (result i32)
+          (i31.get_u (ref.i31 (local.get $arg))))
+      )
+    `);
+    assert.eq(m.exports.f(0x7fffffff), 0x7fffffff);
+    assert.eq(m.exports.f(0x2aaaaaaa), 0x2aaaaaaa);
+    assert.eq(m.exports.f(0x40000000), 0x40000000);
+    assert.eq(m.exports.f(42), 42);
+  }
+
+  {
+    let m = instantiate(`
+      (module
+        (func (export "f") (param $arg i32) (result i32)
+          (i31.get_s (ref.i31 (local.get $arg))))
+      )
+    `);
+    assert.eq(m.exports.f(0x7fffffff), -1);
+    assert.eq(m.exports.f(0x2aaaaaaa), 0x2aaaaaaa);
+    assert.eq(m.exports.f(0x40000000), -0x40000000);
+    assert.eq(m.exports.f(42), 42);
   }
 
   assert.throws(
@@ -189,20 +215,25 @@ function testI31Get() {
 }
 
 function testI31JS() {
-  // JS API behavior not specified yet, import errors for now.
-  assert.throws(
-    () => {
-      let m = instantiate(`
-        (module
-          (func (export "f") (param i31ref) (result i32)
-            (i31.get_u (local.get 0)))
-        )
-      `);
-      m.exports.f(42);
-    },
-    TypeError,
-    "I31ref import from JS currently unsupported"
-  )
+  {
+    let m = instantiate(`
+      (module
+        (func (export "f") (param i31ref) (result i32)
+          (i31.get_u (local.get 0)))
+      )
+    `);
+    assert.eq(m.exports.f(42), 42);
+    assert.throws(
+      () => m.exports.f(m.exports.f),
+      TypeError,
+      "Argument value did not match reference type"
+    );
+    assert.throws(
+      () => m.exports.f(null),
+      WebAssembly.RuntimeError,
+      "i31.get_<sx> to a null reference"
+    );
+  }
 
   // JS API behavior not specified yet, i31 global errors for now.
   assert.throws(
@@ -211,22 +242,80 @@ function testI31JS() {
     "WebAssembly.Global expects its 'value' field to be the string"
   )
 
-  // JS API behavior not specified yet, setting global errors for now.
+  {
+    let m = instantiate(`
+      (module
+        (global (export "g") (mut i31ref) (ref.null i31))
+      )
+    `);
+    m.exports.g.value = 42;
+  }
+}
+
+function testI31Table() {
+  {
+    let m = instantiate(`
+      (module
+        (table 10 (ref null i31))
+        (func (export "set") (param i32) (result)
+          (table.set (local.get 0) (ref.i31 (i32.const 42))))
+        (func (export "get") (param i32) (result i32)
+          (i31.get_s (table.get (local.get 0)))))
+    `);
+    m.exports.set(3);
+    assert.eq(m.exports.get(3), 42);
+    assert.throws(() => m.exports.get(2), WebAssembly.RuntimeError, "i31.get_<sx> to a null");
+  }
+
+  // Invalid non-defaultable table type.
   assert.throws(
-    () => {
-      let m = instantiate(`
-        (module
-          (global (export "g") (mut i31ref) (ref.null i31))
-        )
-      `);
-      m.exports.g.value = 42;
-    },
-    TypeError,
-    "I31ref import from JS currently unsupported"
+    () => compile(`
+      (module
+        (table 0 (ref i31)))
+    `),
+    WebAssembly.CompileError,
+    "WebAssembly.Module doesn't parse at byte 17: Table's type must be defaultable (evaluating 'new WebAssembly.Module(binary)')"
   )
+
+  // Test JS API.
+  {
+    const m = instantiate(`
+      (module
+        (table (export "t") 10 (ref null i31))
+        (start 0)
+        (func
+          (table.fill (i32.const 0) (ref.i31 (i32.const 42)) (i32.const 10))))
+    `);
+    const m2 = instantiate(`
+      (module
+        (type (array i32))
+        (func (export "makeArray") (result (ref 0)) (array.new_default 0 (i32.const 5))))
+    `);
+    assert.eq(m.exports.t.get(0), 42);
+    assert.throws(
+      () => m.exports.t.set(0, "foo"),
+      TypeError,
+      "WebAssembly.Table.prototype.set failed to cast the second argument to the table's element type"
+    );
+    assert.throws(
+      () => m.exports.t.set(0, m2.exports.makeArray()),
+      TypeError,
+      "WebAssembly.Table.prototype.set failed to cast the second argument to the table's element type"
+    );
+    assert.throws(
+      () => m.exports.t.set(0, 8e99),
+      TypeError,
+      "WebAssembly.Table.prototype.set failed to cast the second argument to the table's element type"
+    );
+    m.exports.t.set(0, 3);
+    assert.eq(m.exports.t.get(0), 3);
+    m.exports.t.set(0, null);
+    assert.eq(m.exports.t.get(0), null);
+  }
 }
 
 testI31Type();
 testI31New();
 testI31Get();
 testI31JS();
+testI31Table();

@@ -36,8 +36,8 @@
 
 namespace WebCore {
 
-enum DisplayConfigurationClientIdentifierType { };
-using DisplayConfigurationClientIdentifier = ObjectIdentifier<DisplayConfigurationClientIdentifierType>;
+enum class DisplayConfigurationClientIdentifierType { };
+using DisplayConfigurationClientIdentifier = AtomicObjectIdentifier<DisplayConfigurationClientIdentifierType>;
 
 class DisplayConfigurationMonitor {
 public:

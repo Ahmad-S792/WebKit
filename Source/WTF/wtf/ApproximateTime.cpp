@@ -34,11 +34,15 @@ namespace WTF {
 
 WallTime ApproximateTime::approximateWallTime() const
 {
+    if (isInfinity())
+        return WallTime::fromRawSeconds(m_value);
     return *this - now() + WallTime::now();
 }
 
 MonotonicTime ApproximateTime::approximateMonotonicTime() const
 {
+    if (isInfinity())
+        return MonotonicTime::fromRawSeconds(m_value);
     return *this - now() + MonotonicTime::now();
 }
 

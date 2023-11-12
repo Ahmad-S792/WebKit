@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2021 Apple Inc. All rights reserved.
+ * Copyright (C) 2021-2023 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -30,13 +30,13 @@
 
 #include "WebGPUConvertFromBackingContext.h"
 #include "WebGPUConvertToBackingContext.h"
-#include <pal/graphics/WebGPU/WebGPUBindGroupLayoutDescriptor.h>
+#include <WebCore/WebGPUBindGroupLayoutDescriptor.h>
 
 namespace WebKit::WebGPU {
 
-std::optional<BindGroupLayoutDescriptor> ConvertToBackingContext::convertToBacking(const PAL::WebGPU::BindGroupLayoutDescriptor& bindGroupLayoutDescriptor)
+std::optional<BindGroupLayoutDescriptor> ConvertToBackingContext::convertToBacking(const WebCore::WebGPU::BindGroupLayoutDescriptor& bindGroupLayoutDescriptor)
 {
-    auto base = convertToBacking(static_cast<const PAL::WebGPU::ObjectDescriptorBase&>(bindGroupLayoutDescriptor));
+    auto base = convertToBacking(static_cast<const WebCore::WebGPU::ObjectDescriptorBase&>(bindGroupLayoutDescriptor));
     if (!base)
         return std::nullopt;
 
@@ -46,25 +46,25 @@ std::optional<BindGroupLayoutDescriptor> ConvertToBackingContext::convertToBacki
         auto convertedEntry = convertToBacking(entry);
         if (!convertedEntry)
             return std::nullopt;
-        entries.uncheckedAppend(WTFMove(*convertedEntry));
+        entries.append(WTFMove(*convertedEntry));
     }
 
     return { { WTFMove(*base), WTFMove(entries) } };
 }
 
-std::optional<PAL::WebGPU::BindGroupLayoutDescriptor> ConvertFromBackingContext::convertFromBacking(const BindGroupLayoutDescriptor& bindGroupLayoutDescriptor)
+std::optional<WebCore::WebGPU::BindGroupLayoutDescriptor> ConvertFromBackingContext::convertFromBacking(const BindGroupLayoutDescriptor& bindGroupLayoutDescriptor)
 {
     auto base = convertFromBacking(static_cast<const ObjectDescriptorBase&>(bindGroupLayoutDescriptor));
     if (!base)
         return std::nullopt;
 
-    Vector<PAL::WebGPU::BindGroupLayoutEntry> entries;
+    Vector<WebCore::WebGPU::BindGroupLayoutEntry> entries;
     entries.reserveInitialCapacity(bindGroupLayoutDescriptor.entries.size());
     for (const auto& backingEntry : bindGroupLayoutDescriptor.entries) {
         auto entry = convertFromBacking(backingEntry);
         if (!entry)
             return std::nullopt;
-        entries.uncheckedAppend(WTFMove(*entry));
+        entries.append(WTFMove(*entry));
     }
 
     return { { WTFMove(*base), WTFMove(entries) } };

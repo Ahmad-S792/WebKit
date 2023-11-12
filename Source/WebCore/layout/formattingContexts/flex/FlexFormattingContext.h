@@ -42,28 +42,24 @@ class FlexFormattingContext final : public FormattingContext {
     WTF_MAKE_ISO_ALLOCATED(FlexFormattingContext);
 public:
     FlexFormattingContext(const ElementBox& formattingContextRoot, FlexFormattingState&);
-    void layoutInFlowContent(const ConstraintsForInFlowContent&) override;
-    IntrinsicWidthConstraints computedIntrinsicWidthConstraints() override;
-    LayoutUnit usedContentHeight() const override;
 
-    const FlexFormattingGeometry& formattingGeometry() const final { return m_flexFormattingGeometry; }
-    const FormattingQuirks& formattingQuirks() const final { return m_flexFormattingQuirks; }
+    void layout(const ConstraintsForFlexContent&);
+    IntrinsicWidthConstraints computedIntrinsicWidthConstraints();
 
-    void layoutInFlowContentForIntegration(const ConstraintsForFlexContent&);
-    IntrinsicWidthConstraints computedIntrinsicWidthConstraintsForIntegration();
+    const FlexFormattingGeometry& formattingGeometry() const { return m_flexFormattingGeometry; }
+    const FormattingQuirks& formattingQuirks() const { return m_flexFormattingQuirks; }
 
 private:
-    void sizeAndPlaceFlexItems(const ConstraintsForFlexContent&);
-    void computeIntrinsicWidthConstraintsForFlexItems();
-
     FlexLayout::LogicalFlexItems convertFlexItemsToLogicalSpace(const ConstraintsForFlexContent&);
     void setFlexItemsGeometry(const FlexLayout::LogicalFlexItems&, const FlexLayout::LogicalFlexItemRects&, const ConstraintsForFlexContent&);
 
     std::optional<LayoutUnit> computedAutoMarginValueForFlexItems(const ConstraintsForFlexContent&);
 
-    const FlexFormattingState& formattingState() const { return downcast<FlexFormattingState>(FormattingContext::formattingState()); }
-    FlexFormattingState& formattingState() { return downcast<FlexFormattingState>(FormattingContext::formattingState()); }
+    const FlexFormattingState& formattingState() const { return m_flexFormattingState; }
+    FlexFormattingState& formattingState() { return m_flexFormattingState; }
 
+private:
+    FlexFormattingState& m_flexFormattingState;
     const FlexFormattingGeometry m_flexFormattingGeometry;
     const FormattingQuirks m_flexFormattingQuirks;
 };

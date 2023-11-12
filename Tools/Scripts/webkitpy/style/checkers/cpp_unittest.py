@@ -2553,6 +2553,9 @@ class CppStyleTest(CppStyleTestBase):
                          'Extra space before last semicolon. If this should be an '
                          'empty statement, use { } instead.'
                          '  [whitespace/semicolon] [5]')
+        self.assert_lint('case DAV1D_TASK_TYPE_FG_APPLY:;',
+                         'Semicolon defining empty statement. Use { } instead.'
+                         '  [whitespace/semicolon] [5]')
         self.assert_lint('default:;',
                          'Semicolon defining empty statement. Use { } instead.'
                          '  [whitespace/semicolon] [5]')
@@ -3206,6 +3209,14 @@ class CppStyleTest(CppStyleTestBase):
         self.assert_lint('mutable AnEnum a : 14;', errmsg)
         self.assert_lint('const AnEnum a : 6;', errmsg)
         self.assert_lint('bool a : 1;', '')
+        self.assert_lint('uint8_t a : 1;', '')
+        self.assert_lint('uint16_t a : 1;', '')
+        self.assert_lint('uint32_t a : 1;', '')
+        self.assert_lint('uint64_t a : 1;', '')
+        self.assert_lint('int8_t a : 1;', '')
+        self.assert_lint('int16_t a : 1;', '')
+        self.assert_lint('int32_t a : 1;', '')
+        self.assert_lint('int64_t a : 1;', '')
 
     # Integral bitfields must be declared with either signed or unsigned keyword.
     def test_plain_integral_bitfields(self):
@@ -4774,6 +4785,16 @@ class WebKitStyleTest(CppStyleTestBase):
             '  [whitespace/indent] [4]',
             'foo.cpp')
         self.assert_multi_line_lint(
+            'namespace IPC {\n'
+            'Decoder::Decoder(DataReference buffer, BufferDeallocator&& bufferDeallocator, Vector<Attachment>&& attachments)\n'
+            '    : m_buffer { buffer }\n'
+            '    , m_bufferPosition { m_buffer.begin() }\n'
+            '    , m_bufferDeallocator { WTFMove(bufferDeallocator) }\n'
+            '    , m_attachments { WTFMove(attachments) }\n'
+            '{ }',
+            '',
+            'Decoder.cpp')
+        self.assert_multi_line_lint(
             'namespace WebCore {\n'
             '#define abc(x) x; \\\n'
             '    x\n'
@@ -5830,6 +5851,7 @@ class WebKitStyleTest(CppStyleTestBase):
             "  [runtime/wtf_checked_size] [5]",
             'foo.cpp')
 
+
     def test_wtf_make_unique(self):
         self.assert_lint(
              'std::unique_ptr<Foo> foo = WTF::makeUnique<Foo>();',
@@ -6539,12 +6561,13 @@ class WebKitStyleTest(CppStyleTestBase):
         'Should be indented on a separate line, with the colon or comma first on that line.'
         '  [whitespace/indent] [4]')
 
-        self.assert_multi_line_lint((
+        self.assert_multi_line_lint(
             'MyClass::MyClass(Document* doc)\n'
             '    : m_myMember(b ? bar() : baz())\n'
             '    , MySuperClass()\n'
             '    , m_doc(0)\n'
-            '{ }'), '')
+            '{ }',
+            '')
 
         self.assert_multi_line_lint('''\
         MyClass::MyClass(Document* doc) : MySuperClass()

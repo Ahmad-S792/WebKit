@@ -32,18 +32,18 @@
 #include "Event.h"
 #include "EventNames.h"
 #include "EventSender.h"
-#include "Frame.h"
 #include "FrameLoader.h"
 #include "HTMLImageElement.h"
 #include "HTMLNames.h"
 #include "HTMLObjectElement.h"
-#include "HTMLParserIdioms.h"
 #include "HTMLPlugInElement.h"
 #include "InspectorInstrumentation.h"
 #include "JSDOMPromiseDeferred.h"
 #include "LazyLoadImageObserver.h"
 #include "LegacyRenderSVGImage.h"
+#include "LocalFrame.h"
 #include "Logging.h"
+#include "MemoryCache.h"
 #include "Page.h"
 #include "RenderImage.h"
 #include "RenderSVGImage.h"
@@ -107,8 +107,24 @@ static ImageEventSender& loadEventSender()
 
 static inline bool pageIsBeingDismissed(Document& document)
 {
-    Frame* frame = document.frame();
+    auto* frame = document.frame();
     return frame && frame->loader().pageDismissalEventBeingDispatched() != FrameLoader::PageDismissalType::None;
+}
+
+// https://html.spec.whatwg.org/multipage/images.html#updating-the-image-data:list-of-available-images
+static bool canReuseFromListOfAvailableImages(const CachedResourceRequest& request, Document& document)
+{
+    CachedResource* resource = MemoryCache::singleton().resourceForRequest(request.resourceRequest(), document.page()->sessionID());
+    if (!resource || resource->stillNeedsLoad() || resource->isPreloaded())
+        return false;
+
+    if (resource->options().mode == FetchOptions::Mode::Cors && !document.securityOrigin().isSameOriginAs(*resource->origin()))
+        return false;
+
+    if (resource->options().mode != request.options().mode || resource->options().credentials != request.options().credentials)
+        return false;
+
+    return true;
 }
 
 ImageLoader::ImageLoader(Element& element)
@@ -175,7 +191,7 @@ void ImageLoader::updateFromElement(RelevantMutation relevantMutation)
 
     AtomString attr = element().imageSourceURL();
 
-    LOG_WITH_STREAM(LazyLoading, stream << "ImageLoader " << this << " updateFromElement, current URI is " << sourceURI(attr));
+    LOG_WITH_STREAM(LazyLoading, stream << "ImageLoader " << this << " updateFromElement, current URL is " << attr);
 
     // Avoid loading a URL we already failed to load.
     if (!m_failedLoadURL.isEmpty() && attr == m_failedLoadURL)
@@ -184,7 +200,7 @@ void ImageLoader::updateFromElement(RelevantMutation relevantMutation)
     // Do not load any image if the 'src' attribute is missing or if it is
     // an empty string.
     CachedResourceHandle<CachedImage> newImage = nullptr;
-    if (!attr.isNull() && !stripLeadingAndTrailingHTMLSpaces(attr).isEmpty()) {
+    if (!attr.isNull() && !StringView(attr).containsOnly<isASCIIWhitespace<UChar>>()) {
         ResourceLoaderOptions options = CachedResourceLoader::defaultCachedResourceOptions();
         options.contentSecurityPolicyImposition = element().isInUserAgentShadowTree() ? ContentSecurityPolicyImposition::SkipPolicyCheck : ContentSecurityPolicyImposition::DoPolicyCheck;
         options.loadedFromPluginElement = is<HTMLPlugInElement>(element()) ? LoadedFromPluginElement::Yes : LoadedFromPluginElement::No;
@@ -194,6 +210,7 @@ void ImageLoader::updateFromElement(RelevantMutation relevantMutation)
         if (isImageElement) {
             auto& imageElement = downcast<HTMLImageElement>(element());
             options.referrerPolicy = imageElement.referrerPolicy();
+            options.fetchPriorityHint = imageElement.fetchPriorityHint();
             if (imageElement.usesSrcsetOrPicture())
                 options.initiator = Initiator::Imageset;
         }
@@ -205,7 +222,7 @@ void ImageLoader::updateFromElement(RelevantMutation relevantMutation)
         if (m_image && attr == m_pendingURL)
             imageURL = m_image->url();
         else {
-            imageURL = document.completeURL(sourceURI(attr));
+            imageURL = document.completeURL(attr);
             m_pendingURL = attr;
         }
         ResourceRequest resourceRequest(imageURL);
@@ -229,7 +246,7 @@ void ImageLoader::updateFromElement(RelevantMutation relevantMutation)
 #endif
             if (m_lazyImageLoadState == LazyImageLoadState::None && isImageElement) {
                 auto& imageElement = downcast<HTMLImageElement>(element());
-                if (imageElement.isLazyLoadable() && document.lazyImageLoadingEnabled()) {
+                if (imageElement.isLazyLoadable() && document.settings().lazyImageLoadingEnabled() && !canReuseFromListOfAvailableImages(request, document)) {
                     m_lazyImageLoadState = LazyImageLoadState::Deferred;
                     request.setIgnoreForRequestCount(true);
                 }
@@ -337,7 +354,7 @@ static inline void rejectPromises(Vector<RefPtr<DeferredPromise>>& promises, ASC
     ASSERT(!promises.isEmpty());
     auto promisesToBeRejected = std::exchange(promises, { });
     for (auto& promise : promisesToBeRejected)
-        promise->reject(Exception { EncodingError, message });
+        promise->reject(Exception { ExceptionCode::EncodingError, message });
 }
 
 inline void ImageLoader::resolveDecodePromises()
@@ -487,8 +504,8 @@ void ImageLoader::decode(Ref<DeferredPromise>&& promise)
         return;
     }
 
-    AtomString attr = element().imageSourceURL();
-    if (stripLeadingAndTrailingHTMLSpaces(attr).isEmpty()) {
+    auto attr = element().imageSourceURL();
+    if (StringView(attr).containsOnly<isASCIIWhitespace<UChar>>()) {
         rejectDecodePromises("Missing source URL."_s);
         return;
     }

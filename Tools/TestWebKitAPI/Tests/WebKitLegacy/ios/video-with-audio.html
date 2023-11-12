@@ -10,9 +10,7 @@
     function playing() {
         try {
             window.webkit.messageHandlers.testHandler.postMessage('playing');
-        } catch(e) {
-            window.location = 'callback:playing';
-        }
+        } catch(e) { }
     }
 
     function paused() {
@@ -65,7 +63,7 @@
 </head>
 <body onload="go()">
     <video src="video-with-audio.mp4" webkit-playsinline></video>
-    <audio src="video-with-audio.mp4" webkit-playsinline></video>
+    <audio src="video-with-audio.mp4" webkit-playsinline></audio>
     <canvas id="myCanvas" width="200" height="200"></canvas>
 </body>
 </html>

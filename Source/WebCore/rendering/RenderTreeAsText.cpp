@@ -30,29 +30,35 @@
 #include "ColorSerialization.h"
 #include "Document.h"
 #include "ElementInlines.h"
-#include "Frame.h"
 #include "FrameSelection.h"
-#include "FrameView.h"
 #include "HTMLElement.h"
 #include "HTMLNames.h"
 #include "HTMLSpanElement.h"
+#include "InlineIteratorBoxInlines.h"
 #include "InlineIteratorTextBox.h"
 #include "LegacyRenderSVGContainer.h"
 #include "LegacyRenderSVGImage.h"
+#include "LegacyRenderSVGResourceContainer.h"
 #include "LegacyRenderSVGRoot.h"
 #include "LegacyRenderSVGShape.h"
+#include "LocalFrame.h"
+#include "LocalFrameView.h"
 #include "Logging.h"
 #include "PrintContext.h"
 #include "PseudoElement.h"
+#include "RemoteFrame.h"
+#include "RemoteFrameView.h"
 #include "RenderBlockFlow.h"
+#include "RenderBoxModelObjectInlines.h"
 #include "RenderCounter.h"
 #include "RenderDetailsMarker.h"
+#include "RenderElementInlines.h"
 #include "RenderFileUploadControl.h"
 #include "RenderFragmentContainer.h"
 #include "RenderInline.h"
 #include "RenderIterator.h"
-#include "RenderLayer.h"
 #include "RenderLayerBacking.h"
+#include "RenderLayerInlines.h"
 #include "RenderLayerScrollableArea.h"
 #include "RenderLineBreak.h"
 #include "RenderListItem.h"
@@ -62,7 +68,6 @@
 #include "RenderSVGContainer.h"
 #include "RenderSVGGradientStop.h"
 #include "RenderSVGInlineText.h"
-#include "RenderSVGResourceContainer.h"
 #include "RenderSVGRoot.h"
 #include "RenderSVGShapeInlines.h"
 #include "RenderSVGText.h"
@@ -70,6 +75,7 @@
 #include "RenderView.h"
 #include "RenderWidget.h"
 #include "SVGRenderTreeAsText.h"
+#include "ScriptDisallowedScope.h"
 #include "ShadowRoot.h"
 #include "StylePropertiesInlines.h"
 #include <wtf/HexNumber.h>
@@ -248,7 +254,7 @@ void RenderTreeAsText::writeRenderObject(TextStream& ts, const RenderObject& o, 
     }
     
     RenderBlock* cb = o.containingBlock();
-    bool adjustForTableCells = cb ? cb->isTableCell() : false;
+    bool adjustForTableCells = cb ? cb->isRenderTableCell() : false;
 
     bool enableSubpixelPrecisionForTextDump = shouldEnableSubpixelPrecisionForTextDump(o.document());
     LayoutRect r;
@@ -366,13 +372,13 @@ void RenderTreeAsText::writeRenderObject(TextStream& ts, const RenderObject& o, 
         bool overridden = o.style().borderImage().overridesBorderWidths();
         if (box.isFieldset()) {
             const auto& block = downcast<RenderBlock>(box);
-            if (o.style().writingMode() == WritingMode::TopToBottom)
+            if (o.style().blockFlowDirection() == BlockFlowDirection::TopToBottom)
                 borderTop -= block.intrinsicBorderForFieldset();
-            else if (o.style().writingMode() == WritingMode::BottomToTop)
+            else if (o.style().blockFlowDirection() == BlockFlowDirection::BottomToTop)
                 borderBottom -= block.intrinsicBorderForFieldset();
-            else if (o.style().writingMode() == WritingMode::LeftToRight)
+            else if (o.style().blockFlowDirection() == BlockFlowDirection::LeftToRight)
                 borderLeft -= block.intrinsicBorderForFieldset();
-            else if (o.style().writingMode() == WritingMode::RightToLeft)
+            else if (o.style().blockFlowDirection() == BlockFlowDirection::RightToLeft)
                 borderRight -= block.intrinsicBorderForFieldset();
             
         }
@@ -590,8 +596,8 @@ void write(TextStream& ts, const RenderObject& o, OptionSet<RenderAsTextFlag> be
         writeSVGGradientStop(ts, downcast<RenderSVGGradientStop>(o), behavior);
         return;
     }
-    if (is<RenderSVGResourceContainer>(o)) {
-        writeSVGResourceContainer(ts, downcast<RenderSVGResourceContainer>(o), behavior);
+    if (is<LegacyRenderSVGResourceContainer>(o)) {
+        writeSVGResourceContainer(ts, downcast<LegacyRenderSVGResourceContainer>(o), behavior);
         return;
     }
     if (is<LegacyRenderSVGContainer>(o)) {
@@ -638,20 +644,14 @@ void write(TextStream& ts, const RenderObject& o, OptionSet<RenderAsTextFlag> be
 
     if (is<RenderWidget>(o)) {
         Widget* widget = downcast<RenderWidget>(o).widget();
-        if (is<FrameView>(widget)) {
-            FrameView& view = downcast<FrameView>(*widget);
-            auto* localFrame = dynamicDowncast<LocalFrame>(view.frame());
-            if (RenderView* root = localFrame ? localFrame->contentRenderer() : nullptr) {
-                if (!(behavior.contains(RenderAsTextFlag::DontUpdateLayout)))
-                    view.layoutContext().layout();
-                if (RenderLayer* layer = root->layer())
-                    writeLayers(ts, *layer, *layer, layer->rect(), behavior);
-            }
+        if (widget) {
+            if (auto* frameView = dynamicDowncast<FrameView>(widget))
+                frameView->writeRenderTreeAsText(ts, behavior);
         }
     }
 
 #if ENABLE(LAYER_BASED_SVG_ENGINE)
-    if  (is<RenderSVGModelObject>(o) || is<RenderSVGRoot>(o))
+    if (is<RenderSVGModelObject>(o) || is<RenderSVGRoot>(o))
         writeResources(ts, o, behavior);
 #endif
 }
@@ -880,7 +880,7 @@ static void writeSelection(TextStream& ts, const RenderBox& renderer)
     if (!renderer.isRenderView())
         return;
 
-    Frame* frame = renderer.document().frame();
+    auto* frame = renderer.document().frame();
     if (!frame)
         return;
 
@@ -906,6 +906,11 @@ static TextStream createTextStream(const Document& document)
     return { TextStream::LineMode::MultipleLine, formattingFlags() };
 }
 
+TextStream createTextStream(const RenderView& view)
+{
+    return createTextStream(view.document());
+}
+
 static String externalRepresentation(RenderBox& renderer, OptionSet<RenderAsTextFlag> behavior)
 {
     auto ts = createTextStream(renderer.document());
@@ -914,6 +919,7 @@ static String externalRepresentation(RenderBox& renderer, OptionSet<RenderAsText
 
     LOG(Layout, "externalRepresentation: dumping layer tree");
 
+    ScriptDisallowedScope scriptDisallowedScope;
     RenderLayer& layer = *renderer.layer();
     writeLayers(ts, layer, layer, layer.rect(), behavior);
     writeSelection(ts, renderer);
@@ -924,7 +930,7 @@ static void updateLayoutIgnoringPendingStylesheetsIncludingSubframes(Document& d
 {
     document.updateLayoutIgnorePendingStylesheets();
     auto* frame = document.frame();
-    for (AbstractFrame* subframe = frame; subframe; subframe = subframe->tree().traverseNext(frame)) {
+    for (Frame* subframe = frame; subframe; subframe = subframe->tree().traverseNext(frame)) {
         auto* localFrame = dynamicDowncast<LocalFrame>(subframe);
         if (!localFrame)
             continue;
@@ -933,7 +939,7 @@ static void updateLayoutIgnoringPendingStylesheetsIncludingSubframes(Document& d
     }
 }
 
-String externalRepresentation(Frame* frame, OptionSet<RenderAsTextFlag> behavior)
+String externalRepresentation(LocalFrame* frame, OptionSet<RenderAsTextFlag> behavior)
 {
     ASSERT(frame);
     ASSERT(frame->document());
@@ -950,6 +956,16 @@ String externalRepresentation(Frame* frame, OptionSet<RenderAsTextFlag> behavior
         printContext.begin(renderer->width());
 
     return externalRepresentation(*renderer, behavior);
+}
+
+void externalRepresentationForLocalFrame(TextStream &ts, LocalFrame& frame, OptionSet<RenderAsTextFlag> behavior)
+{
+    ASSERT(frame.document());
+
+    if (RenderView* root = frame.contentRenderer()) {
+        if (RenderLayer* layer = root->layer())
+            writeLayers(ts, *layer, *layer, layer->rect(), behavior);
+    }
 }
 
 String externalRepresentation(Element* element, OptionSet<RenderAsTextFlag> behavior)

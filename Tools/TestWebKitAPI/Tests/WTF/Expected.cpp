@@ -162,7 +162,19 @@ TEST(WTF_Expected, expected)
         EXPECT_EQ(u.value_or(3.14), 3);
     }
     {
+        auto u = E(unexpect, oops);
+        EXPECT_FALSE(u.has_value());
+        EXPECT_EQ(u.error(), oops);
+        EXPECT_EQ(u.value_or(3.14), 3);
+    }
+    {
         auto uv = EV(makeUnexpected(oops));
+        EXPECT_FALSE(uv.has_value());
+        EXPECT_EQ(uv.error(), oops);
+        EXPECT_EQ(uv.value_or(3.14), 3);
+    }
+    {
+        auto uv = EV(unexpect, oops);
         EXPECT_FALSE(uv.has_value());
         EXPECT_EQ(uv.error(), oops);
         EXPECT_EQ(uv.value_or(3.14), 3);
@@ -298,7 +310,6 @@ struct NonCopyable {
     NonCopyable& operator=(const NonCopyable&) = delete;
     NonCopyable& operator=(NonCopyable&&) = default;
     bool operator==(const NonCopyable<T>& other) const { return value == other.value; }
-    bool operator!=(const NonCopyable<T>& other) const { return value != other.value; }
     T value;
 };
 

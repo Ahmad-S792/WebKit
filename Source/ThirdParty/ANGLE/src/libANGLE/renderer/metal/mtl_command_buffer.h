@@ -19,7 +19,6 @@
 #include <memory>
 #include <mutex>
 #include <thread>
-#include <unordered_set>
 #include <vector>
 
 #include "common/FixedVector.h"
@@ -88,6 +87,8 @@ class CommandQueue final : public WrappedObject<id<MTLCommandQueue>>, angle::Non
     bool isTimeElapsedEntryComplete(uint64_t id);
     double getTimeElapsedEntryInSeconds(uint64_t id);
 
+    bool isDeviceLost() const { return mIsDeviceLost; }
+
   private:
     void onCommandBufferCompleted(id<MTLCommandBuffer> buf,
                                   uint64_t serial,
@@ -129,6 +130,8 @@ class CommandQueue final : public WrappedObject<id<MTLCommandQueue>>, angle::Non
     void recordCommandBufferTimeElapsed(std::lock_guard<std::mutex> &lg,
                                         uint64_t id,
                                         double seconds);
+
+    std::atomic_bool mIsDeviceLost = false;
 };
 
 class CommandBuffer final : public WrappedObject<id<MTLCommandBuffer>>, angle::NonCopyable
@@ -199,7 +202,7 @@ class CommandBuffer final : public WrappedObject<id<MTLCommandBuffer>>, angle::N
     std::vector<std::pair<mtl::SharedEventRef, uint64_t>> mPendingSignalEvents;
     std::vector<std::string> mDebugGroups;
 
-    std::unordered_set<id> mResourceList;
+    angle::HashSet<id> mResourceList;
     size_t mWorkingResourceSize              = 0;
     bool mCommitted                          = false;
     CommandBufferFinishOperation mLastWaitOp = mtl::NoWait;
@@ -340,6 +343,8 @@ struct RenderCommandEncoderStates
     id<MTLDepthStencilState> depthStencilState;
     float depthBias, depthSlopeScale, depthClamp;
 
+    MTLDepthClipMode depthClipMode;
+
     uint32_t stencilFrontRef, stencilBackRef;
 
     Optional<MTLViewport> viewport;
@@ -376,6 +381,7 @@ class RenderCommandEncoder final : public CommandEncoder
 
     RenderCommandEncoder &setDepthStencilState(id<MTLDepthStencilState> state);
     RenderCommandEncoder &setDepthBias(float depthBias, float slopeScale, float clamp);
+    RenderCommandEncoder &setDepthClipMode(MTLDepthClipMode depthClipMode);
     RenderCommandEncoder &setStencilRefVals(uint32_t frontRef, uint32_t backRef);
     RenderCommandEncoder &setStencilRefVal(uint32_t ref);
 

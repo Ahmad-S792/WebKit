@@ -28,6 +28,7 @@
 #if ENABLE(MEDIA_SOURCE)
 
 #include "ExceptionOr.h"
+#include "LibWebRTCMacros.h"
 #include "MediaSample.h"
 #include "SharedBuffer.h"
 #include "SourceBufferParser.h"
@@ -51,6 +52,9 @@ class WebmParser;
 
 namespace WebCore {
 
+class PacketDurationParser;
+struct TrackInfo;
+
 class WebMParser
     : private webm::Callback
     , private LoggerHelper {
@@ -63,6 +67,7 @@ public:
         virtual void parsedMediaData(MediaSamplesBlock&&) = 0;
         virtual bool canDecrypt() const { return false; }
         virtual void contentKeyRequestInitializationDataForTrackID(Ref<SharedBuffer>&&, uint64_t) { }
+        virtual void formatDescriptionChangedForTrackID(Ref<TrackInfo>&&, uint64_t) { }
         virtual ~Callback() = default;
     };
 
@@ -159,6 +164,7 @@ public:
         {
             m_completeBlockBuffer = nullptr;
             m_processedMediaSamples = { };
+            m_processedMediaSamples.setInfo(formatDescription());
         }
 
         void reset()
@@ -184,6 +190,7 @@ public:
         MediaSamplesBlock m_processedMediaSamples;
         bool m_useByteRange { false };
         MediaSamplesBlock::MediaSampleDataType m_completeFrameData;
+        RefPtr<TrackInfo> m_trackInfo;
 
     private:
         CodecType m_codec;
@@ -233,21 +240,26 @@ public:
             return makeUniqueRef<AudioTrackData>(codecType, trackEntry, parser);
         }
 
-        AudioTrackData(CodecType codecType, const webm::TrackEntry& trackEntry, WebMParser& parser)
-            : TrackData { codecType, trackEntry, TrackInfo::TrackType::Audio, parser }
-        {
-        }
+        AudioTrackData(CodecType, const webm::TrackEntry&, WebMParser&);
+        ~AudioTrackData();
 
     private:
         webm::Status consumeFrameData(webm::Reader&, const webm::FrameMetadata&, uint64_t*, const MediaTime&) final;
         void resetCompletedFramesState() final;
         const char* logClassName() const { return "AudioTrackData"; }
 
-        MediaTime m_packetDuration;
-        uint8_t m_framesPerPacket { 0 };
+        std::unique_ptr<PacketDurationParser> m_packetDurationParser;
+#if !HAVE(AUDIOFORMATPROPERTY_VARIABLEPACKET_SUPPORTED)
         Seconds m_frameDuration { 0_s };
+        uint8_t m_framesPerPacket { 0 };
+#endif
         size_t mNumFramesInCompleteBlock { 0 };
+        MediaTime m_lastPresentationEndTime { MediaTime::invalidTime() };
+        MediaTime m_remainingTrimDuration;
+        MediaTime m_presentationTimeShift;
     };
+
+    void formatDescriptionChangedForTrackData(TrackData&);
 
 private:
     TrackData* trackDataForTrackNumber(uint64_t);
@@ -270,7 +282,7 @@ private:
     webm::Status OnBlockGroupBegin(const webm::ElementMetadata& , webm::Action*);
     webm::Status OnBlockGroupEnd(const webm::ElementMetadata&, const webm::BlockGroup&);
     webm::Status OnFrame(const webm::FrameMetadata&, webm::Reader*, uint64_t* bytesRemaining) final;
-        
+
     const Logger* loggerPtr() const { return m_logger.get(); }
     const Logger& logger() const final { ASSERT(m_logger); return *m_logger.get(); }
     const void* logIdentifier() const final { return m_logIdentifier; }
@@ -309,10 +321,9 @@ class SourceBufferParserWebM
 public:
     static bool isWebMFormatReaderAvailable();
     static MediaPlayerEnums::SupportsType isContentTypeSupported(const ContentType&);
-    static Span<const ASCIILiteral> supportedMIMETypes();
-    WEBCORE_EXPORT static RefPtr<SourceBufferParserWebM> create(const ContentType&);
+    static std::span<const ASCIILiteral> supportedMIMETypes();
+    WEBCORE_EXPORT static RefPtr<SourceBufferParserWebM> create();
 
-    SourceBufferParserWebM();
     ~SourceBufferParserWebM();
 
     static bool isAvailable();
@@ -333,19 +344,21 @@ public:
 
     void flushPendingAudioSamples();
     void setMinimumAudioSampleDuration(float);
-    
+
     WEBCORE_EXPORT void setLogger(const Logger&, const void* identifier) final;
 
 private:
+    SourceBufferParserWebM();
     // WebMParser::Callback
     void parsedInitializationData(SourceBufferParser::InitializationSegment&&) final;
     void parsedMediaData(MediaSamplesBlock&&) final;
     bool canDecrypt() const final { return !!m_didProvideContentKeyRequestInitializationDataForTrackIDCallback; }
     void contentKeyRequestInitializationDataForTrackID(Ref<SharedBuffer>&&, uint64_t) final;
     void parsedTrimmingData(uint64_t, const MediaTime&) final;
+    void formatDescriptionChangedForTrackID(Ref<TrackInfo>&&, uint64_t) final;
 
     void returnSamples(MediaSamplesBlock&&, CMFormatDescriptionRef);
-        
+
     const Logger* loggerPtr() const { return m_logger.get(); }
     const Logger& logger() const final { ASSERT(m_logger); return *m_logger.get(); }
     const void* logIdentifier() const final { return m_logIdentifier; }

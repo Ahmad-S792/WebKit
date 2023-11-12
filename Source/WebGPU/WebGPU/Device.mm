@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2021-2022 Apple Inc. All rights reserved.
+ * Copyright (c) 2021-2023 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -151,6 +151,12 @@ Device::Device(id<MTLDevice> device, id<MTLCommandQueue> defaultQueue, HardwareC
 #endif
 #endif
 
+#if HAVE(COREVIDEO_METAL_SUPPORT)
+    CVMetalTextureCacheRef coreVideoTextureCache;
+    CVReturn result = CVMetalTextureCacheCreate(nullptr, nullptr, device, nullptr, &coreVideoTextureCache);
+    ASSERT_UNUSED(result, result == kCVReturnSuccess);
+    m_coreVideoTextureCache = coreVideoTextureCache;
+#endif
     GPUFrameCapture::registerForFrameCapture(m_device);
 }
 
@@ -158,6 +164,8 @@ Device::Device(Adapter& adapter)
     : m_defaultQueue(Queue::createInvalid(*this))
     , m_adapter(adapter)
 {
+    if (!m_adapter->isValid())
+        makeInvalid();
 }
 
 Device::~Device()
@@ -165,6 +173,10 @@ Device::~Device()
 #if PLATFORM(MAC)
     MTLRemoveDeviceObserver(m_deviceObserver);
 #endif
+    if (m_deviceLostCallback) {
+        m_deviceLostCallback(WGPUDeviceLostReason_Destroyed, ""_s);
+        m_deviceLostCallback = nullptr;
+    }
 }
 
 void Device::loseTheDevice(WGPUDeviceLostReason reason)
@@ -176,9 +188,8 @@ void Device::loseTheDevice(WGPUDeviceLostReason reason)
     makeInvalid();
 
     if (m_deviceLostCallback) {
-        instance().scheduleWork([deviceLostCallback = WTFMove(m_deviceLostCallback), reason]() {
-            deviceLostCallback(reason, "Device lost."_s);
-        });
+        m_deviceLostCallback(reason, "Device lost."_s);
+        m_deviceLostCallback = nullptr;
     }
 
     // FIXME: The spec doesn't actually say to do this, but it's pretty important because
@@ -254,16 +265,64 @@ void Device::generateAValidationError(String&& message)
     }
 }
 
+void Device::generateAnOutOfMemoryError(String&& message)
+{
+    // https://gpuweb.github.io/gpuweb/#abstract-opdef-generate-an-out-of-memory-error
+
+    auto* scope = currentErrorScope(WGPUErrorFilter_OutOfMemory);
+
+    if (scope) {
+        if (!scope->error)
+            scope->error = Error { WGPUErrorType_OutOfMemory, WTFMove(message) };
+        return;
+    }
+
+    if (m_uncapturedErrorCallback) {
+        instance().scheduleWork([protectedThis = Ref { *this }, message = WTFMove(message)]() mutable {
+            protectedThis->m_uncapturedErrorCallback(WGPUErrorType_OutOfMemory, WTFMove(message));
+        });
+    }
+}
+
+void Device::generateAnInternalError(String&& message)
+{
+    // https://gpuweb.github.io/gpuweb/#abstract-opdef-generate-an-internal-error
+
+    auto* scope = currentErrorScope(WGPUErrorFilter_Internal);
+
+    if (scope) {
+        if (!scope->error)
+            scope->error = Error { WGPUErrorType_Internal, WTFMove(message) };
+        return;
+    }
+
+    if (m_uncapturedErrorCallback) {
+        instance().scheduleWork([protectedThis = Ref { *this }, message = WTFMove(message)]() mutable {
+            protectedThis->m_uncapturedErrorCallback(WGPUErrorType_Internal, WTFMove(message));
+        });
+    }
+}
+
 uint32_t Device::maxBuffersPlusVertexBuffersForVertexStage() const
 {
-    // FIXME: use value in HardwareCapabilities from https://github.com/gpuweb/gpuweb/issues/2749
-    return 8;
+    ASSERT(m_capabilities.limits.maxBindGroupsPlusVertexBuffers > 0);
+    return m_capabilities.limits.maxBindGroupsPlusVertexBuffers;
+}
+
+uint32_t Device::maxBuffersForFragmentStage() const
+{
+    return m_capabilities.limits.maxBindGroups;
+}
+
+uint32_t Device::maxBuffersForComputeStage() const
+{
+    return m_capabilities.limits.maxBindGroups;
 }
 
 uint32_t Device::vertexBufferIndexForBindGroup(uint32_t groupIndex) const
 {
-    auto maxIndex = maxBuffersPlusVertexBuffersForVertexStage();
-    return WGSL::vertexBufferIndexForBindGroup(groupIndex, maxIndex);
+    ASSERT(maxBuffersPlusVertexBuffersForVertexStage() > 0);
+    return WGSL::vertexBufferIndexForBindGroup(groupIndex, maxBuffersPlusVertexBuffersForVertexStage() - 1);
 }
 
 void Device::captureFrameIfNeeded() const
@@ -318,6 +377,10 @@ void Device::pushErrorScope(WGPUErrorFilter filter)
 void Device::setDeviceLostCallback(Function<void(WGPUDeviceLostReason, String&&)>&& callback)
 {
     m_deviceLostCallback = WTFMove(callback);
+    if (m_isLost)
+        loseTheDevice(WGPUDeviceLostReason_Destroyed);
+    else if (!m_adapter->isValid())
+        loseTheDevice(WGPUDeviceLostReason_Undefined);
 }
 
 void Device::setUncapturedErrorCallback(Function<void(WGPUErrorType, String&&)>&& callback)
@@ -333,6 +396,11 @@ void Device::setLabel(String&&)
 } // namespace WebGPU
 
 #pragma mark WGPU Stubs
+
+void wgpuDeviceReference(WGPUDevice device)
+{
+    WebGPU::fromAPI(device).ref();
+}
 
 void wgpuDeviceRelease(WGPUDevice device)
 {
@@ -417,6 +485,11 @@ WGPUSampler wgpuDeviceCreateSampler(WGPUDevice device, const WGPUSamplerDescript
     return WebGPU::releaseToAPI(WebGPU::fromAPI(device).createSampler(*descriptor));
 }
 
+WGPUExternalTexture wgpuDeviceImportExternalTexture(WGPUDevice device, const WGPUExternalTextureDescriptor* descriptor)
+{
+    return WebGPU::releaseToAPI(WebGPU::fromAPI(device).createExternalTexture(*descriptor));
+}
+
 WGPUShaderModule wgpuDeviceCreateShaderModule(WGPUDevice device, const WGPUShaderModuleDescriptor* descriptor)
 {
     return WebGPU::releaseToAPI(WebGPU::fromAPI(device).createShaderModule(*descriptor));
@@ -442,7 +515,7 @@ size_t wgpuDeviceEnumerateFeatures(WGPUDevice device, WGPUFeatureName* features)
     return WebGPU::fromAPI(device).enumerateFeatures(features);
 }
 
-bool wgpuDeviceGetLimits(WGPUDevice device, WGPUSupportedLimits* limits)
+WGPUBool wgpuDeviceGetLimits(WGPUDevice device, WGPUSupportedLimits* limits)
 {
     return WebGPU::fromAPI(device).getLimits(*limits);
 }
@@ -452,21 +525,21 @@ WGPUQueue wgpuDeviceGetQueue(WGPUDevice device)
     return &WebGPU::fromAPI(device).getQueue();
 }
 
-bool wgpuDeviceHasFeature(WGPUDevice device, WGPUFeatureName feature)
+WGPUBool wgpuDeviceHasFeature(WGPUDevice device, WGPUFeatureName feature)
 {
     return WebGPU::fromAPI(device).hasFeature(feature);
 }
 
-bool wgpuDevicePopErrorScope(WGPUDevice device, WGPUErrorCallback callback, void* userdata)
+void wgpuDevicePopErrorScope(WGPUDevice device, WGPUErrorCallback callback, void* userdata)
 {
-    return WebGPU::fromAPI(device).popErrorScope([callback, userdata](WGPUErrorType type, String&& message) {
+    WebGPU::fromAPI(device).popErrorScope([callback, userdata](WGPUErrorType type, String&& message) {
         callback(type, message.utf8().data(), userdata);
     });
 }
 
-bool wgpuDevicePopErrorScopeWithBlock(WGPUDevice device, WGPUErrorBlockCallback callback)
+void wgpuDevicePopErrorScopeWithBlock(WGPUDevice device, WGPUErrorBlockCallback callback)
 {
-    return WebGPU::fromAPI(device).popErrorScope([callback = WebGPU::fromAPI(WTFMove(callback))](WGPUErrorType type, String&& message) {
+    WebGPU::fromAPI(device).popErrorScope([callback = WebGPU::fromAPI(WTFMove(callback))](WGPUErrorType type, String&& message) {
         callback(type, message.utf8().data());
     });
 }

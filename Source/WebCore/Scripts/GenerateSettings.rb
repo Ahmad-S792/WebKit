@@ -1,6 +1,6 @@
 #!/usr/bin/env ruby
 #
-# Copyright (c) 2017-2020 Apple Inc. All rights reserved.
+# Copyright (c) 2017-2023 Apple Inc. All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
 # modification, are permitted provided that the following conditions
@@ -44,7 +44,7 @@ end
 
 optparse.parse!
 
-options[:settingsFiles] = ARGV.slice!(0...)
+options[:settingsFiles] = ARGV.shift(ARGV.size)
 if options[:settingsFiles].empty?
   puts optparse
   exit 1
@@ -81,6 +81,7 @@ class Setting
   attr_accessor :options
   attr_accessor :type
   attr_accessor :status
+  attr_accessor :category
   attr_accessor :defaultValues
   attr_accessor :excludeFromInternalSettings
   attr_accessor :condition
@@ -157,7 +158,7 @@ class Setting
   def setterFunctionName
     if @name.start_with?("html")
       "set" + @name[0..3].upcase + @name[4..@name.length]
-    elsif @name.start_with?("css", "xss", "ftp", "dom", "dns", "ice", "hdr")
+    elsif @name.start_with?("css", "xss", "ftp", "dom", "dns", "ice", "hdr", "pdf")
       "set" + @name[0..2].upcase + @name[3..@name.length]
     elsif @name.start_with?("vp")
       "set" + @name[0..1].upcase + @name[2..@name.length]

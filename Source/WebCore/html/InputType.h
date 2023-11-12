@@ -155,7 +155,7 @@ public:
     };
 
     static RefPtr<InputType> createIfDifferent(HTMLInputElement&, const AtomString&, InputType* currentInputType = nullptr);
-    static Ref<InputType> createText(HTMLInputElement&);
+
     virtual ~InputType();
 
     void detachFromElement() { m_element = nullptr; }
@@ -176,6 +176,7 @@ public:
     // scattered code with special cases for various types.
 
     bool isCheckbox() const { return m_type == Type::Checkbox; }
+    bool isSwitch() const { return isCheckbox() && m_element && m_element->hasSwitchAttribute(); }
     bool isColorControl() const { return m_type == Type::Color; }
     bool isDateField() const { return m_type == Type::Date; }
     bool isDateTimeLocalField() const { return m_type == Type::DateTimeLocal; }
@@ -208,7 +209,7 @@ public:
     bool isInteractiveContent() const;
     bool isLabelable() const;
     bool isEnumeratable() const;
-    bool needsShadowSubtree() const { return !nonShadowRootTypes.contains(m_type); }
+    bool needsShadowSubtree() const { return !nonShadowRootTypes.contains(m_type) || isSwitch(); }
     bool hasCreatedShadowSubtree() const { return m_hasCreatedShadowSubtree; }
 
     // Form value functions.
@@ -232,11 +233,11 @@ public:
     // Validation functions.
 
     virtual String validationMessage() const;
-    virtual bool typeMismatchFor(const String&) const;
+    virtual bool typeMismatchFor(const String&) const { return false; }
     virtual bool supportsRequired() const;
-    virtual bool valueMissing(const String&) const;
-    virtual bool hasBadInput() const;
-    virtual bool patternMismatch(const String&) const;
+    virtual bool valueMissing(const String&) const { return false; }
+    virtual bool hasBadInput() const { return false; }
+    virtual bool patternMismatch(const String&) const { return false; }
     bool rangeUnderflow(const String&) const;
     bool rangeOverflow(const String&) const;
     bool isInRange(const String&) const;
@@ -261,7 +262,7 @@ public:
 
     // Type check for the current input value. We do nothing for some types
     // though typeMismatchFor() does something for them because of value sanitization.
-    virtual bool typeMismatch() const;
+    virtual bool typeMismatch() const { return false; }
 
     // Return value of null string means "use the default value".
     // This function must be called only by HTMLInputElement::sanitizeValue().
@@ -314,7 +315,7 @@ public:
 
     void createShadowSubtreeIfNeeded();
     virtual void createShadowSubtree();
-    virtual void destroyShadowSubtree();
+    virtual void removeShadowSubtree();
 
     virtual HTMLElement* containerElement() const { return nullptr; }
     virtual HTMLElement* innerBlockElement() const { return nullptr; }
@@ -361,6 +362,7 @@ public:
     virtual bool shouldAppearIndeterminate() const;
     virtual bool isPresentingAttachedView() const;
     virtual bool supportsSelectionAPI() const;
+    virtual bool dirAutoUsesValue() const;
 #if ENABLE(DATALIST_ELEMENT)
     virtual bool isFocusingWithDataListDropdown() const { return false; };
 #endif
@@ -421,13 +423,6 @@ private:
     // m_element is null if this InputType is no longer associated with an element (either the element died or changed input type).
     WeakPtr<HTMLInputElement, WeakPtrImplWithEventTargetData> m_element;
 };
-
-template<typename DowncastedType>
-ALWAYS_INLINE bool isInvalidInputType(const InputType& baseInputType, const String& value)
-{
-    auto& inputType = static_cast<const DowncastedType&>(baseInputType);
-    return inputType.typeMismatch() || inputType.stepMismatch(value) || inputType.rangeUnderflow(value) || inputType.rangeOverflow(value) || inputType.patternMismatch(value) || inputType.valueMissing(value) || inputType.hasBadInput();
-}
 
 } // namespace WebCore
 

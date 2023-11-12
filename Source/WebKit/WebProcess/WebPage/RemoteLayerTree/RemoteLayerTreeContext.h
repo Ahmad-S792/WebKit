@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2012 Apple Inc. All rights reserved.
+ * Copyright (C) 2012-2023 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -28,9 +28,13 @@
 #include "LayerTreeContext.h"
 #include "RemoteLayerBackingStoreCollection.h"
 #include "RemoteLayerTreeTransaction.h"
+#include <WebCore/FloatSize.h>
+#include <WebCore/FrameIdentifier.h>
 #include <WebCore/GraphicsLayerFactory.h>
+#include <WebCore/HTMLMediaElementIdentifier.h>
 #include <WebCore/LayerPool.h>
 #include <WebCore/PlatformCALayer.h>
+#include <wtf/CheckedPtr.h>
 #include <wtf/Vector.h>
 
 namespace WebKit {
@@ -38,6 +42,7 @@ namespace WebKit {
 class GraphicsLayerCARemote;
 class PlatformCALayerRemote;
 class RemoteRenderingBackendProxy;
+class WebFrame;
 class WebPage;
 
 // FIXME: This class doesn't do much now. Roll into RemoteLayerTreeDrawingArea?
@@ -47,6 +52,9 @@ public:
     ~RemoteLayerTreeContext();
 
     void layerDidEnterContext(PlatformCALayerRemote&, WebCore::PlatformCALayer::LayerType);
+#if HAVE(AVKIT)
+    void layerDidEnterContext(PlatformCALayerRemote&, WebCore::PlatformCALayer::LayerType, WebCore::HTMLVideoElement&);
+#endif
     void layerWillLeaveContext(PlatformCALayerRemote&);
 
     void graphicsLayerDidEnterContext(GraphicsLayerCARemote&);
@@ -62,34 +70,35 @@ public:
 
     DrawingAreaIdentifier drawingAreaIdentifier() const;
 
-    void buildTransaction(RemoteLayerTreeTransaction&, WebCore::PlatformCALayer& rootLayer);
+    void buildTransaction(RemoteLayerTreeTransaction&, WebCore::PlatformCALayer& rootLayer, WebCore::FrameIdentifier);
 
     void layerPropertyChangedWhileBuildingTransaction(PlatformCALayerRemote&);
 
     // From the UI process
-    void animationDidStart(WebCore::GraphicsLayer::PlatformLayerID, const String& key, MonotonicTime startTime);
-    void animationDidEnd(WebCore::GraphicsLayer::PlatformLayerID, const String& key);
+    void animationDidStart(WebCore::PlatformLayerIdentifier, const String& key, MonotonicTime startTime);
+    void animationDidEnd(WebCore::PlatformLayerIdentifier, const String& key);
 
     void willStartAnimationOnLayer(PlatformCALayerRemote&);
 
     RemoteLayerBackingStoreCollection& backingStoreCollection() { return *m_backingStoreCollection; }
     
-    void setNextRenderingUpdateRequiresSynchronousImageDecoding(bool requireSynchronousDecoding) { m_nextRenderingUpdateRequiresSynchronousImageDecoding = requireSynchronousDecoding; }
+    void setNextRenderingUpdateRequiresSynchronousImageDecoding() { m_nextRenderingUpdateRequiresSynchronousImageDecoding = true; }
     bool nextRenderingUpdateRequiresSynchronousImageDecoding() const { return m_nextRenderingUpdateRequiresSynchronousImageDecoding; }
 
     void adoptLayersFromContext(RemoteLayerTreeContext&);
 
     RemoteRenderingBackendProxy& ensureRemoteRenderingBackendProxy();
 
-    bool useCGDisplayListsForDOMRendering() const { return m_useCGDisplayListsForDOMRendering; }
-    void setUseCGDisplayListsForDOMRendering(bool useCGDisplayLists) { m_useCGDisplayListsForDOMRendering = useCGDisplayLists; }
+    bool useDynamicContentScalingDisplayListsForDOMRendering() const { return m_useDynamicContentScalingDisplayListsForDOMRendering; }
+    void setUseDynamicContentScalingDisplayListsForDOMRendering(bool useDynamicContentScalingDisplayLists) { m_useDynamicContentScalingDisplayListsForDOMRendering = useDynamicContentScalingDisplayLists; }
 
-    bool useCGDisplayListImageCache() const { return m_useCGDisplayListImageCache; }
-    void setUseCGDisplayListImageCache(bool useCGDisplayListImageCache) { m_useCGDisplayListImageCache = useCGDisplayListImageCache; }
-    
+    void gpuProcessConnectionWasDestroyed();
+
 #if PLATFORM(IOS_FAMILY)
     bool canShowWhileLocked() const;
 #endif
+
+    WebPage& webPage() { return m_webPage; }
 
 private:
     // WebCore::GraphicsLayerFactory
@@ -97,13 +106,16 @@ private:
 
     WebPage& m_webPage;
 
-    HashMap<WebCore::GraphicsLayer::PlatformLayerID, RemoteLayerTreeTransaction::LayerCreationProperties> m_createdLayers;
-    Vector<WebCore::GraphicsLayer::PlatformLayerID> m_destroyedLayers;
+    HashMap<WebCore::PlatformLayerIdentifier, RemoteLayerTreeTransaction::LayerCreationProperties> m_createdLayers;
+    Vector<WebCore::PlatformLayerIdentifier> m_destroyedLayers;
 
-    HashMap<WebCore::GraphicsLayer::PlatformLayerID, PlatformCALayerRemote*> m_livePlatformLayers;
-    HashMap<WebCore::GraphicsLayer::PlatformLayerID, PlatformCALayerRemote*> m_layersWithAnimations;
+    HashMap<WebCore::PlatformLayerIdentifier, CheckedPtr<PlatformCALayerRemote>> m_livePlatformLayers;
+    HashMap<WebCore::PlatformLayerIdentifier, CheckedPtr<PlatformCALayerRemote>> m_layersWithAnimations;
+#if HAVE(AVKIT)
+    HashMap<WebCore::PlatformLayerIdentifier, PlaybackSessionContextIdentifier> m_videoLayers;
+#endif
 
-    HashSet<GraphicsLayerCARemote*> m_liveGraphicsLayers;
+    HashSet<CheckedPtr<GraphicsLayerCARemote>> m_liveGraphicsLayers;
 
     std::unique_ptr<RemoteLayerBackingStoreCollection> m_backingStoreCollection;
 
@@ -112,8 +124,7 @@ private:
     RemoteLayerTreeTransaction* m_currentTransaction { nullptr };
 
     bool m_nextRenderingUpdateRequiresSynchronousImageDecoding { false };
-    bool m_useCGDisplayListsForDOMRendering { false };
-    bool m_useCGDisplayListImageCache { false };
+    bool m_useDynamicContentScalingDisplayListsForDOMRendering { false };
 };
 
 } // namespace WebKit

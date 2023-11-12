@@ -21,13 +21,15 @@
 #include "LegacyInlineBox.h"
 
 #include "FontMetrics.h"
-#include "Frame.h"
 #include "HitTestResult.h"
 #include "LegacyEllipsisBox.h"
 #include "LegacyInlineFlowBox.h"
 #include "LegacyRootInlineBox.h"
+#include "LocalFrame.h"
 #include "RenderBlockFlow.h"
+#include "RenderBoxModelObjectInlines.h"
 #include "RenderLineBreak.h"
+#include "RenderStyleInlines.h"
 #include <wtf/IsoMallocInlines.h>
 #include <wtf/text/TextStream.h>
 
@@ -136,7 +138,7 @@ float LegacyInlineBox::logicalHeight() const
         return 0;
 
     const RenderStyle& lineStyle = this->lineStyle();
-    if (renderer().isTextOrLineBreak())
+    if (renderer().isRenderTextOrLineBreak())
         return lineStyle.metricsOfPrimaryFont().height();
     if (is<RenderBox>(renderer()) && parent())
         return isHorizontal() ? downcast<RenderBox>(renderer()).height() : downcast<RenderBox>(renderer()).width();

@@ -28,6 +28,7 @@
 
 #import "ClassMethodSwizzler.h"
 #import "InstanceMethodSwizzler.h"
+#import "Test.h"
 #import "TestNavigationDelegate.h"
 #import "Utilities.h"
 
@@ -49,7 +50,7 @@
 #endif
 
 #if PLATFORM(IOS_FAMILY)
-#import "UIKitSPI.h"
+#import "UIKitSPIForTesting.h"
 #import <MobileCoreServices/MobileCoreServices.h>
 #import <wtf/SoftLinking.h>
 SOFT_LINK_FRAMEWORK(UIKit)
@@ -85,6 +86,12 @@ static NSString *overrideBundleIdentifier(id, SEL)
 {
     [self loadRequest:request];
     [self _test_waitForDidFinishNavigation];
+}
+
+- (void)synchronouslyLoadRequest:(NSURLRequest *)request preferences:(WKWebpagePreferences *)preferences
+{
+    [self loadRequest:request];
+    [self _test_waitForDidFinishNavigationWithPreferences:preferences];
 }
 
 - (void)synchronouslyLoadRequestIgnoringSSLErrors:(NSURLRequest *)request
@@ -287,6 +294,28 @@ static NSString *overrideBundleIdentifier(id, SEL)
     return clientWidth;
 }
 
+- (CGRect)elementRectFromSelector:(NSString *)selector
+{
+    __block CGRect rect;
+    __block bool doneEvaluatingScript = false;
+    auto script = [NSString stringWithFormat:@"r = document.querySelector('%@').getBoundingClientRect(); [r.left, r.top, r.width, r.height]", selector];
+    [self evaluateJavaScript:script completionHandler:^(NSArray<NSNumber *> *result, NSError *error) {
+        if (error)
+            NSLog(@"Error while getting element rect for '%@': %@", selector, error);
+        EXPECT_NULL(error);
+        rect = CGRectMake(result[0].floatValue, result[1].floatValue, result[2].floatValue, result[3].floatValue);
+        doneEvaluatingScript = true;
+    }];
+    TestWebKitAPI::Util::run(&doneEvaluatingScript);
+    return rect;
+}
+
+- (CGPoint)elementMidpointFromSelector:(NSString *)selector
+{
+    auto rect = [self elementRectFromSelector:selector];
+    return CGPointMake(CGRectGetMidX(rect), CGRectGetMidY(rect));
+}
+
 @end
 
 @implementation TestMessageHandler {
@@ -468,8 +497,8 @@ static InputSessionChangeCount nextInputSessionChangeCount()
     RetainPtr<TestMessageHandler> _testHandler;
     RetainPtr<WKUserScript> _onloadScript;
 #if PLATFORM(IOS_FAMILY)
-    std::unique_ptr<ClassMethodSwizzler> _sharedCalloutBarSwizzler;
     InputSessionChangeCount _inputSessionChangeCount;
+    UIEdgeInsets _overrideSafeAreaInset;
 #endif
 #if PLATFORM(MAC)
     BOOL _forceWindowToBecomeKey;
@@ -488,15 +517,6 @@ static InputSessionChangeCount nextInputSessionChangeCount()
     return [self initWithFrame:frame configuration:configuration addToWindow:YES];
 }
 
-#if PLATFORM(IOS_FAMILY)
-
-static UICalloutBar *suppressUICalloutBar()
-{
-    return nil;
-}
-
-#endif
-
 - (instancetype)initWithFrame:(CGRect)frame configuration:(WKWebViewConfiguration *)configuration addToWindow:(BOOL)addToWindow
 {
     self = [super initWithFrame:frame configuration:configuration];
@@ -507,9 +527,10 @@ static UICalloutBar *suppressUICalloutBar()
         [self _setUpTestWindow:frame];
 
 #if PLATFORM(IOS_FAMILY)
-    // FIXME: Remove this workaround once <https://webkit.org/b/175204> is fixed.
-    _sharedCalloutBarSwizzler = makeUnique<ClassMethodSwizzler>([UICalloutBar class], @selector(sharedCalloutBar), reinterpret_cast<IMP>(suppressUICalloutBar));
     _inputSessionChangeCount = 0;
+    // We suppress safe area insets by default in order to ensure consistent results when running against device models
+    // that may or may not have safe area insets, have insets with different values (e.g. iOS devices with a notch).
+    _overrideSafeAreaInset = UIEdgeInsetsZero;
 #endif
 
     return self;
@@ -700,6 +721,20 @@ static UICalloutBar *suppressUICalloutBar()
 #endif
 }
 
+- (std::optional<CGPoint>)getElementMidpoint:(NSString *)selector
+{
+    NSArray<NSNumber *> *midpoint = [self objectByEvaluatingJavaScript:[NSString stringWithFormat:@"(() => {"
+        "    let element = document.querySelector('%@');"
+        "    if (!element)"
+        "        return [];"
+        "    const rect = element.getBoundingClientRect();"
+        "    return [rect.left + (rect.width / 2), rect.top + (rect.height / 2)];"
+        "})()", selector]];
+    if (midpoint.count != 2)
+        return std::nullopt;
+    return CGPointMake(midpoint.firstObject.doubleValue, midpoint.lastObject.doubleValue);
+}
+
 #if PLATFORM(IOS_FAMILY)
 
 - (void)didStartFormControlInteraction
@@ -740,32 +775,45 @@ static UICalloutBar *suppressUICalloutBar()
     }
 }
 
-- (RetainPtr<NSArray>)selectionRectsAfterPresentationUpdate
+- (UIEdgeInsets)overrideSafeAreaInset
 {
-    RetainPtr<TestWKWebView> retainedSelf = self;
+    return _overrideSafeAreaInset;
+}
 
-    __block bool isDone = false;
-    __block RetainPtr<NSArray> selectionRects;
-    [self _doAfterNextPresentationUpdate:^() {
-        selectionRects = [retainedSelf _uiTextSelectionRects];
-        isDone = true;
-    }];
+- (void)setOverrideSafeAreaInset:(UIEdgeInsets)inset
+{
+    _overrideSafeAreaInset = inset;
+}
 
-    TestWebKitAPI::Util::run(&isDone);
-    return selectionRects;
+- (UIEdgeInsets)_safeAreaInsetsForFrame:(CGRect)frame inSuperview:(UIView *)view
+{
+    return _overrideSafeAreaInset;
 }
 
 - (CGRect)caretViewRectInContentCoordinates
 {
-    UIView *selectionView = [self.textInputContentView valueForKeyPath:@"interactionAssistant.selectionView"];
-    CGRect caretFrame = [[selectionView valueForKeyPath:@"caretView.frame"] CGRectValue];
-    return [selectionView convertRect:caretFrame toView:self.textInputContentView];
+    UIView *caretView = nil;
+#if HAVE(UI_TEXT_SELECTION_DISPLAY_INTERACTION)
+    if (auto view = self.textSelectionDisplayInteraction.cursorView; !view.hidden)
+        caretView = view;
+#else
+    caretView = [self.textInputContentView valueForKeyPath:@"interactionAssistant.selectionView.caretView"];
+#endif
+
+    return [caretView convertRect:caretView.bounds toView:self.textInputContentView];
 }
 
 - (NSArray<NSValue *> *)selectionViewRectsInContentCoordinates
 {
     NSMutableArray *selectionRects = [NSMutableArray array];
-    NSArray<UITextSelectionRect *> *rects = [self.textInputContentView valueForKeyPath:@"interactionAssistant.selectionView.rangeView.rects"];
+    NSArray<UITextSelectionRect *> *rects = nil;
+#if HAVE(UI_TEXT_SELECTION_DISPLAY_INTERACTION)
+    if (auto view = self.textSelectionDisplayInteraction.highlightView; !view.hidden)
+        rects = view.selectionRects;
+#else
+    rects = [self.textInputContentView valueForKeyPath:@"interactionAssistant.selectionView.rangeView.rects"];
+#endif
+
     for (UITextSelectionRect *rect in rects)
         [selectionRects addObject:[NSValue valueWithCGRect:rect.rect]];
     return selectionRects;
@@ -783,6 +831,15 @@ static UICalloutBar *suppressUICalloutBar()
     TestWebKitAPI::Util::run(&finished);
     return info.autorelease();
 }
+
+#if HAVE(UI_TEXT_SELECTION_DISPLAY_INTERACTION)
+
+- (UITextSelectionDisplayInteraction *)textSelectionDisplayInteraction
+{
+    return dynamic_objc_cast<UITextSelectionDisplayInteraction>([self.textInputContentView valueForKeyPath:@"interactionAssistant._selectionViewManager"]);
+}
+
+#endif
 
 static WKContentView *recursiveFindWKContentView(UIView *view)
 {
@@ -805,7 +862,7 @@ static WKContentView *recursiveFindWKContentView(UIView *view)
 
 @end
 
-#endif
+#endif // PLATFORM(IOS_FAMILY)
 
 #if PLATFORM(MAC)
 
@@ -869,6 +926,12 @@ static WKContentView *recursiveFindWKContentView(UIView *view)
     [self sendClicksAtPoint:pointInWindow numberOfClicks:1];
 }
 
+- (void)rightClickAtPoint:(NSPoint)pointInWindow
+{
+    [self mouseDownAtPoint:pointInWindow simulatePressure:NO withFlags:0 eventType:NSEventTypeRightMouseDown];
+    [self mouseUpAtPoint:pointInWindow withFlags:0 eventType:NSEventTypeRightMouseUp];
+}
+
 - (BOOL)acceptsFirstMouseAtPoint:(NSPoint)pointInWindow
 {
     return [self acceptsFirstMouse:[self _mouseEventWithType:NSEventTypeLeftMouseDown atLocation:pointInWindow]];
@@ -929,6 +992,32 @@ static WKContentView *recursiveFindWKContentView(UIView *view)
     NSEventType keyUpEventType = NSEventTypeKeyUp;
     [self keyDown:[NSEvent keyEventWithType:keyDownEventType location:NSZeroPoint modifierFlags:modifiers timestamp:self.eventTimestamp windowNumber:[_hostWindow windowNumber] context:nil characters:characterAsString charactersIgnoringModifiers:characterAsString isARepeat:NO keyCode:character]];
     [self keyUp:[NSEvent keyEventWithType:keyUpEventType location:NSZeroPoint modifierFlags:modifiers timestamp:self.eventTimestamp windowNumber:[_hostWindow windowNumber] context:nil characters:characterAsString charactersIgnoringModifiers:characterAsString isARepeat:NO keyCode:character]];
+}
+
+// Note: this testing strategy makes a couple of assumptions:
+// 1. The network process hasn't already died and allowed the system to reuse the same PID.
+// 2. The API test did not take more than ~120 seconds to run.
+- (NSArray<NSString *> *)collectLogsForNewConnections
+{
+    auto predicate = [NSString stringWithFormat:@"subsystem == 'com.apple.network'"
+        " AND category == 'connection'"
+        " AND eventMessage endswith 'start'"
+        " AND processIdentifier == %d", self._networkProcessIdentifier];
+    RetainPtr pipe = [NSPipe pipe];
+    // FIXME: This is currently reliant on `NSTask`, which is absent on iOS. We should find a way to
+    // make this helper work on both platforms.
+    auto task = adoptNS([NSTask new]);
+    [task setLaunchPath:@"/usr/bin/log"];
+    [task setArguments:@[ @"show", @"--last", @"2m", @"--style", @"json", @"--predicate", predicate ]];
+    [task setStandardOutput:pipe.get()];
+    [task launch];
+    [task waitUntilExit];
+
+    auto rawData = [pipe fileHandleForReading].availableData;
+    auto messages = [NSMutableArray<NSString *> array];
+    for (id messageData in dynamic_objc_cast<NSArray>([NSJSONSerialization JSONObjectWithData:rawData options:0 error:nil]))
+        [messages addObject:dynamic_objc_cast<NSString>([messageData objectForKey:@"eventMessage"])];
+    return messages;
 }
 
 @end

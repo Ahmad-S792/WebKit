@@ -33,6 +33,7 @@
 #include "GraphicsContext.h"
 #include "MathMLFractionElement.h"
 #include "PaintInfo.h"
+#include "RenderMathMLBlockInlines.h"
 #include <cmath>
 #include <wtf/IsoMallocInlines.h>
 
@@ -41,8 +42,9 @@ namespace WebCore {
 WTF_MAKE_ISO_ALLOCATED_IMPL(RenderMathMLFraction);
 
 RenderMathMLFraction::RenderMathMLFraction(MathMLFractionElement& element, RenderStyle&& style)
-    : RenderMathMLBlock(element, WTFMove(style))
+    : RenderMathMLBlock(Type::MathMLFraction, element, WTFMove(style))
 {
+    ASSERT(isRenderMathMLFraction());
 }
 
 bool RenderMathMLFraction::isValid() const

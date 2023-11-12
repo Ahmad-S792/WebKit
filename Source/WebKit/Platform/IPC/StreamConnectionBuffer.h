@@ -26,9 +26,10 @@
 #pragma once
 
 #include "SharedMemory.h"
+#include <cstddef>
+#include <span>
 #include <wtf/Atomics.h>
 #include <wtf/Ref.h>
-#include <wtf/Span.h>
 
 namespace IPC {
 class Decoder;
@@ -73,11 +74,7 @@ class StreamConnectionBuffer {
 public:
     ~StreamConnectionBuffer();
 
-    struct Handle {
-        WebKit::SharedMemory::Handle memory;
-        void encode(Encoder&) const;
-        static std::optional<Handle> decode(Decoder&);
-    };
+    using Handle = WebKit::SharedMemory::Handle;
     Handle createHandle();
 
     size_t wrapOffset(size_t offset) const
@@ -118,8 +115,10 @@ public:
 
     static constexpr size_t maximumSize() { return std::min(static_cast<size_t>(ClientOffset::serverIsSleepingTag), static_cast<size_t>(ClientOffset::serverIsSleepingTag)) - 1; }
 
-    Span<uint8_t> headerForTesting();
-    Span<uint8_t> dataForTesting();
+    std::span<uint8_t> headerForTesting();
+    std::span<uint8_t> dataForTesting();
+
+    static constexpr bool sharedMemorySizeIsValid(size_t size) { return headerSize() < size && size <= headerSize() + maximumSize(); }
 
 protected:
     StreamConnectionBuffer(Ref<WebKit::SharedMemory>&&);
@@ -138,8 +137,6 @@ protected:
 
     Header& header() const { return *reinterpret_cast<Header*>(m_sharedMemory->data()); }
     static constexpr size_t headerSize() { return roundUpToMultipleOf<alignof(std::max_align_t)>(sizeof(Header)); }
-
-    static constexpr bool sharedMemorySizeIsValid(size_t size) { return headerSize() < size && size <= headerSize() + maximumSize(); }
 
     size_t m_dataSize { 0 };
     Ref<WebKit::SharedMemory> m_sharedMemory;

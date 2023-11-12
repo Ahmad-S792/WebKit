@@ -93,6 +93,11 @@ void UIScriptControllerGtk::copyText(JSStringRef text)
 #endif
 }
 
+void UIScriptControllerGtk::paste()
+{
+    // FIXME: implement.
+}
+
 void UIScriptControllerGtk::dismissMenu()
 {
     // FIXME: implement.
@@ -207,6 +212,19 @@ void UIScriptControllerGtk::setWebViewEditable(bool editable)
 {
     auto* webView = TestController::singleton().mainWebView()->platformView();
     WKViewSetEditable(webView, editable);
+}
+
+void UIScriptControllerGtk::zoomToScale(double scale, JSValueRef callback)
+{
+    auto page = TestController::singleton().mainWebView()->page();
+    WKPageSetScaleFactor(page, scale, WKPointMake(0, 0));
+    doAsyncTask(callback);
+}
+
+double UIScriptControllerGtk::zoomScale() const
+{
+    auto page = TestController::singleton().mainWebView()->page();
+    return WKPageGetScaleFactor(page);
 }
 
 } // namespace WTR

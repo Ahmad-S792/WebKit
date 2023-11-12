@@ -30,6 +30,7 @@
 
 #include "GamepadData.h"
 #include "Logging.h"
+#include "MessageSenderInlines.h"
 #include "WebGamepad.h"
 #include "WebProcess.h"
 #include "WebProcessPoolMessages.h"
@@ -60,17 +61,17 @@ WebGamepadProvider::~WebGamepadProvider()
 {
 }
 
-void WebGamepadProvider::setInitialGamepads(const Vector<GamepadData>& gamepadDatas)
+void WebGamepadProvider::setInitialGamepads(const Vector<std::optional<GamepadData>>& gamepadDatas)
 {
     WP_MESSAGE_CHECK((m_gamepads.isEmpty()), m_gamepads.size());
 
     m_gamepads.resize(gamepadDatas.size());
     m_rawGamepads.resize(gamepadDatas.size());
     for (size_t i = 0; i < gamepadDatas.size(); ++i) {
-        if (gamepadDatas[i].isNull())
-            continue;
+        if (!gamepadDatas[i])
+            return;
 
-        m_gamepads[i] = makeUnique<WebGamepad>(gamepadDatas[i]);
+        m_gamepads[i] = makeUnique<WebGamepad>(*gamepadDatas[i]);
         m_rawGamepads[i] = m_gamepads[i].get();
     }
 }
@@ -89,8 +90,8 @@ void WebGamepadProvider::gamepadConnected(const GamepadData& gamepadData, EventM
     m_gamepads[gamepadData.index()] = makeUnique<WebGamepad>(gamepadData);
     m_rawGamepads[gamepadData.index()] = m_gamepads[gamepadData.index()].get();
 
-    for (auto* client : m_clients)
-        client->platformGamepadConnected(*m_gamepads[gamepadData.index()], eventVisibility);
+    for (auto& client : m_clients)
+        client.platformGamepadConnected(*m_gamepads[gamepadData.index()], eventVisibility);
 }
 
 void WebGamepadProvider::gamepadDisconnected(unsigned index)
@@ -102,31 +103,31 @@ void WebGamepadProvider::gamepadDisconnected(unsigned index)
 
     LOG(Gamepad, "WebGamepadProvider::gamepadDisconnected - Gamepad index %u detached (m_gamepads size %zu, m_rawGamepads size %zu\n", index, m_gamepads.size(), m_rawGamepads.size());
 
-    for (auto* client : m_clients)
-        client->platformGamepadDisconnected(*disconnectedGamepad);
+    for (auto& client : m_clients)
+        client.platformGamepadDisconnected(*disconnectedGamepad);
 }
 
-void WebGamepadProvider::gamepadActivity(const Vector<GamepadData>& gamepadDatas, EventMakesGamepadsVisible eventVisibility)
+void WebGamepadProvider::gamepadActivity(const Vector<std::optional<GamepadData>>& gamepadDatas, EventMakesGamepadsVisible eventVisibility)
 {
     LOG(Gamepad, "WebGamepadProvider::gamepadActivity - %zu gamepad datas with %zu local web gamepads\n", gamepadDatas.size(), m_gamepads.size());
 
     ASSERT(m_gamepads.size() == gamepadDatas.size());
 
     for (size_t i = 0; i < m_gamepads.size(); ++i) {
-        if (m_gamepads[i])
-            m_gamepads[i]->updateValues(gamepadDatas[i]);
+        if (m_gamepads[i] && gamepadDatas[i])
+            m_gamepads[i]->updateValues(*gamepadDatas[i]);
     }
 
-    for (auto* client : m_clients)
-        client->platformGamepadInputActivity(eventVisibility);
+    for (auto& client : m_clients)
+        client.platformGamepadInputActivity(eventVisibility);
 }
 
 void WebGamepadProvider::startMonitoringGamepads(GamepadProviderClient& client)
 {
-    bool processHadGamepadClients = !m_clients.isEmpty();
+    bool processHadGamepadClients = !m_clients.isEmptyIgnoringNullReferences();
 
-    ASSERT(!m_clients.contains(&client));
-    m_clients.add(&client);
+    ASSERT(!m_clients.contains(client));
+    m_clients.add(client);
 
     if (!processHadGamepadClients)
         WebProcess::singleton().send(Messages::WebProcessPool::StartedUsingGamepads(), 0);
@@ -134,12 +135,9 @@ void WebGamepadProvider::startMonitoringGamepads(GamepadProviderClient& client)
 
 void WebGamepadProvider::stopMonitoringGamepads(GamepadProviderClient& client)
 {
-    ASSERT(m_clients.contains(&client));
-    if (m_clients.isEmpty())
-        return;
-
-    m_clients.remove(&client);
-    if (!m_clients.isEmpty())
+    ASSERT(m_clients.contains(client));
+    m_clients.remove(client);
+    if (!m_clients.isEmptyIgnoringNullReferences())
         return;
 
     WebProcess::singleton().sendWithAsyncReply(Messages::WebProcessPool::StoppedUsingGamepads(), [this] {
@@ -148,7 +146,7 @@ void WebGamepadProvider::stopMonitoringGamepads(GamepadProviderClient& client)
     });
 }
 
-const Vector<PlatformGamepad*>& WebGamepadProvider::platformGamepads()
+const Vector<WeakPtr<PlatformGamepad>>& WebGamepadProvider::platformGamepads()
 {
     return m_rawGamepads;
 }

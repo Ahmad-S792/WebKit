@@ -36,6 +36,7 @@
 
 #include <optional>
 #include <type_traits>
+#include <wtf/Hasher.h>
 #include <wtf/StdLibExtras.h>
 
 namespace WTF {
@@ -75,13 +76,25 @@ struct IntegralMarkableTraits {
     }
 };
 
+struct FloatMarkableTraits {
+    constexpr static bool isEmptyValue(float value)
+    {
+        return value != value;
+    }
+
+    constexpr static float emptyValue()
+    {
+        return std::numeric_limits<float>::quiet_NaN();
+    }
+};
+
 // The goal of Markable is offering Optional without sacrificing storage efficiency.
 // Markable takes Traits, which should have isEmptyValue and emptyValue functions. By using
 // one value of T as an empty value, we can remove bool flag in Optional. This strategy is
 // similar to WTF::HashTable, which uses two values of T as an empty value and a deleted value.
 // This class is intended to be used as a member of a class to compact the size of the class.
 // Otherwise, you should use Optional.
-template<typename T, typename Traits = typename T::MarkableTraits>
+template<typename T, typename Traits>
 class Markable {
     WTF_MAKE_FAST_ALLOCATED;
 public:
@@ -128,6 +141,13 @@ public:
     constexpr const T& operator*() const& { return m_value; }
     constexpr T& operator*() & { return m_value; }
 
+    template <class U> constexpr T value_or(U&& fallback) const
+    {
+        if (bool(*this))
+            return m_value;
+        return static_cast<T>(std::forward<U>(fallback));
+    }
+
     operator std::optional<T>() &&
     {
         if (bool(*this))
@@ -154,6 +174,11 @@ private:
     T m_value;
 };
 
+template <typename T, typename Traits> inline void add(Hasher& hasher, const Markable<T, Traits>& value)
+{
+    add(hasher, value.asOptional());
+}
+
 template <typename T, typename Traits> constexpr bool operator==(const Markable<T, Traits>& x, const Markable<T, Traits>& y)
 {
     if (bool(x) != bool(y))
@@ -164,10 +189,6 @@ template <typename T, typename Traits> constexpr bool operator==(const Markable<
 }
 template <typename T, typename Traits> constexpr bool operator==(const Markable<T, Traits>& x, const T& v) { return bool(x) && x.value() == v; }
 template <typename T, typename Traits> constexpr bool operator==(const T& v, const Markable<T, Traits>& x) { return bool(x) && v == x.value(); }
-
-template <typename T, typename Traits> constexpr bool operator!=(const Markable<T, Traits>& x, const Markable<T, Traits>& y) { return !(x == y); }
-template <typename T, typename Traits> constexpr bool operator!=(const Markable<T, Traits>& x, const T& v) { return !(x == v); }
-template <typename T, typename Traits> constexpr bool operator!=(const T& v, const Markable<T, Traits>& x) { return !(v == x); }
 
 template <typename T, typename Traits>
 template<typename Encoder>

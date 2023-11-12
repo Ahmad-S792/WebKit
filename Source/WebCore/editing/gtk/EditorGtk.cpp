@@ -30,13 +30,12 @@
 #include "CachedImage.h"
 #include "DocumentFragment.h"
 #include "ElementInlines.h"
-#include "Frame.h"
 #include "HTMLEmbedElement.h"
 #include "HTMLImageElement.h"
 #include "HTMLInputElement.h"
 #include "HTMLNames.h"
 #include "HTMLObjectElement.h"
-#include "HTMLParserIdioms.h"
+#include "LocalFrame.h"
 #include "Pasteboard.h"
 #include "RenderImage.h"
 #include "SVGElementTypeHelpers.h"
@@ -106,7 +105,7 @@ void Editor::writeImageToPasteboard(Pasteboard& pasteboard, Element& imageElemen
         return;
     ASSERT(pasteboardImage.image);
 
-    pasteboardImage.url.url = imageElement.document().completeURL(stripLeadingAndTrailingHTMLSpaces(elementURL(imageElement)));
+    pasteboardImage.url.url = imageElement.document().completeURL(elementURL(imageElement));
     pasteboardImage.url.title = title;
     pasteboardImage.url.markup = serializeFragment(imageElement, SerializedNodes::SubtreeIncludingNode, nullptr, ResolveURLs::Yes);
     pasteboard.write(pasteboardImage);
@@ -117,17 +116,17 @@ void Editor::writeSelectionToPasteboard(Pasteboard& pasteboard)
     PasteboardWebContent pasteboardContent;
     pasteboardContent.canSmartCopyOrDelete = canSmartCopyOrDelete();
     pasteboardContent.text = selectedTextForDataTransfer();
-    pasteboardContent.markup = serializePreservingVisualAppearance(m_document.selection().selection(), ResolveURLs::YesExcludingURLsForPrivacy, SerializeComposedTree::Yes, IgnoreUserSelectNone::Yes);
-    pasteboardContent.contentOrigin = m_document.originIdentifierForPasteboard();
+    pasteboardContent.markup = serializePreservingVisualAppearance(document().selection().selection(), ResolveURLs::YesExcludingURLsForPrivacy, SerializeComposedTree::Yes, IgnoreUserSelectNone::Yes);
+    pasteboardContent.contentOrigin = document().originIdentifierForPasteboard();
     pasteboard.write(pasteboardContent);
 }
 
 RefPtr<DocumentFragment> Editor::webContentFromPasteboard(Pasteboard& pasteboard, const SimpleRange& context, bool allowPlainText, bool& chosePlainText)
 {
-    WebContentReader reader(*m_document.frame(), context, allowPlainText);
+    WebContentReader reader(*document().frame(), context, allowPlainText);
     pasteboard.read(reader);
-    chosePlainText = reader.madeFragmentFromPlainText;
-    return WTFMove(reader.fragment);
+    chosePlainText = reader.madeFragmentFromPlainText();
+    return reader.takeFragment();
 }
 
 } // namespace WebCore

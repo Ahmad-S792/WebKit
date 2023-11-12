@@ -73,16 +73,16 @@ bool SVGTextLayoutAttributesBuilder::buildLayoutAttributesForForSubtree(RenderSV
     return true;
 }
 
-void SVGTextLayoutAttributesBuilder::rebuildMetricsForTextRenderer(RenderSVGInlineText& text)
+void SVGTextLayoutAttributesBuilder::rebuildMetricsForSubtree(RenderSVGText& text)
 {
-    m_metricsBuilder.measureTextRenderer(text);
+    m_metricsBuilder.measureTextRenderer(text, nullptr);
 }
 
 static inline void processRenderSVGInlineText(const RenderSVGInlineText& text, unsigned& atCharacter, bool& lastCharacterWasSpace)
 {
     auto& string = text.text();
     auto length = string.length();
-    if (text.style().whiteSpace() == WhiteSpace::Pre) {
+    if (text.style().whiteSpaceCollapse() == WhiteSpaceCollapse::Preserve) {
         atCharacter += length;
         return;
     }

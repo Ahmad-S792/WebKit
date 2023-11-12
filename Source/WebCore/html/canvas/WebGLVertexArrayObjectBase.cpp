@@ -28,18 +28,18 @@
 
 #if ENABLE(WEBGL)
 
-#include "WebCoreOpaqueRoot.h"
+#include "WebCoreOpaqueRootInlines.h"
 #include "WebGLRenderingContextBase.h"
 #include <JavaScriptCore/AbstractSlotVisitorInlines.h>
 #include <wtf/Locker.h>
 
 namespace WebCore {
 
-WebGLVertexArrayObjectBase::WebGLVertexArrayObjectBase(WebGLRenderingContextBase& context, Type type)
-    : WebGLContextObject(context)
+WebGLVertexArrayObjectBase::WebGLVertexArrayObjectBase(WebGLRenderingContextBase& context, PlatformGLObject object, Type type)
+    : WebGLObject(context, object)
     , m_type(type)
 {
-    m_vertexAttribState.resize(context.getMaxVertexAttribs());
+    m_vertexAttribState.resize(context.maxVertexAttribs());
 }
 
 void WebGLVertexArrayObjectBase::setElementArrayBuffer(const AbstractLocker& locker, WebGLBuffer* buffer)

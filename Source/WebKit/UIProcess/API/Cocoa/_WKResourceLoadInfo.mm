@@ -92,14 +92,14 @@ static _WKResourceLoadInfoResourceType toWKResourceLoadInfoResourceType(WebKit::
 - (_WKFrameHandle *)frame
 {
     if (auto frameID = _info->frameID())
-        return wrapper(API::FrameHandle::create(*frameID));
+        return wrapper(API::FrameHandle::create(*frameID)).autorelease();
     return nil;
 }
 
 - (_WKFrameHandle *)parentFrame
 {
     if (auto parentFrameID = _info->parentFrameID())
-        return wrapper(API::FrameHandle::create(*parentFrameID));
+        return wrapper(API::FrameHandle::create(*parentFrameID)).autorelease();
     return nil;
 }
 
@@ -189,7 +189,7 @@ static _WKResourceLoadInfoResourceType toWKResourceLoadInfoResourceType(WebKit::
     }
 
     WebKit::ResourceLoadInfo info {
-        makeObjectIdentifier<WebKit::NetworkResourceLoadIdentifierType>(resourceLoadID.unsignedLongLongValue),
+        ObjectIdentifier<WebKit::NetworkResourceLoadIdentifierType>(resourceLoadID.unsignedLongLongValue),
         frame->_frameHandle->frameID(),
         parentFrame ? std::optional<WebCore::FrameIdentifier>(parentFrame->_frameHandle->frameID()) : std::nullopt,
         originalURL,

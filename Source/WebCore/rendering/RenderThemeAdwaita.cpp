@@ -26,6 +26,8 @@
 #include "config.h"
 #include "RenderThemeAdwaita.h"
 
+#if USE(THEME_ADWAITA)
+
 #include "Color.h"
 #include "FloatRoundedRect.h"
 #include "GraphicsContext.h"
@@ -36,10 +38,9 @@
 #include "RenderBox.h"
 #include "RenderObject.h"
 #include "RenderProgress.h"
-#include "RenderStyle.h"
+#include "RenderStyleSetters.h"
 #include "ThemeAdwaita.h"
 #include "TimeRanges.h"
-#include "UserAgentScripts.h"
 #include "UserAgentStyleSheets.h"
 #include <wtf/text/Base64.h>
 
@@ -50,6 +51,10 @@
 #if PLATFORM(WIN)
 #include "WebCoreBundleWin.h"
 #include <wtf/FileSystem.h>
+#endif
+
+#if ENABLE(MODERN_MEDIA_CONTROLS)
+#include "UserAgentScripts.h"
 #endif
 
 namespace WebCore {
@@ -89,12 +94,6 @@ static constexpr auto sliderThumbBackgroundColorDark = SRGBA<uint8_t> { 210, 210
 static constexpr auto sliderThumbBackgroundHoveredColorDark = SRGBA<uint8_t> { 230, 230, 230 };
 static constexpr auto sliderThumbBackgroundDisabledColorDark = SRGBA<uint8_t> { 150, 150, 150 };
 
-#if ENABLE(VIDEO)
-static constexpr auto mediaSliderTrackBackgroundcolor = SRGBA<uint8_t> { 77, 77, 77 };
-static constexpr auto mediaSliderTrackBufferedColor = SRGBA<uint8_t> { 173, 173, 173 };
-static constexpr auto mediaSliderTrackActiveColor = SRGBA<uint8_t> { 252, 252, 252 };
-#endif
-
 static constexpr auto buttonTextColorLight = SRGBA<uint8_t> { 0, 0, 0, 204 };
 static constexpr auto buttonTextDisabledColorLight = SRGBA<uint8_t> { 0, 0, 0, 102 };
 static constexpr auto buttonTextColorDark = SRGBA<uint8_t> { 255, 255, 255 };
@@ -113,13 +112,11 @@ static inline Color getAccentColor(const RenderObject& renderObject)
     return getSystemAccentColor();
 }
 
-#if !PLATFORM(GTK)
 RenderTheme& RenderTheme::singleton()
 {
     static MainThreadNeverDestroyed<RenderThemeAdwaita> theme;
     return theme;
 }
-#endif
 
 bool RenderThemeAdwaita::supportsFocusRing(const RenderStyle& style) const
 {
@@ -262,7 +259,6 @@ Color RenderThemeAdwaita::systemColor(CSSValueID cssValueID, OptionSet<StyleColo
     const bool useDarkAppearance = options.contains(StyleColorOptions::UseDarkAppearance);
 
     switch (cssValueID) {
-    case CSSValueActivecaption:
     case CSSValueActivebuttontext:
     case CSSValueButtontext:
         return useDarkAppearance ? buttonTextColorDark : buttonTextColorLight;
@@ -271,30 +267,18 @@ Color RenderThemeAdwaita::systemColor(CSSValueID cssValueID, OptionSet<StyleColo
         return useDarkAppearance ? buttonTextDisabledColorDark : buttonTextDisabledColorLight;
 
     case CSSValueCanvas:
-    case CSSValueField:
-    case CSSValueWebkitControlBackground:
-        return useDarkAppearance ? textFieldBackgroundColorDark : textFieldBackgroundColorLight;
-
-    case CSSValueWindow:
         return useDarkAppearance ? SRGBA<uint8_t> { 30, 30, 30 } : Color::white;
 
+    case CSSValueField:
+#if HAVE(OS_DARK_MODE_SUPPORT)
+    case CSSValueWebkitControlBackground:
+#endif
+        return useDarkAppearance ? textFieldBackgroundColorDark : textFieldBackgroundColorLight;
+
     case CSSValueCanvastext:
-    case CSSValueCaptiontext:
     case CSSValueFieldtext:
-    case CSSValueInactivecaptiontext:
-    case CSSValueInfotext:
     case CSSValueText:
-    case CSSValueWindowtext:
         return useDarkAppearance ? Color::white : Color::black;
-
-    case CSSValueInactiveborder:
-    case CSSValueInactivecaption:
-        return useDarkAppearance ? Color::black : Color::white;
-
-    case CSSValueWebkitFocusRingColor:
-    case CSSValueActiveborder:
-        // Hardcoded to avoid exposing a user appearance preference to the web for fingerprinting.
-        return SRGBA<uint8_t> { 52, 132, 228, static_cast<unsigned char>(255 * focusRingOpacity) };
 
     case CSSValueHighlight:
         // Hardcoded to avoid exposing a user appearance preference to the web for fingerprinting.
@@ -473,7 +457,7 @@ IntRect RenderThemeAdwaita::progressBarRectForBounds(const RenderProgress&, cons
 
 bool RenderThemeAdwaita::paintProgressBar(const RenderObject& renderObject, const PaintInfo& paintInfo, const IntRect& rect)
 {
-    if (!renderObject.isProgress())
+    if (!renderObject.isRenderProgress())
         return true;
 
     auto& graphicsContext = paintInfo.context();
@@ -647,9 +631,9 @@ bool RenderThemeAdwaita::paintSliderThumb(const RenderObject& renderObject, cons
 
     FloatRect fieldRect = rect;
     Path path;
-    path.addEllipse(fieldRect);
+    path.addEllipseInRect(fieldRect);
     fieldRect.inflate(-sliderThumbBorderSize);
-    path.addEllipse(fieldRect);
+    path.addEllipseInRect(fieldRect);
     graphicsContext.setFillRule(WindRule::EvenOdd);
     if (isEnabled(renderObject) && isPressed(renderObject))
         graphicsContext.setFillColor(getAccentColor(renderObject));
@@ -658,7 +642,7 @@ bool RenderThemeAdwaita::paintSliderThumb(const RenderObject& renderObject, cons
     graphicsContext.fillPath(path);
     path.clear();
 
-    path.addEllipse(fieldRect);
+    path.addEllipseInRect(fieldRect);
     graphicsContext.setFillRule(WindRule::NonZero);
     if (!isEnabled(renderObject))
         graphicsContext.setFillColor(sliderThumbBackgroundDisabledColor);
@@ -693,12 +677,14 @@ void RenderThemeAdwaita::adjustListButtonStyle(RenderStyle& style, const Element
 #endif // ENABLE(DATALIST_ELEMENT)
 
 #if PLATFORM(GTK)
-Seconds RenderThemeAdwaita::caretBlinkInterval() const
+std::optional<Seconds> RenderThemeAdwaita::caretBlinkInterval() const
 {
     gboolean shouldBlink;
     gint time;
     g_object_get(gtk_settings_get_default(), "gtk-cursor-blink", &shouldBlink, "gtk-cursor-blink-time", &time, nullptr);
-    return shouldBlink ? 500_us * time : 0_s;
+    if (shouldBlink)
+        return { 500_us * time };
+    return { };
 }
 #endif
 
@@ -709,3 +695,5 @@ void RenderThemeAdwaita::setAccentColor(const Color& color)
 }
 
 } // namespace WebCore
+
+#endif // USE(THEME_ADWAITA)

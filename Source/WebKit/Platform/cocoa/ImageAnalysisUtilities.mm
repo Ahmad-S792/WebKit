@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2021-2022 Apple Inc. All rights reserved.
+ * Copyright (C) 2021-2023 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -26,7 +26,7 @@
 #import "config.h"
 #import "ImageAnalysisUtilities.h"
 
-#if ENABLE(IMAGE_ANALYSIS)
+#if ENABLE(IMAGE_ANALYSIS) || HAVE(VISION)
 
 #import "CocoaImage.h"
 #import "Logging.h"
@@ -41,9 +41,14 @@
 #endif
 
 #import <pal/cocoa/VisionKitCoreSoftLink.h>
+#import <pal/cocoa/VisionSoftLink.h>
+
+#define CRLayoutDirectionTopToBottom 3
 
 namespace WebKit {
 using namespace WebCore;
+
+#if ENABLE(IMAGE_ANALYSIS)
 
 RetainPtr<CocoaImageAnalyzer> createImageAnalyzer()
 {
@@ -70,11 +75,9 @@ static FloatQuad floatQuad(VKQuad *quad)
 
 static Vector<FloatQuad> floatQuads(NSArray<VKQuad *> *vkQuads)
 {
-    Vector<FloatQuad> quads;
-    quads.reserveInitialCapacity(vkQuads.count);
-    for (VKQuad *vkQuad in vkQuads)
-        quads.uncheckedAppend(floatQuad(vkQuad));
-    return quads;
+    return Vector<FloatQuad>(vkQuads.count, [vkQuads](size_t i) {
+        return floatQuad(vkQuads[i]);
+    });
 }
 
 TextRecognitionResult makeTextRecognitionResult(CocoaImageAnalysis *analysis)
@@ -110,16 +113,17 @@ TextRecognitionResult makeTextRecognitionResult(CocoaImageAnalysis *analysis)
                     return !isFirstLine && !searchLocation;
 
                 auto textBeforeMatch = StringView(lineText).substring(searchLocation, matchLocation - searchLocation);
-                return !textBeforeMatch.isEmpty() && isSpaceOrNewline(textBeforeMatch[0]);
+                return !textBeforeMatch.isEmpty() && deprecatedIsSpaceOrNewline(textBeforeMatch[0]);
             })();
 
             searchLocation = matchLocation + childText.length();
-            children.uncheckedAppend({ WTFMove(childText), floatQuad(child.quad), hasLeadingWhitespace });
+            children.append({ WTFMove(childText), floatQuad(child.quad), hasLeadingWhitespace });
         }
         VKWKLineInfo *nextLine = nextLineIndex < allLines.count ? allLines[nextLineIndex] : nil;
         // The `shouldWrap` property indicates whether or not a line should wrap, relative to the previous line.
         bool hasTrailingNewline = nextLine && (![nextLine respondsToSelector:@selector(shouldWrap)] || ![nextLine shouldWrap]);
-        result.lines.uncheckedAppend({ floatQuad(line.quad), WTFMove(children), hasTrailingNewline });
+        bool isVertical = [line respondsToSelector:@selector(layoutDirection)] && [line layoutDirection] == CRLayoutDirectionTopToBottom;
+        result.lines.append({ floatQuad(line.quad), WTFMove(children), hasTrailingNewline, isVertical });
         isFirstLine = false;
         nextLineIndex++;
     }
@@ -129,7 +133,7 @@ TextRecognitionResult makeTextRecognitionResult(CocoaImageAnalysis *analysis)
         auto dataDetectors = RetainPtr { analysis.textDataDetectors };
         result.dataDetectors.reserveInitialCapacity([dataDetectors count]);
         for (VKWKDataDetectorInfo *info in dataDetectors.get())
-            result.dataDetectors.uncheckedAppend({ info.result, floatQuads(info.boundingQuads) });
+            result.dataDetectors.append({ info.result, floatQuads(info.boundingQuads) });
     }
 #endif // ENABLE(DATA_DETECTION)
 
@@ -187,7 +191,7 @@ static TextRecognitionResult makeTextRecognitionResult(VKCImageAnalysisTranslati
             continue;
         }
 
-        if ([paragraph respondsToSelector:@selector(isPassthrough)] && [paragraph isPassthrough])
+        if (paragraph.isPassthrough)
             continue;
 
         auto quad = floatQuad(paragraph.quad);
@@ -200,7 +204,7 @@ static TextRecognitionResult makeTextRecognitionResult(VKCImageAnalysisTranslati
             quad.setP3({ quad.p3().x(), 1 - quad.p3().y() });
             quad.setP4({ quad.p4().x(), 1 - quad.p4().y() });
         }
-        result.blocks.uncheckedAppend({ paragraph.text, WTFMove(quad) });
+        result.blocks.append({ paragraph.text, WTFMove(quad) });
     }
 
     return result;
@@ -333,7 +337,7 @@ void requestBackgroundRemoval(CGImageRef image, CompletionHandler<void(CGImageRe
     });
 }
 
-void setUpAdditionalImageAnalysisBehaviors(PlatformImageAnalysisObject *interactionOrView)
+void prepareImageAnalysisForOverlayView(PlatformImageAnalysisObject *interactionOrView)
 {
     interactionOrView.activeInteractionTypes = VKImageAnalysisInteractionTypeTextSelection | VKImageAnalysisInteractionTypeDataDetectors;
     interactionOrView.wantsAutomaticContentsRectCalculation = NO;
@@ -370,6 +374,74 @@ std::pair<RetainPtr<NSData>, RetainPtr<CFStringRef>> imageDataForRemoveBackgroun
 
 #endif // ENABLE(IMAGE_ANALYSIS_ENHANCEMENTS)
 
+#endif // ENABLE(IMAGE_ANALYSIS)
+
+#if HAVE(VISION)
+
+static RetainPtr<CGImageRef> imageFilledWithWhiteBackground(CGImageRef image)
+{
+    CGRect imageRect = CGRectMake(0, 0, CGImageGetWidth(image), CGImageGetHeight(image));
+
+    RetainPtr colorSpace = CGImageGetColorSpace(image);
+    if (!CGColorSpaceSupportsOutput(colorSpace.get()))
+        colorSpace = adoptCF(CGColorSpaceCreateWithName(kCGColorSpaceSRGB));
+
+    auto context = adoptCF(CGBitmapContextCreate(nil, CGRectGetWidth(imageRect), CGRectGetHeight(imageRect), 8, 4 * CGRectGetWidth(imageRect), colorSpace.get(), kCGImageAlphaPremultipliedLast));
+    CGContextSetFillColorWithColor(context.get(), cachedCGColor(WebCore::Color::white).get());
+    CGContextFillRect(context.get(), imageRect);
+    CGContextDrawImage(context.get(), imageRect, image);
+
+    return adoptCF(CGBitmapContextCreateImage(context.get()));
+}
+
+void requestPayloadForQRCode(CGImageRef image, CompletionHandler<void(NSString *)>&& completion)
+{
+    ASSERT(RunLoop::isMain());
+
+    if (!image || !PAL::isVisionFrameworkAvailable())
+        return completion(nil);
+
+    auto queue = WorkQueue::create("com.apple.WebKit.ImageAnalysisUtilities.QRCodePayloadRequest");
+    queue->dispatch([image = retainPtr(image), completion = WTFMove(completion)]() mutable {
+        auto adjustedImage = imageFilledWithWhiteBackground(image.get());
+
+        auto callCompletionOnMainRunLoopWithResult = [completion = WTFMove(completion)](NSString *result) mutable {
+            callOnMainRunLoop([completion = WTFMove(completion), result = retainPtr(result)]() mutable {
+                completion(result.get());
+            });
+        };
+
+        auto completionHandler = makeBlockPtr([callCompletionOnMainRunLoopWithResult = WTFMove(callCompletionOnMainRunLoopWithResult)](VNRequest *request, NSError *error) mutable {
+            if (error) {
+                callCompletionOnMainRunLoopWithResult(nil);
+                return;
+            }
+
+            for (VNBarcodeObservation *result in request.results) {
+                if (![result.symbology isEqualToString:PAL::get_Vision_VNBarcodeSymbologyQR()])
+                    continue;
+
+                callCompletionOnMainRunLoopWithResult(result.payloadStringValue);
+                return;
+            }
+
+            callCompletionOnMainRunLoopWithResult(nil);
+        });
+
+        auto request = adoptNS([PAL::allocVNDetectBarcodesRequestInstance() initWithCompletionHandler:completionHandler.get()]);
+        [request setSymbologies:@[ PAL::get_Vision_VNBarcodeSymbologyQR() ]];
+
+        NSError *error = nil;
+        auto handler = adoptNS([PAL::allocVNImageRequestHandlerInstance() initWithCGImage:adjustedImage.get() options:@{ }]);
+        [handler performRequests:@[ request.get() ] error:&error];
+
+        if (error)
+            completionHandler(nil, error);
+    });
+}
+
+#endif // HAVE(VISION)
+
 } // namespace WebKit
 
-#endif // ENABLE(IMAGE_ANALYSIS)
+#endif // ENABLE(IMAGE_ANALYSIS) || HAVE(VISION)

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2021-2022 Apple Inc. All rights reserved.
+ * Copyright (c) 2021-2023 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -26,6 +26,8 @@
 #pragma once
 
 #include "CompilationMessage.h"
+#include "ConstantValue.h"
+#include "WGSLEnums.h"
 #include <cinttypes>
 #include <cstdint>
 #include <memory>
@@ -43,6 +45,10 @@ namespace WGSL {
 //
 
 class ShaderModule;
+
+namespace AST {
+class Expression;
+}
 
 struct SuccessfulCheck {
     SuccessfulCheck() = delete;
@@ -64,7 +70,9 @@ struct SourceMap {
 };
 
 struct Configuration {
-    uint32_t maxBuffersPlusVertexBuffersForVertexStage;
+    uint32_t maxBuffersPlusVertexBuffersForVertexStage = 8;
+    uint32_t maxBuffersForFragmentStage = 8;
+    uint32_t maxBuffersForComputeStage = 8;
 };
 
 std::variant<SuccessfulCheck, FailedCheck> staticCheck(const String& wgsl, const std::optional<SourceMap>&, const Configuration&);
@@ -132,16 +140,24 @@ struct ExternalTextureBindingLayout {
     // Sentinel
 };
 
-enum class ShaderStage : uint8_t {
-    Vertex = 0x1,
-    Fragment = 0x2,
-    Compute = 0x4
-};
-
 struct BindGroupLayoutEntry {
     uint32_t binding;
+    uint32_t webBinding;
     OptionSet<ShaderStage> visibility;
-    std::variant<BufferBindingLayout, SamplerBindingLayout, TextureBindingLayout, StorageTextureBindingLayout, ExternalTextureBindingLayout> bindingMember;
+    using BindingMember = std::variant<BufferBindingLayout, SamplerBindingLayout, TextureBindingLayout, StorageTextureBindingLayout, ExternalTextureBindingLayout>;
+    BindingMember bindingMember;
+    String name;
+    std::optional<uint32_t> vertexArgumentBufferIndex;
+    std::optional<uint32_t> vertexArgumentBufferSizeIndex;
+    std::optional<uint32_t> vertexBufferDynamicOffset;
+
+    std::optional<uint32_t> fragmentArgumentBufferIndex;
+    std::optional<uint32_t> fragmentArgumentBufferSizeIndex;
+    std::optional<uint32_t> fragmentBufferDynamicOffset;
+
+    std::optional<uint32_t> computeArgumentBufferIndex;
+    std::optional<uint32_t> computeArgumentBufferSizeIndex;
+    std::optional<uint32_t> computeBufferDynamicOffset;
 };
 
 struct BindGroupLayout {
@@ -166,9 +182,9 @@ struct Fragment {
 };
 
 struct WorkgroupSize {
-    unsigned width;
-    unsigned height;
-    unsigned depth;
+    const AST::Expression* width;
+    const AST::Expression* height;
+    const AST::Expression* depth;
 };
 
 struct Compute {
@@ -185,15 +201,16 @@ enum class SpecializationConstantType : uint8_t {
 struct SpecializationConstant {
     String mangledName;
     SpecializationConstantType type;
+    AST::Expression* defaultValue;
 };
 
 struct EntryPointInformation {
     // FIXME: This can probably be factored better.
+    String originalName;
     String mangledName;
     std::optional<PipelineLayout> defaultLayout; // If the input PipelineLayout is nullopt, the compiler computes a layout and returns it. https://gpuweb.github.io/gpuweb/#default-pipeline-layout
     HashMap<std::pair<size_t, size_t>, size_t> bufferLengthLocations; // Metal buffer identity -> offset within helper buffer where its size needs to lie
-    HashMap<size_t, SpecializationConstant> specializationConstants;
-    HashMap<String, size_t> specializationConstantIndices; // Points into specializationConstantsByIndex
+    HashMap<String, SpecializationConstant> specializationConstants;
     std::variant<Vertex, Fragment, Compute> typedEntryPoint;
 };
 
@@ -206,7 +223,9 @@ struct PrepareResult {
 
 // These are not allowed to fail.
 // All failures must have already been caught in check().
-PrepareResult prepare(ShaderModule&, const HashMap<String, PipelineLayout>&);
+PrepareResult prepare(ShaderModule&, const HashMap<String, std::optional<PipelineLayout>>&);
 PrepareResult prepare(ShaderModule&, const String& entryPointName, const std::optional<PipelineLayout>&);
+
+ConstantValue evaluate(const AST::Expression&, const HashMap<String, ConstantValue>&);
 
 } // namespace WGSL

@@ -10,9 +10,6 @@ features: [Temporal]
 
 const expected = [
   // ToTemporalTime
-  "get other.calendar",
-  "get other.calendar.toString",
-  "call other.calendar.toString",
   "get other.hour",
   "get other.hour.valueOf",
   "call other.hour.valueOf",
@@ -31,17 +28,25 @@ const expected = [
   "get other.second",
   "get other.second.valueOf",
   "call other.second.valueOf",
-  // GetDifferenceSettings
+  // CopyDataProperties
+  "ownKeys options",
+  "getOwnPropertyDescriptor options.roundingIncrement",
+  "get options.roundingIncrement",
+  "getOwnPropertyDescriptor options.roundingMode",
+  "get options.roundingMode",
+  "getOwnPropertyDescriptor options.largestUnit",
   "get options.largestUnit",
+  "getOwnPropertyDescriptor options.smallestUnit",
+  "get options.smallestUnit",
+  "getOwnPropertyDescriptor options.additional",
+  "get options.additional",
+  // GetDifferenceSettings
   "get options.largestUnit.toString",
   "call options.largestUnit.toString",
-  "get options.roundingIncrement",
   "get options.roundingIncrement.valueOf",
   "call options.roundingIncrement.valueOf",
-  "get options.roundingMode",
   "get options.roundingMode.toString",
   "call options.roundingMode.toString",
-  "get options.smallestUnit",
   "get options.smallestUnit.toString",
   "call options.smallestUnit.toString",
 ];
@@ -60,11 +65,28 @@ const other = TemporalHelpers.propertyBagObserver(actual, {
 }, "other");
 
 const options = TemporalHelpers.propertyBagObserver(actual, {
-  smallestUnit: "nanoseconds",
-  largestUnit: "hours",
-  roundingMode: "trunc",
   roundingIncrement: 1,
+  roundingMode: "trunc",
+  largestUnit: "hours",
+  smallestUnit: "nanoseconds",
+  additional: true,
 }, "options");
 
 const result = instance.since(other, options);
 assert.compareArray(actual, expected, "order of operations");
+
+actual.splice(0); // clear
+
+// short-circuit does not skip reading options
+const identicalPropertyBag = TemporalHelpers.propertyBagObserver(actual, {
+  hour: 12,
+  minute: 34,
+  second: 56,
+  millisecond: 987,
+  microsecond: 654,
+  nanosecond: 321,
+}, "other");
+instance.since(identicalPropertyBag, options);
+assert.compareArray(actual, expected, "order of operations with identical times");
+
+actual.splice(0); // clear

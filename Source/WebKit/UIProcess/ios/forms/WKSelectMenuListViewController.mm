@@ -28,7 +28,7 @@
 
 #if HAVE(PEPPER_UI_CORE)
 
-#import "UIKitSPI.h"
+#import "PepperUICoreSPI.h"
 #import <wtf/RetainPtr.h>
 
 static const CGFloat checkmarkImageViewWidth = 32;
@@ -138,7 +138,8 @@ static constexpr CGFloat itemCellBaselineToBottom = 8;
 
 - (instancetype)initWithDelegate:(id <WKSelectMenuListViewControllerDelegate>)delegate
 {
-    return [super initWithDelegate:delegate dictationMode:PUICDictationModeText];
+    self = [super initWithDelegate:delegate dictationMode:PUICDictationModeText];
+    return self;
 }
 
 - (void)viewDidLoad

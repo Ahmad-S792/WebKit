@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+<!DOCTYPE html> <!-- webkit-test-runner [ allowTestOnlyIPC=true ] -->
 <html>
     <head>
         <title>override interruption with getUserMedia</title>
@@ -30,6 +30,10 @@ promise_test(async () => {
         internals.beginAudioSessionInterruption();
 
     video.srcObject = null;
+    await new Promise(resolve => setTimeout(resolve, 100));
+
+    if (window.internals)
+        internals.clearAudioSessionInterruptionFlag();
 
     stream = await navigator.mediaDevices.getUserMedia({ audio: true });
     video.srcObject = stream;

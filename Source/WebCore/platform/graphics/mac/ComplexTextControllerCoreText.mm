@@ -53,9 +53,9 @@ ComplexTextController::ComplexTextRun::ComplexTextRun(CTRunRef ctRun, const Font
         CTRunGetStringIndices(ctRun, CFRangeMake(0, 0), coreTextIndices.data());
         coreTextIndicesPtr = coreTextIndices.data();
     }
-    m_coreTextIndices.reserveInitialCapacity(m_glyphCount);
-    for (unsigned i = 0; i < m_glyphCount; ++i)
-        m_coreTextIndices.uncheckedAppend(coreTextIndicesPtr[i]);
+    m_coreTextIndices = CoreTextIndicesVector(m_glyphCount, [&](size_t i) {
+        return coreTextIndicesPtr[i];
+    });
 
     const CGGlyph* glyphsPtr = CTRunGetGlyphsPtr(ctRun);
     Vector<CGGlyph> glyphs;
@@ -64,9 +64,9 @@ ComplexTextController::ComplexTextRun::ComplexTextRun(CTRunRef ctRun, const Font
         CTRunGetGlyphs(ctRun, CFRangeMake(0, 0), glyphs.data());
         glyphsPtr = glyphs.data();
     }
-    m_glyphs.reserveInitialCapacity(m_glyphCount);
-    for (unsigned i = 0; i < m_glyphCount; ++i)
-        m_glyphs.uncheckedAppend(glyphsPtr[i]);
+    m_glyphs = GlyphVector(m_glyphCount, [&](size_t i) {
+        return glyphsPtr[i];
+    });
 
     if (CTRunGetStatus(ctRun) & kCTRunStatusHasOrigins) {
         Vector<CGSize> baseAdvances(m_glyphCount);
@@ -75,8 +75,8 @@ ComplexTextController::ComplexTextRun::ComplexTextRun(CTRunRef ctRun, const Font
         m_baseAdvances.reserveInitialCapacity(m_glyphCount);
         m_glyphOrigins.reserveInitialCapacity(m_glyphCount);
         for (unsigned i = 0; i < m_glyphCount; ++i) {
-            m_baseAdvances.uncheckedAppend(baseAdvances[i]);
-            m_glyphOrigins.uncheckedAppend(glyphOrigins[i]);
+            m_baseAdvances.append(baseAdvances[i]);
+            m_glyphOrigins.append(glyphOrigins[i]);
         }
     } else {
         const CGSize* baseAdvances = CTRunGetAdvancesPtr(ctRun);
@@ -86,9 +86,9 @@ ComplexTextController::ComplexTextRun::ComplexTextRun(CTRunRef ctRun, const Font
             CTRunGetAdvances(ctRun, CFRangeMake(0, 0), baseAdvancesVector.data());
             baseAdvances = baseAdvancesVector.data();
         }
-        m_baseAdvances.reserveInitialCapacity(m_glyphCount);
-        for (unsigned i = 0; i < m_glyphCount; ++i)
-            m_baseAdvances.uncheckedAppend(baseAdvances[i]);
+        m_baseAdvances = BaseAdvancesVector(m_glyphCount, [&](size_t i) {
+            return baseAdvances[i];
+        });
     }
 
     LOG_WITH_STREAM(TextShaping,
@@ -106,7 +106,7 @@ ComplexTextController::ComplexTextRun::ComplexTextRun(CTRunRef ctRun, const Font
             stream << " empty";
         else {
             for (unsigned i = 0; i < m_glyphCount; ++i)
-                stream << " " << m_glyphs[i];
+                stream << " " << m_glyphOrigins[i];
         }
         stream << "\n";
         stream << "Offsets:";
@@ -178,6 +178,7 @@ void ComplexTextController::collectComplexTextRunsForCharacters(const UChar* cp,
 
     LOG_WITH_STREAM(TextShaping,
         stream << "Complex shaping " << length << " code units with info " << String(adoptCF(CFCopyDescription(stringAttributes.get())).get()) << ".\n";
+        stream << "Font attributes: " << String(adoptCF(CFCopyDescription(adoptCF(CTFontDescriptorCopyAttributes(adoptCF(CTFontCopyFontDescriptor(font->platformData().ctFont())).get())).get())).get()) << "\n";
         stream << "Code Units:";
         for (unsigned i = 0; i < length; ++i)
             stream << " " << cp[i];
@@ -228,16 +229,15 @@ void ComplexTextController::collectComplexTextRunsForCharacters(const UChar* cp,
         // Therefore, we only need to inspect which font was actually used if isSystemFallback is true.
         if (isSystemFallback) {
             CFDictionaryRef runAttributes = CTRunGetAttributes(ctRun);
-            CTFontRef runCTFont = static_cast<CTFontRef>(CFDictionaryGetValue(runAttributes, kCTFontAttributeName));
+            auto runCTFont = static_cast<CTFontRef>(CFDictionaryGetValue(runAttributes, kCTFontAttributeName));
             ASSERT(runCTFont && CFGetTypeID(runCTFont) == CTFontGetTypeID());
-            RetainPtr<CFTypeRef> runFontEqualityObject = FontPlatformData::objectForEqualityCheck(runCTFont);
-            if (!safeCFEqual(runFontEqualityObject.get(), font->platformData().objectForEqualityCheck().get())) {
+            if (!safeCFEqual(runCTFont, font->platformData().ctFont())) {
                 // Begin trying to see if runFont matches any of the fonts in the fallback list.
                 for (unsigned i = 0; !m_font.fallbackRangesAt(i).isNull(); ++i) {
                     runFont = m_font.fallbackRangesAt(i).fontForCharacter(baseCharacter);
                     if (!runFont)
                         continue;
-                    if (safeCFEqual(runFont->platformData().objectForEqualityCheck().get(), runFontEqualityObject.get()))
+                    if (safeCFEqual(runFont->platformData().ctFont(), runCTFont))
                         break;
                     runFont = nullptr;
                 }
@@ -251,11 +251,11 @@ void ComplexTextController::collectComplexTextRunsForCharacters(const UChar* cp,
                     runFont = FontCache::forCurrentThread().fontForPlatformData(runFontPlatformData).ptr();
                 }
                 if (m_fallbackFonts && runFont != &m_font.primaryFont())
-                    m_fallbackFonts->add(runFont);
+                    m_fallbackFonts->add(*runFont);
             }
         }
         if (m_fallbackFonts && runFont != &m_font.primaryFont())
-            m_fallbackFonts->add(font);
+            m_fallbackFonts->add(*font);
 
         LOG_WITH_STREAM(TextShaping, stream << "Run " << r << ":");
 

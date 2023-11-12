@@ -24,8 +24,8 @@
 #include "SVGGeometryElement.h"
 
 #include "DOMPoint.h"
+#include "LegacyRenderSVGResource.h"
 #include "LegacyRenderSVGShape.h"
-#include "RenderSVGResource.h"
 #include "RenderSVGShape.h"
 #include "SVGDocumentExtensions.h"
 #include "SVGPathUtilities.h"
@@ -47,7 +47,7 @@ SVGGeometryElement::SVGGeometryElement(const QualifiedName& tagName, Document& d
 
 float SVGGeometryElement::getTotalLength() const
 {
-    document().updateLayoutIgnorePendingStylesheets();
+    document().updateLayoutIgnorePendingStylesheets({ LayoutOptions::ContentVisibilityForceLayout }, this);
 
     auto* renderer = this->renderer();
     if (!renderer)
@@ -67,7 +67,7 @@ float SVGGeometryElement::getTotalLength() const
 
 ExceptionOr<Ref<SVGPoint>> SVGGeometryElement::getPointAtLength(float distance) const
 {
-    document().updateLayoutIgnorePendingStylesheets();
+    document().updateLayoutIgnorePendingStylesheets({ LayoutOptions::ContentVisibilityForceLayout }, this);
 
     // Spec: Clamp distance to [0, length].
     distance = clampTo<float>(distance, 0, getTotalLength());
@@ -76,7 +76,7 @@ ExceptionOr<Ref<SVGPoint>> SVGGeometryElement::getPointAtLength(float distance) 
 
     // Spec: If current element is a non-rendered element, throw an InvalidStateError.
     if (!renderer)
-        return Exception { InvalidStateError };
+        return Exception { ExceptionCode::InvalidStateError };
 
     // Spec: Return a newly created, detached SVGPoint object.
     if (is<LegacyRenderSVGShape>(renderer))
@@ -88,12 +88,12 @@ ExceptionOr<Ref<SVGPoint>> SVGGeometryElement::getPointAtLength(float distance) 
 #endif
 
     ASSERT_NOT_REACHED();
-    return Exception { InvalidStateError };
+    return Exception { ExceptionCode::InvalidStateError };
 }
 
 bool SVGGeometryElement::isPointInFill(DOMPointInit&& pointInit)
 {
-    document().updateLayoutIgnorePendingStylesheets();
+    document().updateLayoutIgnorePendingStylesheets({ LayoutOptions::ContentVisibilityForceLayout }, this);
 
     auto* renderer = this->renderer();
     if (!renderer)
@@ -114,7 +114,7 @@ bool SVGGeometryElement::isPointInFill(DOMPointInit&& pointInit)
 
 bool SVGGeometryElement::isPointInStroke(DOMPointInit&& pointInit)
 {
-    document().updateLayoutIgnorePendingStylesheets();
+    document().updateLayoutIgnorePendingStylesheets({ LayoutOptions::ContentVisibilityForceLayout }, this);
 
     auto* renderer = this->renderer();
     if (!renderer)
@@ -133,16 +133,15 @@ bool SVGGeometryElement::isPointInStroke(DOMPointInit&& pointInit)
     return false;
 }
 
-void SVGGeometryElement::parseAttribute(const QualifiedName& name, const AtomString& value)
+void SVGGeometryElement::attributeChanged(const QualifiedName& name, const AtomString& oldValue, const AtomString& newValue, AttributeModificationReason attributeModificationReason)
 {
     if (name == SVGNames::pathLengthAttr) {
-        m_pathLength->setBaseValInternal(value.toFloat());
+        m_pathLength->setBaseValInternal(newValue.toFloat());
         if (m_pathLength->baseVal() < 0)
             document().accessSVGExtensions().reportError("A negative value for path attribute <pathLength> is not allowed"_s);
-        return;
     }
 
-    SVGGraphicsElement::parseAttribute(name, value);
+    SVGGraphicsElement::attributeChanged(name, oldValue, newValue, attributeModificationReason);
 }
 
 void SVGGeometryElement::svgAttributeChanged(const QualifiedName& attrName)

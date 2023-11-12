@@ -151,6 +151,132 @@ async function dispatchTouchActions(actions, options = { insertPauseAfterPointer
     })();`, resolve));
 }
 
+function computeTickDuration(actions, sourceType)
+{
+    sourceToActionWithDurationMap = { "pointer": "pointerMove", "wheel": "scroll" };
+    maxDuration = 0;
+    for (let action of actions) {
+        let duration;
+        if (action.type === "pause" || action.type === sourceToActionWithDurationMap[sourceType])
+            duration = action.duration;
+        if (duration !== undefined) {
+            if (duration > maxDuration)
+                maxDuration = duration;
+        }
+    }
+    return maxDuration;
+}
+
+async function renderingUpdate()
+{
+    await new Promise(requestAnimationFrame);
+    await new Promise(resolve => setTimeout(resolve, 0));
+}
+
+async function waitForScrollCompletion()
+{
+    if (testRunner.isIOSFamily) {
+        await new Promise(resolve => {
+            testRunner.runUIScript(`
+                (function() {
+                    uiController.didEndScrollingCallback = function() {
+                        uiController.uiScriptComplete();
+                    }
+                })()`, resolve);
+        });
+        return renderingUpdate();
+    }
+
+    return new Promise(resolve => {
+        eventSender.callAfterScrollingCompletes(() => {
+            requestAnimationFrame(resolve);
+        });
+    });
+}
+
+async function ensurePresentationUpdate()
+{
+    if (!testRunner.isWebKit2)
+        return renderingUpdate();
+
+    return new Promise(resolve => {
+        testRunner.runUIScript(`
+            uiController.doAfterPresentationUpdate(function() {
+                uiController.uiScriptComplete();
+            });`, resolve);
+    });
+}
+
+/**
+ *
+ * @param {object[]} actions
+ * @returns Promise<undefined>
+ */
+async function dispatchWheelActions(actions)
+{
+    if (!window.eventSender)
+        throw new Error("window.eventSender is undefined.");
+
+    for (let action of actions) {
+        switch (action.type) {
+        case "pause":
+            logDebug(`pause(${action.duration})`);
+            await pause(action.duration);
+            break;
+        case "scroll":
+            // FIXME(261810): Follow tick-based event dispatch logic rather than sending scroll events instantaneously
+            // https://w3c.github.io/webdriver/#dfn-perform-a-scroll
+            let { x, y, origin, deltaX, deltaY, duration } = action;
+            if ((x < 0) || (x > window.innerWidth) || (y < 0) || (y > window.innerHeight))
+                throw new Error('Move target out of bounds');
+            if (duration === undefined)
+                duration = computeTickDuration(actions, "wheel");
+            if (origin instanceof Element) {
+                const bounds = origin.getBoundingClientRect();
+                logDebug(() => `${origin.id} [${bounds.left}, ${bounds.top}, ${bounds.width}, ${bounds.height}]`);
+                x += bounds.left + 1;
+                y += bounds.top + 1;
+            }
+            const scrollEvents = [
+                {
+                    type : "wheel",
+                    viewX : x,
+                    viewY : y,
+                    deltaX : 0,
+                    deltaY : -deltaY,
+                    phase : "began"
+                },
+                {
+                    type : "wheel",
+                    deltaX : -deltaX,
+                    deltaY : 0,
+                    phase : "changed"
+                },
+                {
+                    type : "wheel",
+                    momentumPhase : "ended"
+                }
+            ];
+            eventSender.monitorWheelEvents();
+            await ensurePresentationUpdate();
+            const eventStreamAsString = JSON.stringify({ events: scrollEvents });
+            await new Promise(resolve => {
+                testRunner.runUIScript(`
+                    (function() {
+                        uiController.sendEventStream(\`${eventStreamAsString}\`, () => {
+                            uiController.uiScriptComplete();
+                        });
+                    })();
+                `, resolve);
+            });
+            await waitForScrollCompletion();
+            break;
+        default:
+            throw new Error(`Unrecognized wheel action type: ${action.type}`);
+        }
+    }
+}
+
 if (window.test_driver_internal === undefined)
     window.test_driver_internal = { };
 
@@ -271,6 +397,7 @@ window.test_driver_internal.action_sequence = async function(sources)
     let noneSource;
     let pointerSource;
     let keySource;
+    let wheelSource;
     for (let source of sources) {
         switch (source.type) {
         case "none":
@@ -281,6 +408,9 @@ window.test_driver_internal.action_sequence = async function(sources)
             break;
         case "key":
             keySource = source;
+            break;
+        case "wheel":
+            wheelSource = source;
             break;
         default:
             throw new Error(`Unknown source type "${source.type}".`);
@@ -299,14 +429,16 @@ window.test_driver_internal.action_sequence = async function(sources)
                 const key = convertSeleniumKeyCode(action.value);
                 if (key.modifier)
                     modifiersInEffect.push(key.modifier);
-                events.push({type: 'rawKeyDown', arguments: [key.key, modifiersInEffect.slice(0)]});
+                else
+                    events.push({type: 'rawKeyDown', arguments: [key.key, modifiersInEffect.slice(0)]});
                 break;
             }
             case 'keyUp': {
                 const key = convertSeleniumKeyCode(action.value);
                 if (key.modifier)
                     modifiersInEffect = modifiersInEffect.filter((modifier) => modifier != key.modifier);
-                events.push({type: 'rawKeyUp', arguments: [key.key, modifiersInEffect.slice(0)]});
+                else
+                    events.push({type: 'rawKeyUp', arguments: [key.key, modifiersInEffect.slice(0)]});
                 break;
             }
             case 'pause':
@@ -342,33 +474,38 @@ window.test_driver_internal.action_sequence = async function(sources)
         return;
     }
 
-    if (!pointerSource)
-        throw new Error(`Unknown pointer type pointer type "${action.parameters.pointerType}".`);
-
-    const { pointerType } = pointerSource.parameters;
-    if (!["mouse", "touch", "pen"].includes(pointerType))
-        throw new Error(`Unknown pointer type "${pointerType}".`);
-
     // If we have a "none" source, let's inject any pause with non-zero durations into the pointer source
     // after the matching action in the pointer source.
     if (noneSource) {
         let injectedActions = 0;
         noneSource.actions.forEach((action, index) => {
             if (action.duration > 0) {
-                pointerSource.actions.splice(index + injectedActions + 1, 0, action);
+                if (pointerSource)
+                    pointerSource.actions.splice(index + injectedActions + 1, 0, action);
+                if (wheelSource)
+                    wheelSource.actions.splice(index + injectedActions + 1, 0, action);
                 injectedActions++;
             }
         });
     }
 
-    logDebug(JSON.stringify(pointerSource));
+    if (wheelSource)
+        await dispatchWheelActions(wheelSource.actions);
 
-    if (pointerType === "touch")
-        await dispatchTouchActions(pointerSource.actions);
-    else if (testRunner.isIOSFamily && "createTouch" in document)
-        await dispatchTouchActions(pointerSource.actions, { insertPauseAfterPointerUp: true });
-    else if (pointerType === "mouse" || pointerType === "pen")
-        await dispatchMouseActions(pointerSource.actions, pointerType);
+    if (pointerSource) {
+        const { pointerType } = pointerSource.parameters;
+        if (!["mouse", "touch", "pen"].includes(pointerType))
+            throw new Error(`Unknown pointer type "${pointerType}".`);
+
+        logDebug(JSON.stringify(pointerSource));
+
+        if (pointerType === "touch")
+            await dispatchTouchActions(pointerSource.actions);
+        else if (testRunner.isIOSFamily && "createTouch" in document)
+            await dispatchTouchActions(pointerSource.actions, { insertPauseAfterPointerUp: true });
+        else if (pointerType === "mouse" || pointerType === "pen")
+            await dispatchMouseActions(pointerSource.actions, pointerType);
+    }
 };
 
 /**
@@ -381,6 +518,14 @@ window.test_driver_internal.action_sequence = async function(sources)
 window.test_driver_internal.set_permission = async function(permission_params)
 {
     switch (permission_params.descriptor.name) {
+    case "camera":
+        if (window.testRunner && testRunner.setCameraPermission)
+            testRunner.setCameraPermission(permission_params.state === "granted");
+        break;
+    case "background-fetch":
+        if (window.testRunner && testRunner.setBackgroundFetchPermission)
+            testRunner.setBackgroundFetchPermission(permission_params.state === "granted");
+        break;
     case "geolocation":
         const granted = permission_params.state === "granted";
         testRunner.setGeolocationPermission(granted);
@@ -388,6 +533,10 @@ window.test_driver_internal.set_permission = async function(permission_params)
             await pause(10);
             window.testRunner.setMockGeolocationPosition(51.478, -0.166, 100);
         }
+        break;
+    case "microphone":
+        if (window.testRunner && testRunner.setMicrophonePermission)
+            testRunner.setMicrophonePermission(permission_params.state === "granted");
         break;
     case "screen-wake-lock":
         testRunner.setScreenWakeLockPermission(permission_params.state == "granted");
@@ -461,7 +610,7 @@ window.test_driver_internal.minimize_window = async function (context=null)
  */
 window.test_driver_internal.set_window_rect = async function (rect, context=null)
 {
-    if (typeof rect !== "object" || typeof rect.width !== "number" || typeof rect.height !== "number")
+    if (!rect || typeof rect !== "object" || typeof rect.width !== "number" || typeof rect.height !== "number")
         throw new Error("Invalid rect");
 
     context = context ?? window;
@@ -478,4 +627,44 @@ window.test_driver_internal.set_window_rect = async function (rect, context=null
         context.addEventListener("visibilitychange", resolve, { once: true });
         testRunner.setPageVisibility("visible");
     });
+}
+
+function waitFor(condition)
+{
+    return new Promise((resolve, reject) => {
+        let interval = setInterval(() => {
+            if (condition()) {
+                clearInterval(interval);
+                resolve();
+            }
+        }, 0);
+    });
+}
+
+/**
+ *
+ * @param {Element} element
+ * @returns {Promise<string>}
+ */
+window.test_driver_internal.get_computed_label = async function (element, context=null) {
+    if (!element)
+        return "";
+    context = context ?? window;
+
+    await waitFor(() => context.internals.readyToRetrieveComputedRoleOrLabel(element));
+    return context.internals.getComputedLabel(element);
+}
+
+/**
+ *
+ * @param {Element} element
+ * @returns {Promise<string>}
+ */
+window.test_driver_internal.get_computed_role = async function (element, context=null) {
+    if (!element)
+        return "";
+    context = context ?? window;
+
+    await waitFor(() => context.internals.readyToRetrieveComputedRoleOrLabel(element));
+    return context.internals.getComputedRole(element);
 }

@@ -60,10 +60,14 @@ public:
     {
         return static_cast<TestDefaultToJSONInheritFinal&>(Base::wrapped());
     }
+    Ref<TestDefaultToJSONInheritFinal> protectedWrapped() const
+    {
+        return wrapped();
+    }
 protected:
     JSTestDefaultToJSONInheritFinal(JSC::Structure*, JSDOMGlobalObject&, Ref<TestDefaultToJSONInheritFinal>&&);
 
-    void finishCreation(JSC::VM&);
+    DECLARE_DEFAULT_FINISH_CREATION;
 };
 
 

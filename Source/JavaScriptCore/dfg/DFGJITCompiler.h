@@ -145,6 +145,15 @@ public:
         return functionCall;
     }
 
+#if OS(WINDOWS) && CPU(X86_64)
+    JITCompiler::Call appendCallWithUGPRPair(const CodePtr<CFunctionPtrTag> function)
+    {
+        Call functionCall = callWithUGPRPair(OperationPtrTag);
+        m_calls.append(CallLinkRecord(functionCall, function.retagged<OperationPtrTag>()));
+        return functionCall;
+    }
+#endif
+
     Call appendOperationCall(const CodePtr<OperationPtrTag> function)
     {
         Call functionCall = call(OperationPtrTag);
@@ -156,7 +165,14 @@ public:
     {
         call(address, OperationPtrTag);
     }
-    
+
+#if OS(WINDOWS) && CPU(X86_64)
+    void appendCallWithUGPRPair(CCallHelpers::Address address)
+    {
+        callWithUGPRPair(address, OperationPtrTag);
+    }
+#endif
+
     void exceptionCheck();
 
     void exceptionJumpWithCallFrameRollback()
@@ -344,7 +360,7 @@ public:
         Address unlinkedAddress()
         {
             ASSERT(isUnlinked());
-            return Address(GPRInfo::constantsRegister, JITData::offsetOfData() + sizeof(void*) * m_index);
+            return Address(GPRInfo::jitDataRegister, JITData::offsetOfTrailingData() + sizeof(void*) * m_index);
         }
 #endif
 
@@ -357,6 +373,7 @@ public:
     };
 
     void loadConstant(LinkerIR::Constant, GPRReg);
+    void loadStructureStubInfo(StructureStubInfoIndex, GPRReg);
     void loadLinkableConstant(LinkableConstant, GPRReg);
     void storeLinkableConstant(LinkableConstant, Address);
 
@@ -378,7 +395,7 @@ public:
         return CCallHelpers::branchPtr(cond, left, CCallHelpers::TrustedImmPtr(constant.pointer()));
     }
 
-    std::tuple<CompileTimeStructureStubInfo, LinkableConstant> addStructureStubInfo();
+    std::tuple<CompileTimeStructureStubInfo, StructureStubInfoIndex> addStructureStubInfo();
     std::tuple<CompileTimeCallLinkInfo, LinkableConstant> addCallLinkInfo(CodeOrigin);
     LinkerIR::Constant addToConstantPool(LinkerIR::Type, void*);
 

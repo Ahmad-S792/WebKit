@@ -31,8 +31,8 @@
 
 namespace WebCore {
 
-enum ServiceWorkerIdentifierType { };
-using ServiceWorkerIdentifier = ObjectIdentifier<ServiceWorkerIdentifierType>;
+enum class ServiceWorkerIdentifierType { };
+using ServiceWorkerIdentifier = AtomicObjectIdentifier<ServiceWorkerIdentifierType>;
 
 } // namespace WebCore
 

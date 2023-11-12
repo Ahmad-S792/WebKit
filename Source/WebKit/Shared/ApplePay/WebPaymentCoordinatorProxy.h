@@ -44,6 +44,7 @@ OBJC_CLASS UIViewController;
 
 namespace IPC {
 class Connection;
+enum class ReceiverName : uint8_t;
 }
 
 namespace WebCore {
@@ -64,7 +65,7 @@ OBJC_CLASS PKPaymentAuthorizationViewController;
 OBJC_CLASS PKPaymentRequest;
 OBJC_CLASS UIViewController;
 
-#if PLATFORM(IOS)
+#if PLATFORM(IOS) || PLATFORM(VISION)
 OBJC_CLASS PKPaymentSetupViewController;
 #endif
 
@@ -169,7 +170,7 @@ private:
     void platformCompletePaymentSession(WebCore::ApplePayPaymentAuthorizationResult&&);
     void platformHidePaymentUI();
 #if PLATFORM(COCOA)
-    RetainPtr<PKPaymentRequest> platformPaymentRequest(const URL& originatingURL, const Vector<URL>& linkIconURLs, const WebCore::ApplePaySessionPaymentRequest&);
+    RetainPtr<PKPaymentRequest> platformPaymentRequest(WebPageProxyIdentifier, const URL& originatingURL, const Vector<URL>& linkIconURLs, const WebCore::ApplePaySessionPaymentRequest&);
 #endif
 
     Client& m_client;
@@ -225,7 +226,7 @@ private:
     RetainPtr<NSWindow> m_sheetWindow;
     RetainPtr<NSObject> m_sheetWindowWillCloseObserver;
 #endif
-#if PLATFORM(IOS)
+#if PLATFORM(IOS) || PLATFORM(VISION)
     WeakObjCPtr<PKPaymentSetupViewController> m_paymentSetupViewController;
 #endif
 };

@@ -56,9 +56,14 @@ void StreamClientConnection::DedicatedConnectionClient::didReceiveInvalidMessage
     ASSERT_NOT_REACHED(); // The sender is expected to be trusted, so all invalid messages are programming errors.
 }
 
-StreamClientConnection::StreamConnectionPair StreamClientConnection::create(unsigned bufferSizeLog2)
+std::optional<StreamClientConnection::StreamConnectionPair> StreamClientConnection::create(unsigned bufferSizeLog2)
 {
     auto connectionIdentifiers = Connection::createConnectionIdentifierPair();
+    if (!connectionIdentifiers)
+        return std::nullopt;
+    auto buffer = StreamClientConnectionBuffer::create(bufferSizeLog2);
+    if (!buffer)
+        return std::nullopt;
     // Create StreamClientConnection with "server" type Connection. The caller will send the "client" type connection identifier via
     // IPC to the other side, where StreamServerConnection will be created with "client" type Connection.
     // For Connection, "server" means the connection which was created first, the connection which is not sent through IPC to other party.
@@ -66,17 +71,17 @@ StreamClientConnection::StreamConnectionPair StreamClientConnection::create(unsi
     // The "Client" in StreamClientConnection means the party that mostly does sending, e.g. untrusted party.
     // The "Server" in StreamServerConnection means the party that mostly does receiving, e.g. the trusted party which holds the destination object to communicate with.
     auto dedicatedConnection = Connection::createServerConnection(connectionIdentifiers->server);
-    RefPtr<StreamClientConnection> clientConnection { new StreamClientConnection(WTFMove(dedicatedConnection), bufferSizeLog2) };
+    auto clientConnection = adoptRef(*new StreamClientConnection(WTFMove(dedicatedConnection), WTFMove(*buffer)));
     StreamServerConnection::Handle serverHandle {
         WTFMove(connectionIdentifiers->client),
         clientConnection->m_buffer.createHandle()
     };
-    return { WTFMove(clientConnection), WTFMove(serverHandle) };
+    return StreamClientConnection::StreamConnectionPair { WTFMove(clientConnection), WTFMove(serverHandle) };
 }
 
-StreamClientConnection::StreamClientConnection(Ref<Connection> connection, unsigned bufferSizeLog2)
+StreamClientConnection::StreamClientConnection(Ref<Connection> connection, StreamClientConnectionBuffer&& buffer)
     : m_connection(WTFMove(connection))
-    , m_buffer(bufferSizeLog2)
+    , m_buffer(WTFMove(buffer))
 {
 }
 

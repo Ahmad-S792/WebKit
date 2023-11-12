@@ -32,8 +32,11 @@
 
 namespace WebKit {
 
-WebEvent::WebEvent()
-    : m_type(WebEventType::NoType)
+WebEvent::WebEvent(WebEventType type, OptionSet<WebEventModifier> modifiers, WallTime timestamp, WTF::UUID authorizationToken)
+    : m_type(type)
+    , m_modifiers(modifiers)
+    , m_timestamp(timestamp)
+    , m_authorizationToken(authorizationToken)
 {
 }
 
@@ -41,13 +44,13 @@ WebEvent::WebEvent(WebEventType type, OptionSet<WebEventModifier> modifiers, Wal
     : m_type(type)
     , m_modifiers(modifiers)
     , m_timestamp(timestamp)
+    , m_authorizationToken(WTF::UUID::createVersion4())
 {
 }
 
 TextStream& operator<<(TextStream& ts, WebEventType eventType)
 {
     switch (eventType) {
-    case WebEventType::NoType: ts << "NoType"; break;
     case WebEventType::MouseDown: ts << "MouseDown"; break;
     case WebEventType::MouseUp: ts << "MouseUp"; break;
     case WebEventType::MouseMove: ts << "MouseMove"; break;

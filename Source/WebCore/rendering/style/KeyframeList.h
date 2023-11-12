@@ -25,6 +25,7 @@
 #pragma once
 
 #include "CompositeOperation.h"
+#include "RenderStyle.h"
 #include "WebAnimationTypes.h"
 #include <wtf/Vector.h>
 #include <wtf/HashSet.h>
@@ -34,7 +35,6 @@
 namespace WebCore {
 
 class KeyframeEffect;
-class RenderStyle;
 class StyleProperties;
 class TimingFunction;
 
@@ -50,9 +50,9 @@ public:
     {
     }
 
-    void addProperty(AnimatableProperty);
-    bool containsProperty(AnimatableProperty) const;
-    const HashSet<AnimatableProperty>& properties() const { return m_properties; }
+    void addProperty(const AnimatableCSSProperty&);
+    bool containsProperty(const AnimatableCSSProperty&) const;
+    const HashSet<AnimatableCSSProperty>& properties() const { return m_properties; }
 
     double key() const { return m_key; }
     void setKey(double key) { m_key = key; }
@@ -71,7 +71,7 @@ public:
 
 private:
     double m_key;
-    HashSet<AnimatableProperty> m_properties; // The properties specified in this keyframe.
+    HashSet<AnimatableCSSProperty> m_properties; // The properties specified in this keyframe.
     std::unique_ptr<RenderStyle> m_style;
     RefPtr<TimingFunction> m_timingFunction;
     std::optional<CompositeOperation> m_compositeOperation;
@@ -87,18 +87,17 @@ public:
     ~KeyframeList();
 
     KeyframeList& operator=(KeyframeList&&) = default;
-    bool operator==(const KeyframeList& o) const;
-    bool operator!=(const KeyframeList& o) const { return !(*this == o); }
+    bool operator==(const KeyframeList&) const;
 
     const AtomString& animationName() const { return m_animationName; }
     
     void insert(KeyframeValue&&);
     
-    void addProperty(AnimatableProperty);
-    bool containsProperty(AnimatableProperty) const;
-    const HashSet<AnimatableProperty>& properties() const { return m_properties; }
+    void addProperty(const AnimatableCSSProperty&);
+    bool containsProperty(const AnimatableCSSProperty&) const;
+    const HashSet<AnimatableCSSProperty>& properties() const { return m_properties; }
 
-    bool containsAnimatableProperty() const;
+    bool containsAnimatableCSSProperty() const;
     bool containsDirectionAwareProperty() const;
 
     void clear();
@@ -118,18 +117,18 @@ public:
     bool hasCSSVariableReferences() const;
     bool hasColorSetToCurrentColor() const;
     bool hasPropertySetToCurrentColor() const;
-    const HashSet<AnimatableProperty>& propertiesSetToInherit() const;
+    const HashSet<AnimatableCSSProperty>& propertiesSetToInherit() const;
 
     void updatePropertiesMetadata(const StyleProperties&);
 
 private:
     AtomString m_animationName;
     Vector<KeyframeValue> m_keyframes; // Kept sorted by key.
-    HashSet<AnimatableProperty> m_properties; // The properties being animated.
+    HashSet<AnimatableCSSProperty> m_properties; // The properties being animated.
     bool m_usesRelativeFontWeight { false };
     bool m_containsCSSVariableReferences { false };
-    HashSet<AnimatableProperty> m_propertiesSetToInherit;
-    HashSet<AnimatableProperty> m_propertiesSetToCurrentColor;
+    HashSet<AnimatableCSSProperty> m_propertiesSetToInherit;
+    HashSet<AnimatableCSSProperty> m_propertiesSetToCurrentColor;
 };
 
 } // namespace WebCore

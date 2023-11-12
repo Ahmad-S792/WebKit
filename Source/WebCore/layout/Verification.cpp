@@ -26,9 +26,9 @@
 #include "config.h"
 #include "LayoutState.h"
 
-#ifndef NDEBUG
+#if ASSERT_ENABLED
+
 #include "BlockFormattingState.h"
-#include "InlineFormattingState.h"
 #include "LayoutBox.h"
 #include "LayoutBoxGeometry.h"
 #include "LayoutContext.h"
@@ -36,7 +36,7 @@
 #include "LayoutInitialContainingBlock.h"
 #include "LayoutTreeBuilder.h"
 #include "LegacyInlineTextBox.h"
-#include "RenderBox.h"
+#include "RenderBoxInlines.h"
 #include "RenderInline.h"
 #include "RenderLineBreak.h"
 #include "RenderTableCell.h"
@@ -53,7 +53,7 @@ static bool areEssentiallyEqual(LayoutUnit a, LayoutUnit b)
         return true;
     // 1/4th CSS pixel.
     constexpr float epsilon = kFixedPointDenominator / 4;
-    return abs(a.rawValue() - b.rawValue()) <= epsilon;
+    return std::abs(a.rawValue() - b.rawValue()) <= epsilon;
 }
 
 static bool areEssentiallyEqual(float a, InlineLayoutUnit b)
@@ -80,13 +80,13 @@ static bool checkForMatchingNonTextRuns(const InlineDisplay::Box& box, const Web
 
 static bool checkForMatchingTextRuns(InlineDisplay::Box& box, const WebCore::LegacyInlineTextBox& inlineTextBox)
 {
-    if (!box.text())
+    if (!box.isTextOrSoftLineBreak())
         return false;
     return areEssentiallyEqual(inlineTextBox.left(), box.left())
         && areEssentiallyEqual(inlineTextBox.right(), box.right())
         && areEssentiallyEqual(inlineTextBox.top(), box.top())
         && areEssentiallyEqual(inlineTextBox.bottom(), box.bottom())
-        && (inlineTextBox.isLineBreak() || (inlineTextBox.start() == box.text()->start() && inlineTextBox.end() == box.text()->end()));
+        && (inlineTextBox.isLineBreak() || (inlineTextBox.start() == box.text().start() && inlineTextBox.end() == box.text().end()));
 }
 
 static void collectFlowBoxSubtree(const LegacyInlineFlowBox& flowbox, Vector<WebCore::LegacyInlineBox*>& inlineBoxes)
@@ -116,8 +116,10 @@ static void collectInlineBoxes(const RenderBlockFlow& root, Vector<WebCore::Lega
 
 static bool outputMismatchingComplexLineInformationIfNeeded(TextStream& stream, const LayoutState& layoutState, const RenderBlockFlow& blockFlow, const ElementBox& inlineFormattingRoot)
 {
-    auto& inlineFormattingState = layoutState.formattingStateForFormattingContext(inlineFormattingRoot);
-    auto& boxes = downcast<InlineFormattingState>(inlineFormattingState).boxes();
+    UNUSED_PARAM(layoutState);
+    UNUSED_PARAM(inlineFormattingRoot);
+    // FIXME: Populate display boxes.
+    auto boxes = InlineDisplay::Boxes { };
     // Collect inlineboxes.
     Vector<WebCore::LegacyInlineBox*> inlineBoxes;
     collectInlineBoxes(blockFlow, inlineBoxes);
@@ -140,7 +142,6 @@ static bool outputMismatchingComplexLineInformationIfNeeded(TextStream& stream, 
             
             if (is<RenderLineBreak>(inlineBox->renderer())) {
                 // <br> positioning is weird at this point. It needs proper baseline.
-                matchingRuns = true;
                 ++boxIndex;
                 continue;
             }
@@ -152,8 +153,8 @@ static bool outputMismatchingComplexLineInformationIfNeeded(TextStream& stream, 
             stream << " (" << inlineBox->logicalLeft() << ", " << inlineBox->logicalTop() << ") (" << inlineBox->logicalWidth() << "x" << inlineBox->logicalHeight() << ")";
 
             stream << " inline box";
-            if (box.text())
-                stream << " (" << box.text()->start() << ", " << box.text()->end() << ")";
+            if (box.isTextOrSoftLineBreak())
+                stream << " (" << box.text().start() << ", " << box.text().end() << ")";
             stream << " (" << box.left() << ", " << box.top() << ") (" << box.width() << "x" << box.height() << ")";
             stream.nextLine();
             mismatched = true;
@@ -287,7 +288,7 @@ static bool verifyAndOutputSubtree(TextStream& stream, const LayoutState& contex
 {
     // Rendering code does not have the concept of table wrapper box. Skip it by verifying the first child(table box) instead. 
     if (layoutBox.isTableWrapperBox())
-        return verifyAndOutputSubtree(stream, context, renderer, *downcast<ElementBox>(layoutBox).firstChild()); 
+        return verifyAndOutputSubtree(stream, context, renderer, *downcast<ElementBox>(layoutBox).firstChild());
 
     auto mismtachingGeometry = outputMismatchingBlockBoxInformationIfNeeded(stream, context, renderer, layoutBox);
 
@@ -349,5 +350,4 @@ void LayoutContext::verifyAndOutputMismatchingLayoutTree(const LayoutState& layo
 }
 }
 
-#endif
-
+#endif // ASSERT_ENABLED

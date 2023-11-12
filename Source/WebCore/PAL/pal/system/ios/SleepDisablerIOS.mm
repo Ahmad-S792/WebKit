@@ -27,6 +27,8 @@
 #import "SleepDisablerCocoa.h"
 
 #if PLATFORM(IOS_FAMILY)
+#import "Logging.h"
+#import <pal/spi/ios/UIKitSPI.h>
 #import <wtf/NeverDestroyed.h>
 
 #import <pal/ios/UIKitSoftLink.h>
@@ -46,6 +48,11 @@ public:
         return m_screenSleepDisablerCount.count();
     }
 
+    void setScreenWakeLockHandler(Function<bool(bool shouldKeepScreenAwake)>&& screenWakeLockHandler)
+    {
+        m_screenWakeLockHandler = WTFMove(screenWakeLockHandler);
+    }
+
 private:
     friend NeverDestroyed<ScreenSleepDisabler, WTF::MainThreadAccessTraits>;
 
@@ -55,18 +62,29 @@ private:
 
     void updateState()
     {
-        if (!m_screenSleepDisablerCount.value())
-            [PAL::getUIApplicationClass() sharedApplication].idleTimerDisabled = NO;
-        else if (m_screenSleepDisablerCount.value() == 1)
-            [PAL::getUIApplicationClass() sharedApplication].idleTimerDisabled = YES;
-    }
+        if (m_screenSleepDisablerCount.value() > 1)
+            return;
 
+        bool shouldKeepScreenAwake = !!m_screenSleepDisablerCount.value();
+        RELEASE_LOG(Media, "ScreenSleepDisabler::updateState() shouldKeepScreenAwake=%d", shouldKeepScreenAwake);
+        ensureOnMainRunLoop([this, shouldKeepScreenAwake] {
+            if (m_screenWakeLockHandler && m_screenWakeLockHandler(shouldKeepScreenAwake))
+                return;
+            [[PAL::getUIApplicationClass() sharedApplication] _setIdleTimerDisabled:shouldKeepScreenAwake forReason:@"WebKit SleepDisabler"];
+        });
+    }
     ScreenSleepDisablerCounter m_screenSleepDisablerCount;
+    Function<bool(bool shouldKeepScreenAwake)> m_screenWakeLockHandler;
 };
 
 void SleepDisablerCocoa::takeScreenSleepDisablingAssertion(const String&)
 {
     m_screenSleepDisablerToken = ScreenSleepDisabler::shared().takeAssertion();
+}
+
+void SleepDisablerCocoa::setScreenWakeLockHandler(Function<bool(bool shouldKeepScreenAwake)>&& screenWakeLockHandler)
+{
+    ScreenSleepDisabler::shared().setScreenWakeLockHandler(WTFMove(screenWakeLockHandler));
 }
 
 } // namespace PAL

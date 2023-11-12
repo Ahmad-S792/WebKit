@@ -233,13 +233,9 @@ media/encrypted-media/clearKey/clearKey-session-life-cycle.html [ Failure Crash 
 # webgl/1.0.3/conformance/textures/tex-image-and-sub-image-2d-with-video-rgb565.html [ Failure ]
 # webgl/1.0.3/conformance/textures/tex-image-and-sub-image-2d-with-video-rgba4444.html [ Failure ]
 # webgl/1.0.3/conformance/textures/tex-image-and-sub-image-2d-with-video-rgba5551.html [ Failure ]
-# webgl/1.0.3/conformance/extensions/oes-texture-float-with-video.html [ Failure ]
-# webgl/1.0.3/conformance/extensions/oes-texture-half-float-with-video.html [ Failure ]
 # webgl/1.0.3/conformance/textures/tex-image-and-sub-image-2d-with-video.html [ Failure ]
 
 # webkit.org/b/221806
-# webgl/2.0.0/conformance/extensions/oes-texture-float-with-video.html [ Failure ]
-# webgl/2.0.0/conformance/extensions/oes-texture-half-float-with-video.html [ Failure ]
 # webgl/2.0.0/conformance/textures/video/tex-2d-rgb-rgb-unsigned_byte.html [ Failure ]
 
 webkit.org/b/221816 http/wpt/mediarecorder/MediaRecorder-AV-audio-video-dataavailable.html [ Failure ]
@@ -328,7 +324,6 @@ fast/replaced/applet-disabled-positioned.html
 fast/replaced/applet-rendering-java-disabled.html
 
 # WebKitTestRunner needs testRunner.displayInvalidatedRegion
-compositing/plugins/invalidate_rect.html
 plugins/windowless_plugin_paint_test.html
 
 # eventSender.clearKillRing() is unimplemented
@@ -691,6 +686,14 @@ fast/history/page-cache-webdatabase-pending-transaction.html [ Skip ]
 webkit.org/b/115274 http/tests/security/contentSecurityPolicy/report-cross-origin-no-cookies-when-private-browsing-toggled.py [ Skip ]
 webkit.org/b/115274 http/tests/security/contentSecurityPolicy/report-same-origin-no-cookies-when-private-browsing-toggled.py [ Skip ]
 
+# These tests are checking that WebContent is terminated when performing an invalid IPC operation for WK2.
+# They crash in debug (as expected) so we skip them there. <rdar://problem/117742950>
+[ Debug ] ipc/restrictedendpoints/deny-access-testOnlyIPC.html [ Skip ]
+[ Debug ] ipc/restrictedendpoints/deny-access-webGPU.html [ Skip ]
+[ Debug ] ipc/restrictedendpoints/deny-access-attachmentElement.html [ Skip ]
+[ Debug ] ipc/restrictedendpoints/deny-access-webPush.html [ Skip ]
+[ Debug ] ipc/restrictedendpoints/deny-access-updateQuotaBasedOnSpaceUsageForTesting.html [ Skip ]
+
 ### END OF (4) Features that are not supported in WebKit2 and likely never will be
 ########################################
 
@@ -782,6 +785,7 @@ storage/indexeddb/modern/opendatabase-after-storage-crash.html [ Pass ]
 fast/forms/call-text-did-change-in-text-field-when-typing.html [ Pass ]
 
 http/tests/privateClickMeasurement [ Pass ]
+webkit.org/b/227369 http/tests/privateClickMeasurement/store-private-click-measurement-with-source-nonce.html [ Pass Failure ]
 
 # User interaction is a WebKit2 concept.
 inspector/debugger/breakpoint-action-emulateUserGesture-userIsInteracting.html [ Pass ]
@@ -851,7 +855,6 @@ http/tests/websocket/tests/hybi/closed-port-delay.html [ Pass ]
 # WebKit2 only.
 js/throw-large-string-oom.html [ Pass ]
 fast/scrolling/keyboard-scrolling-distance-downArrow.html [ Pass ]
-fast/scrolling/keyboard-scrolling-distance-pageDown.html [ Pass ]
 fast/speechrecognition/permission-error.html [ Pass ]
 fast/speechrecognition/start-recognition-then-stop.html [ Pass ]
 fast/speechrecognition/start-second-recognition.html [ Pass ]
@@ -860,5 +863,24 @@ imported/w3c/web-platform-tests/permissions/ [ Pass ]
 http/tests/notifications/permission/ [ Pass ]
 http/tests/permissions/ [ Pass ]
 imported/w3c/web-platform-tests/storage/ [ Pass ]
-
+storage/storagemanager/ [ Pass ]
 fast/canvas/large-getImageData.html [ Pass ]
+
+# This test has been flaky since its import.
+imported/w3c/web-platform-tests/webaudio/the-audio-api/the-audiocontext-interface/audiocontext-sinkid-constructor.https.html [ Failure Pass ]
+
+webkit.org/b/253533 imported/w3c/web-platform-tests/fetch/api/basic/status.h2.any.html [ Pass Failure ]
+webkit.org/b/253533 imported/w3c/web-platform-tests/fetch/api/basic/status.h2.any.worker.html [ Pass Failure ]
+webkit.org/b/253533 imported/w3c/web-platform-tests/xhr/status.h2.window.html [ Pass Failure ]
+
+webkit.org/b/259482 fast/media/managed-media-source-open-crash.html [ Pass Failure ]
+
+webkit.org/b/260640 [ Release arm64 ] editing/execCommand/apply-inline-style-to-element-with-no-renderer-crash.html [ Pass Failure ]
+
+webkit.org/b/260926 imported/w3c/web-platform-tests/html/browsers/browsing-the-web/navigating-across-documents/replace-before-load/form-submit-button-click.html [ Pass Failure ]
+
+webkit.org/b/262088 [ Debug ] imported/w3c/web-platform-tests/fetch/private-network-access/iframe.tentative.https.window.html [ Pass Failure ]
+
+webkit.org/b/262157 imported/w3c/web-platform-tests/css/css-contain/content-visibility/content-visibility-video.html [ Pass ImageOnlyFailure Crash ]
+
+webkit.org/b/261314 [ Debug ] fast/mediastream/captureStream/canvas3d.html [ Pass Failure ]

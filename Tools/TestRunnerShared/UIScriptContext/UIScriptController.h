@@ -134,11 +134,14 @@ public:
     // Compositing
 
     virtual JSObjectRef propertiesOfLayerWithID(uint64_t) const { notImplemented(); return nullptr; }
+    virtual unsigned long countOfUpdatesWithLayerChanges() const { notImplemented(); return 0; }
 
     // Scrolling
 
     virtual bool scrollUpdatesDisabled() const { notImplemented(); return false; }
     virtual void setScrollUpdatesDisabled(bool) { notImplemented(); }
+
+    virtual bool isZoomingOrScrolling() const { notImplemented(); return false; }
 
     virtual void scrollToOffset(long, long, ScrollToOptions*) { notImplemented(); }
 
@@ -153,6 +156,8 @@ public:
     virtual JSRetainPtr<JSStringRef> scrollingTreeAsText() const { notImplemented(); return nullptr; }
     virtual JSRetainPtr<JSStringRef> uiViewTreeAsText() const { notImplemented(); return nullptr; }
     virtual JSRetainPtr<JSStringRef> caLayerTreeAsText() const { notImplemented(); return nullptr; }
+    
+    virtual JSRetainPtr<JSStringRef> scrollbarStateForScrollingNodeID(unsigned long long, bool) const { notImplemented(); return nullptr; }
 
     // Touches
 
@@ -176,6 +181,11 @@ public:
     virtual void toggleCapsLock(JSValueRef) { notImplemented(); }
     virtual void setContinuousSpellCheckingEnabled(bool) { notImplemented(); }
     virtual void setSpellCheckerResults(JSValueRef) { notImplemented(); }
+    virtual unsigned keyboardWillHideCount() const
+    {
+        notImplemented();
+        return 0;
+    }
     virtual bool keyboardIsAutomaticallyShifted() const
     {
         notImplemented();
@@ -260,6 +270,7 @@ public:
     virtual JSObjectRef inputViewBounds() const { notImplemented(); return nullptr; }
     virtual void activateDataListSuggestion(unsigned, JSValueRef) { notImplemented(); }
     virtual void setSelectedColorForColorPicker(double, double, double) { notImplemented(); }
+    virtual void setAppAccentColor(unsigned short, unsigned short, unsigned short) { notImplemented(); }
 
     // Find in Page
 
@@ -282,6 +293,7 @@ public:
 
     // Child View Controllers
 
+    virtual bool isShowingFormValidationBubble() const { notImplemented(); return false; }
     virtual bool isShowingPopover() const { notImplemented(); return false; }
     virtual bool isPresentingModally() const { notImplemented(); return false; }
 
@@ -300,7 +312,9 @@ public:
     virtual JSObjectRef textSelectionCaretRect() const { notImplemented(); return nullptr; }
     virtual JSObjectRef selectionStartGrabberViewRect() const { notImplemented(); return nullptr; }
     virtual JSObjectRef selectionEndGrabberViewRect() const { notImplemented(); return nullptr; }
+    virtual JSObjectRef selectionEndGrabberViewShapePathDescription() const { notImplemented(); return nullptr; }
     virtual JSObjectRef selectionCaretViewRect() const { notImplemented(); return nullptr; }
+    virtual JSObjectRef selectionCaretViewRectInGlobalCoordinates() const { notImplemented(); return nullptr; }
     virtual JSObjectRef selectionRangeViewRects() const { notImplemented(); return nullptr; }
 
     // Rotation
@@ -373,6 +387,10 @@ public:
 
     virtual void setDidEndScrollingCallback(JSValueRef);
     JSValueRef didEndScrollingCallback() const;
+
+    // Image Analysis
+
+    virtual uint64_t currentImageAnalysisRequestID() const { return 0; }
 
 protected:
     explicit UIScriptController(UIScriptContext&);

@@ -77,10 +77,14 @@ View::View(struct wpe_view_backend* backend, const API::PageConfiguration& baseC
         preferences->setAcceleratedCompositingEnabled(true);
         preferences->setForceCompositingMode(true);
         preferences->setThreadedScrollingEnabled(true);
-        preferences->setWebGLEnabled(true);
     }
 
     auto* pool = configuration->processPool();
+    if (!pool) {
+        auto processPoolConfiguration = API::ProcessPoolConfiguration::create();
+        pool = &WebProcessPool::create(processPoolConfiguration).leakRef();
+        configuration->setProcessPool(pool);
+    }
     m_pageProxy = pool->createWebPage(*m_pageClient, WTFMove(configuration));
 
 #if ENABLE(MEMORY_SAMPLER)
@@ -105,7 +109,7 @@ View::View(struct wpe_view_backend* backend, const API::PageConfiguration& baseC
         [](void* data, uint32_t state)
         {
             auto& view = *reinterpret_cast<View*>(data);
-            OptionSet<WebCore::ActivityState::Flag> flags;
+            OptionSet<WebCore::ActivityState> flags;
             if (state & wpe_view_activity_state_visible)
                 flags.add(WebCore::ActivityState::IsVisible);
             if (state & wpe_view_activity_state_focused) {
@@ -135,11 +139,8 @@ View::View(struct wpe_view_backend* backend, const API::PageConfiguration& baseC
         },
 #if WPE_CHECK_VERSION(1, 13, 2)
         // target_refresh_rate_changed
-        [](void* data, uint32_t rate)
+        [](void*, uint32_t)
         {
-            auto& view = *reinterpret_cast<View*>(data);
-            if (view.page().drawingArea())
-                view.page().drawingArea()->targetRefreshRateDidChange(rate);
         },
 #else
         // padding
@@ -204,7 +205,7 @@ View::View(struct wpe_view_backend* backend, const API::PageConfiguration& baseC
                     phase = WebWheelEvent::Phase::PhaseEnded;
 
                 auto& page = view.page();
-                page.handleWheelEvent(WebKit::NativeWebWheelEvent(event, page.deviceScaleFactor(), phase, momentumPhase));
+                page.handleNativeWheelEvent(WebKit::NativeWebWheelEvent(event, page.deviceScaleFactor(), phase, momentumPhase));
                 return;
             }
 #endif
@@ -226,7 +227,7 @@ View::View(struct wpe_view_backend* backend, const API::PageConfiguration& baseC
 
             if (shouldDispatch) {
                 auto& page = view.page();
-                page.handleWheelEvent(WebKit::NativeWebWheelEvent(event, page.deviceScaleFactor(), phase, momentumPhase));
+                page.handleNativeWheelEvent(WebKit::NativeWebWheelEvent(event, page.deviceScaleFactor(), phase, momentumPhase));
             }
         },
         // handle_touch_event
@@ -248,6 +249,7 @@ View::View(struct wpe_view_backend* backend, const API::PageConfiguration& baseC
                 WTF::switchOn(generatedEvent,
                     [](TouchGestureController::NoEvent&) { },
                     [](TouchGestureController::ClickEvent&) { },
+                    [](TouchGestureController::ContextMenuEvent&) { },
                     [&](TouchGestureController::AxisEvent& axisEvent)
                     {
 #if WPE_CHECK_VERSION(1, 5, 0)
@@ -256,17 +258,11 @@ View::View(struct wpe_view_backend* backend, const API::PageConfiguration& baseC
                         auto* event = &axisEvent.event;
 #endif
                         if (event->type != wpe_input_axis_event_type_null) {
-                            page.handleWheelEvent(WebKit::NativeWebWheelEvent(event, page.deviceScaleFactor(),
+                            page.handleNativeWheelEvent(WebKit::NativeWebWheelEvent(event, page.deviceScaleFactor(),
                                 axisEvent.phase, WebWheelEvent::Phase::PhaseNone));
                             handledThroughGestureController = true;
                         }
                     });
-
-                // In case of the axis event gesturing, the generic touch event handling should be skipped.
-                // Exception to this are touch-up events that should still be handled just like the corresponding
-                // touch-down events were.
-                if (handledThroughGestureController && event->type != wpe_input_touch_event_type_up)
-                    return;
             }
 
             page.handleTouchEvent(touchEvent);
@@ -323,6 +319,14 @@ View::View(struct wpe_view_backend* backend, const API::PageConfiguration& baseC
 
 View::~View()
 {
+    wpe_view_backend_set_backend_client(m_backend, nullptr, nullptr);
+    wpe_view_backend_set_input_client(m_backend, nullptr, nullptr);
+    // Although the fullscreen client is used for libwpe 1.11.1 and newer, we cannot
+    // unregister it prior to 1.15.2 (see https://github.com/WebPlatformForEmbedded/libwpe/pull/129).
+#if ENABLE(FULLSCREEN_API) && WPE_CHECK_VERSION(1, 15, 2)
+    wpe_view_backend_set_fullscreen_client(m_backend, nullptr, nullptr);
+#endif
+
     viewsVector().removeAll(this);
 #if ENABLE(ACCESSIBILITY)
     if (m_accessible)
@@ -395,7 +399,7 @@ void View::setSize(const WebCore::IntSize& size)
         m_pageProxy->drawingArea()->setSize(size);
 }
 
-void View::setViewState(OptionSet<WebCore::ActivityState::Flag> flags)
+void View::setViewState(OptionSet<WebCore::ActivityState> flags)
 {
     auto changedFlags = m_viewStateFlags ^ flags;
     m_viewStateFlags = flags;
@@ -420,11 +424,17 @@ void View::setViewState(OptionSet<WebCore::ActivityState::Flag> flags)
 
 void View::handleKeyboardEvent(struct wpe_input_keyboard_event* event)
 {
+    auto isAutoRepeat = false;
+    if (event->pressed)
+        isAutoRepeat = m_keyAutoRepeatHandler.keyPress(event->key_code);
+    else
+        m_keyAutoRepeatHandler.keyRelease();
+
     auto filterResult = m_inputMethodFilter.filterKeyEvent(event);
     if (filterResult.handled)
         return;
 
-    page().handleKeyboardEvent(WebKit::NativeWebKeyboardEvent(event, event->pressed ? filterResult.keyText : String(), NativeWebKeyboardEvent::HandledByInputMethod::No, std::nullopt, std::nullopt));
+    page().handleKeyboardEvent(WebKit::NativeWebKeyboardEvent(event, event->pressed ? filterResult.keyText : String(), isAutoRepeat, NativeWebKeyboardEvent::HandledByInputMethod::No, std::nullopt, std::nullopt));
 }
 
 void View::synthesizeCompositionKeyPress(const String& text, std::optional<Vector<WebCore::CompositionUnderline>>&& underlines, std::optional<EditingRange>&& selectionRange)
@@ -434,7 +444,7 @@ void View::synthesizeCompositionKeyPress(const String& text, std::optional<Vecto
     // composition results. WPE doesn't have an equivalent, so we send VoidSymbol
     // here to WebCore. PlatformKeyEvent converts this code into VK_PROCESSKEY.
     static struct wpe_input_keyboard_event event = { 0, WPE_KEY_VoidSymbol, 0, true, 0 };
-    page().handleKeyboardEvent(WebKit::NativeWebKeyboardEvent(&event, text, NativeWebKeyboardEvent::HandledByInputMethod::Yes, WTFMove(underlines), WTFMove(selectionRange)));
+    page().handleKeyboardEvent(WebKit::NativeWebKeyboardEvent(&event, text, false, NativeWebKeyboardEvent::HandledByInputMethod::Yes, WTFMove(underlines), WTFMove(selectionRange)));
 }
 
 void View::close()
@@ -450,6 +460,10 @@ bool View::setFullScreen(bool fullScreenState)
         return false;
 #endif
     m_fullScreenModeActive = fullScreenState;
+    if (m_fullScreenModeActive)
+        m_client->enterFullScreen(*this);
+    else
+        m_client->exitFullScreen(*this);
     return true;
 };
 #endif

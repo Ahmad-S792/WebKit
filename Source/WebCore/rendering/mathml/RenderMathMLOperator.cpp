@@ -35,6 +35,9 @@
 #include "MathMLOperatorElement.h"
 #include "PaintInfo.h"
 #include "RenderBlockFlow.h"
+#include "RenderBoxInlines.h"
+#include "RenderBoxModelObjectInlines.h"
+#include "RenderStyleInlines.h"
 #include "RenderText.h"
 #include "ScaleTransformOperation.h"
 #include "TransformOperations.h"
@@ -49,14 +52,14 @@ using namespace MathMLNames;
 
 WTF_MAKE_ISO_ALLOCATED_IMPL(RenderMathMLOperator);
 
-RenderMathMLOperator::RenderMathMLOperator(MathMLOperatorElement& element, RenderStyle&& style)
-    : RenderMathMLToken(element, WTFMove(style))
+RenderMathMLOperator::RenderMathMLOperator(Type type, MathMLOperatorElement& element, RenderStyle&& style)
+    : RenderMathMLToken(type, element, WTFMove(style))
 {
     updateTokenContent();
 }
 
-RenderMathMLOperator::RenderMathMLOperator(Document& document, RenderStyle&& style)
-    : RenderMathMLToken(document, WTFMove(style))
+RenderMathMLOperator::RenderMathMLOperator(Type type, Document& document, RenderStyle&& style)
+    : RenderMathMLToken(type, document, WTFMove(style))
 {
 }
 

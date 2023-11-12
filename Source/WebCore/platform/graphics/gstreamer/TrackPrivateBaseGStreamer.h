@@ -27,6 +27,7 @@
 
 #if ENABLE(VIDEO) && USE(GSTREAMER)
 
+#include "AbortableTaskQueue.h"
 #include "GStreamerCommon.h"
 #include "MainThreadNotifier.h"
 #include <gst/gst.h>
@@ -66,12 +67,24 @@ public:
     void setInitialCaps(GRefPtr<GstCaps>&& caps) { m_initialCaps = WTFMove(caps); }
     const GRefPtr<GstCaps>& initialCaps() { return m_initialCaps; }
 
+    static String trackIdFromPadStreamStartOrUniqueID(TrackType, unsigned index, const GRefPtr<GstPad>&);
+
 protected:
     TrackPrivateBaseGStreamer(TrackType, TrackPrivateBase*, unsigned index, GRefPtr<GstPad>&&, bool shouldHandleStreamStartEvent);
     TrackPrivateBaseGStreamer(TrackType, TrackPrivateBase*, unsigned index, GstStream*);
 
     void notifyTrackOfTagsChanged();
     void notifyTrackOfStreamChanged();
+
+    GstObject* objectForLogging() const;
+
+    virtual void tagsChanged(GRefPtr<GstTagList>&&) { }
+    virtual void capsChanged(const String&, GRefPtr<GstCaps>&&) { }
+    void installUpdateConfigurationHandlers();
+    virtual void updateConfigurationFromCaps(const GRefPtr<GstCaps>&&) { }
+    virtual void updateConfigurationFromTags(const GRefPtr<GstTagList>&&) { }
+
+    static GRefPtr<GstTagList> getAllTags(const GRefPtr<GstPad>&);
 
     enum MainThreadNotification {
         TagsChanged = 1 << 1,
@@ -89,6 +102,7 @@ protected:
     GRefPtr<GstStream> m_stream;
     unsigned long m_eventProbe { 0 };
     GRefPtr<GstCaps> m_initialCaps;
+    AbortableTaskQueue m_taskQueue;
 
 private:
     bool getLanguageCode(GstTagList* tags, AtomString& value);

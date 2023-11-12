@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2015-2021 Apple Inc. All rights reserved.
+ * Copyright (C) 2015-2023 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -224,8 +224,6 @@ TextStream& operator<<(TextStream& ts, CaptionSide side)
     switch (side) {
     case CaptionSide::Top: ts << "top"; break;
     case CaptionSide::Bottom: ts << "bottom"; break;
-    case CaptionSide::Left: ts << "left"; break;
-    case CaptionSide::Right: ts << "right"; break;
     }
     return ts;
 }
@@ -411,6 +409,10 @@ TextStream& operator<<(TextStream& ts, DisplayType display)
     case DisplayType::Grid: ts << "grid"; break;
     case DisplayType::InlineGrid: ts << "inline-grid"; break;
     case DisplayType::FlowRoot: ts << "flow-root"; break;
+    case DisplayType::Ruby: ts << "ruby"; break;
+    case DisplayType::RubyBlock: ts << "block ruby"; break;
+    case DisplayType::RubyBase: ts << "ruby-base"; break;
+    case DisplayType::RubyAnnotation: ts << "ruby-text"; break;
     case DisplayType::None: ts << "none"; break;
     }
     return ts;
@@ -667,11 +669,6 @@ TextStream& operator<<(TextStream& ts, ListStylePosition position)
     case ListStylePosition::Inside: ts << "inside"; break;
     }
     return ts;
-}
-
-TextStream& operator<<(TextStream& ts, ListStyleType styleType)
-{
-    return ts << nameLiteral(toCSSValueID(styleType)).characters();
 }
 
 TextStream& operator<<(TextStream& ts, MarginTrimType marginTrimType)
@@ -950,7 +947,6 @@ TextStream& operator<<(TextStream& ts, ScrollSnapStop stop)
     }
     return ts;
 }
-
 TextStream& operator<<(TextStream& ts, SpeakAs speakAs)
 {
     switch (speakAs) {
@@ -1157,7 +1153,8 @@ TextStream& operator<<(TextStream& ts, TextTransform textTransform)
     case TextTransform::Capitalize: ts << "capitalize"; break;
     case TextTransform::Uppercase: ts << "uppercase"; break;
     case TextTransform::Lowercase: ts << "lowercase"; break;
-    case TextTransform::None: ts << "none"; break;
+    case TextTransform::FullSizeKana: ts << "full-size-kana"; break;
+    case TextTransform::FullWidth: ts << "full-width"; break;
     }
     return ts;
 }
@@ -1168,43 +1165,53 @@ TextStream& operator<<(TextStream& ts, TextUnderlinePosition underlinePosition)
     case TextUnderlinePosition::Auto: ts << "Auto"; break;
     case TextUnderlinePosition::Under: ts << "Under"; break;
     case TextUnderlinePosition::FromFont: ts << "FromFont"; break;
+    case TextUnderlinePosition::Left: ts << "Left"; break;
+    case TextUnderlinePosition::Right: ts << "Right"; break;
     }
     return ts;
 }
 
-TextStream& operator<<(TextStream& ts, TextWrap wrap)
+TextStream& operator<<(TextStream& ts, TextWrapMode wrap)
 {
     switch (wrap) {
-    case TextWrap::Wrap: ts << "wrap"; break;
-    case TextWrap::NoWrap: ts << "nowrap"; break;
-    case TextWrap::Balance: ts << "balance"; break;
-    case TextWrap::Stable: ts << "stable"; break;
-    case TextWrap::Pretty: ts << "pretty"; break;
+    case TextWrapMode::Wrap: ts << "wrap"; break;
+    case TextWrapMode::NoWrap: ts << "nowrap"; break;
     }
     return ts;
 }
 
-TextStream& operator<<(TextStream& ts, LeadingTrim leadingTrim)
+TextStream& operator<<(TextStream& ts, TextWrapStyle style)
 {
-    switch (leadingTrim) {
-    case LeadingTrim::Normal: ts << "Normal"; break;
-    case LeadingTrim::Start: ts << "Start"; break;
-    case LeadingTrim::End: ts << "End"; break;
-    case LeadingTrim::Both: ts << "Both"; break;
+    switch (style) {
+    case TextWrapStyle::Auto: ts << "auto"; break;
+    case TextWrapStyle::Balance: ts << "balance"; break;
+    case TextWrapStyle::Pretty: ts << "pretty"; break;
+    case TextWrapStyle::Stable: ts << "stable"; break;
     }
     return ts;
 }
 
-TextStream& operator<<(TextStream& ts, TextEdgeType textEdgeType)
+TextStream& operator<<(TextStream& ts, TextBoxTrim textBoxTrim)
 {
-    switch (textEdgeType) {
-    case TextEdgeType::Leading: ts << "half-leading"; break;
-    case TextEdgeType::Text: ts << "text-over/under baseline"; break;
-    case TextEdgeType::CapHeight: ts << "cap-height baseline"; break;
-    case TextEdgeType::ExHeight: ts << "x-height baseline"; break;
-    case TextEdgeType::Alphabetic: ts << "alphabetic baseline"; break;
-    case TextEdgeType::CJKIdeographic: ts << "ideographic-over baseline"; break;
-    case TextEdgeType::CJKIdeographicInk: ts << "ideographic-ink-over/ink-under baseline"; break;
+    switch (textBoxTrim) {
+    case TextBoxTrim::None: ts << "None"; break;
+    case TextBoxTrim::Start: ts << "Start"; break;
+    case TextBoxTrim::End: ts << "End"; break;
+    case TextBoxTrim::Both: ts << "Both"; break;
+    }
+    return ts;
+}
+
+TextStream& operator<<(TextStream& ts, TextBoxEdgeType textBoxEdgeType)
+{
+    switch (textBoxEdgeType) {
+    case TextBoxEdgeType::Leading: ts << "half-leading"; break;
+    case TextBoxEdgeType::Text: ts << "text-over/under baseline"; break;
+    case TextBoxEdgeType::CapHeight: ts << "cap-height baseline"; break;
+    case TextBoxEdgeType::ExHeight: ts << "x-height baseline"; break;
+    case TextBoxEdgeType::Alphabetic: ts << "alphabetic baseline"; break;
+    case TextBoxEdgeType::CJKIdeographic: ts << "ideographic-over baseline"; break;
+    case TextBoxEdgeType::CJKIdeographicInk: ts << "ideographic-ink-over/ink-under baseline"; break;
     }
     return ts;
 }
@@ -1313,6 +1320,17 @@ TextStream& operator<<(TextStream& ts, WhiteSpace whiteSpace)
     return ts;
 }
 
+TextStream& operator<<(TextStream& ts, WhiteSpaceCollapse whiteSpaceCollapse)
+{
+    switch (whiteSpaceCollapse) {
+    case WhiteSpaceCollapse::Collapse: ts << "collapse"; break;
+    case WhiteSpaceCollapse::Preserve: ts << "preserve"; break;
+    case WhiteSpaceCollapse::PreserveBreaks: ts << "preserve-breaks"; break;
+    case WhiteSpaceCollapse::BreakSpaces: ts << "break-spaces"; break;
+    }
+    return ts;
+}
+
 TextStream& operator<<(TextStream& ts, WordBreak wordBreak)
 {
     switch (wordBreak) {
@@ -1320,6 +1338,7 @@ TextStream& operator<<(TextStream& ts, WordBreak wordBreak)
     case WordBreak::BreakAll: ts << "break-all"; break;
     case WordBreak::KeepAll: ts << "keep-all"; break;
     case WordBreak::BreakWord: ts << "break-word"; break;
+    case WordBreak::AutoPhrase: ts << "auto-phrase"; break;
     }
     return ts;
 }
@@ -1344,6 +1363,9 @@ TextStream& operator<<(TextStream& ts, ContainIntrinsicSizeType containIntrinsic
         break;
     case ContainIntrinsicSizeType::AutoAndLength:
         ts << "autoandlength";
+        break;
+    case ContainIntrinsicSizeType::AutoAndNone:
+        ts << "autoandnone";
         break;
     }
     return ts;
@@ -1372,7 +1394,5 @@ CSSBoxType transformBoxToCSSBoxType(TransformBox transformBox)
         return CSSBoxType::BorderBox;
     }
 }
-
-const float defaultMiterLimit = 4;
 
 } // namespace WebCore

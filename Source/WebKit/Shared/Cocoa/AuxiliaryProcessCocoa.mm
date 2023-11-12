@@ -35,6 +35,7 @@
 #import <WebCore/RuntimeApplicationChecks.h>
 #import <mach/task.h>
 #import <pal/spi/cg/CoreGraphicsSPI.h>
+#import <pal/spi/cocoa/NSKeyedUnarchiverSPI.h>
 #import <wtf/cocoa/Entitlements.h>
 #import <wtf/cocoa/RuntimeApplicationChecksCocoa.h>
 #import <wtf/cocoa/SoftLinking.h>
@@ -45,6 +46,7 @@
 #endif
 
 #if PLATFORM(MAC)
+#import "AppKitSPI.h"
 #import <pal/spi/mac/HIServicesSPI.h>
 #endif
 
@@ -157,16 +159,22 @@ id AuxiliaryProcess::decodePreferenceValue(const std::optional<String>& encodedV
         return nil;
     
     auto encodedData = adoptNS([[NSData alloc] initWithBase64EncodedString:*encodedValue options:0]);
-    if (!encodedData)
-        return nil;
-    NSError *err = nil;
-    auto classes = [NSSet setWithArray:@[[NSString class], [NSNumber class], [NSDate class], [NSDictionary class], [NSArray class], [NSData class]]];
-    id value = [NSKeyedUnarchiver unarchivedObjectOfClasses:classes fromData:encodedData.get() error:&err];
-    ASSERT(!err);
-    if (err)
-        return nil;
-
-    return value;
+    auto classes = [NSSet setWithObjects:
+        NSString.class,
+        NSMutableString.class,
+        NSNumber.class,
+        NSDate.class,
+        NSDictionary.class,
+        NSMutableDictionary.class,
+        NSArray.class,
+        NSMutableArray.class,
+        NSData.class,
+        NSMutableData.class,
+    nil];
+    NSError *error { nil };
+    id result = [NSKeyedUnarchiver _strictlyUnarchivedObjectOfClasses:classes fromData:encodedData.get() error:&error];
+    ASSERT(!error);
+    return result;
 }
 
 void AuxiliaryProcess::setPreferenceValue(const String& domain, const String& key, id value)
@@ -201,7 +209,15 @@ static const WTF::String& increaseContrastPreferenceKey()
 }
 #endif
 
-static void handleAXPreferenceChange(const String& domain, const String& key, id value)
+#if USE(APPKIT)
+static const WTF::String& invertColorsPreferenceKey()
+{
+    static NeverDestroyed<WTF::String> key(MAKE_STATIC_STRING_IMPL("whiteOnBlack"));
+    return key;
+}
+#endif
+
+void AuxiliaryProcess::handleAXPreferenceChange(const String& domain, const String& key, id value)
 {
 #if HAVE(UPDATE_WEB_ACCESSIBILITY_SETTINGS)
     if (!libAccessibilityLibrary())
@@ -221,6 +237,14 @@ static void handleAXPreferenceChange(const String& domain, const String& key, id
             _AXSSetDarkenSystemColors([(NSNumber *)value boolValue]);
 #endif
     }
+
+#if USE(APPKIT)
+    auto cfKey = key.createCFString();
+    if (CFEqual(cfKey.get(), kAXInterfaceReduceMotionKey) || CFEqual(cfKey.get(), kAXInterfaceIncreaseContrastKey) || CFEqual(cfKey.get(), kAXInterfaceDifferentiateWithoutColorKey) || key == invertColorsPreferenceKey()) {
+        [NSWorkspace _invalidateAccessibilityDisplayValues];
+        accessibilitySettingsDidChange();
+    }
+#endif
 }
 
 void AuxiliaryProcess::handlePreferenceChange(const String& domain, const String& key, id value)

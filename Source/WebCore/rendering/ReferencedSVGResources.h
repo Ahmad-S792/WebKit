@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2021 Apple Inc. All rights reserved.
+ * Copyright (C) 2021-2023 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -35,15 +35,18 @@ namespace WebCore {
 
 class CSSSVGResourceElementClient;
 class Document;
+class LegacyRenderSVGResourceClipper;
+class LegacyRenderSVGResourceContainer;
 class ReferencePathOperation;
 class ReferenceFilterOperation;
 class RenderElement;
-class RenderSVGResourceClipper;
 class RenderSVGResourceFilter;
 class RenderStyle;
 class QualifiedName;
+class SVGClipPathElement;
 class SVGElement;
 class SVGFilterElement;
+class TreeScope;
 
 class ReferencedSVGResources {
     WTF_MAKE_ISO_ALLOCATED(ReferencedSVGResources);
@@ -52,17 +55,20 @@ public:
     ~ReferencedSVGResources();
 
     static Vector<std::pair<AtomString, QualifiedName>> referencedSVGResourceIDs(const RenderStyle&);
-    void updateReferencedResources(Document&, const Vector<std::pair<AtomString, QualifiedName>>&);
+    void updateReferencedResources(TreeScope&, const Vector<std::pair<AtomString, QualifiedName>>&);
 
     // Clipping needs a renderer, filters use an element.
-    RenderSVGResourceClipper* referencedClipperRenderer(Document&, const ReferencePathOperation&);
-    SVGFilterElement* referencedFilterElement(Document&, const ReferenceFilterOperation&);
+    static LegacyRenderSVGResourceClipper* referencedClipperRenderer(TreeScope&, const ReferencePathOperation&);
+    static RefPtr<SVGClipPathElement> referencedClipPathElement(TreeScope&, const ReferencePathOperation&);
+    static RefPtr<SVGFilterElement> referencedFilterElement(TreeScope&, const ReferenceFilterOperation&);
+
+    static LegacyRenderSVGResourceContainer* referencedRenderResource(TreeScope&, const AtomString& fragment);
 
 private:
-    static SVGElement* elementForResourceID(Document&, const AtomString& resourceID, const QualifiedName& tagName);
+    static RefPtr<SVGElement> elementForResourceID(TreeScope&, const AtomString& resourceID, const QualifiedName& tagName);
 
     void addClientForTarget(SVGElement& targetElement, const AtomString&);
-    void removeClientForTarget(Document&, const AtomString&);
+    void removeClientForTarget(TreeScope&, const AtomString&);
 
     RenderElement& m_renderer;
     MemoryCompactRobinHoodHashMap<AtomString, std::unique_ptr<CSSSVGResourceElementClient>> m_elementClients;

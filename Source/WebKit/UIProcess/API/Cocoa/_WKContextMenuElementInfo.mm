@@ -27,6 +27,7 @@
 #import "_WKContextMenuElementInfo.h"
 
 #import "APIHitTestResult.h"
+#import "APIString.h"
 #import "_WKContextMenuElementInfoInternal.h"
 #import "_WKHitTestResultInternal.h"
 #import <WebCore/WebCoreObjCExtras.h>
@@ -52,8 +53,19 @@
 - (_WKHitTestResult *)hitTestResult
 {
     auto& hitTestResultData = _contextMenuElementInfoMac->hitTestResultData();
-    auto apiHitTestResult = API::HitTestResult::create(hitTestResultData);
+    auto apiHitTestResult = API::HitTestResult::create(hitTestResultData, _contextMenuElementInfoMac->page());
     return retainPtr(wrapper(apiHitTestResult)).autorelease();
+}
+
+- (NSString *)qrCodePayloadString
+{
+    auto& qrCodePayloadString = _contextMenuElementInfoMac->qrCodePayloadString();
+    return nsStringNilIfEmpty(qrCodePayloadString);
+}
+
+- (BOOL)hasEntireImage
+{
+    return _contextMenuElementInfoMac->hasEntireImage();
 }
 
 // MARK: WKObject protocol implementation

@@ -26,6 +26,7 @@
 #include "config.h"
 #include "WebNotificationManager.h"
 
+#include "Logging.h"
 #include "WebCoreArgumentCoders.h"
 #include "WebPage.h"
 #include "WebProcess.h"
@@ -53,16 +54,56 @@
 namespace WebKit {
 using namespace WebCore;
 
+#if ENABLE(NOTIFICATIONS)
+static bool sendMessage(WebPage* page, const Function<bool(IPC::Connection&, uint64_t)>& sendMessage)
+{
+#if ENABLE(BUILT_IN_NOTIFICATIONS)
+    if (DeprecatedGlobalSettings::builtInNotificationsEnabled()) {
+        Ref networkProcessConnection = WebProcess::singleton().ensureNetworkProcessConnection().connection();
+        return sendMessage(networkProcessConnection, WebProcess::singleton().sessionID().toUInt64());
+    }
+#endif
+
+    std::optional<WebCore::PageIdentifier> pageIdentifier;
+    if (page)
+        pageIdentifier = page->identifier();
+#if ENABLE(SERVICE_WORKER)
+    else if (auto* connection = SWContextManager::singleton().connection()) {
+        // Pageless notification messages are, by default, on behalf of a service worker.
+        // So use the service worker connection's page identifier.
+        pageIdentifier = connection->pageIdentifier();
+    }
+#endif
+
+    ASSERT(pageIdentifier);
+    Ref parentConnection = *WebProcess::singleton().parentProcessConnection();
+    return sendMessage(parentConnection, pageIdentifier->toUInt64());
+}
+
+template<typename U> static bool sendNotificationMessage(U&& message, WebPage* page)
+{
+    return sendMessage(page, [&] (auto& connection, auto destinationIdentifier) {
+        return connection.send(std::forward<U>(message), destinationIdentifier) == IPC::Error::NoError;
+    });
+}
+
+template<typename U> static bool sendNotificationMessageWithAsyncReply(U&& message, WebPage* page, CompletionHandler<void()>&& callback)
+{
+    return sendMessage(page, [&] (auto& connection, auto destinationIdentifier) {
+        return !!connection.sendWithAsyncReply(std::forward<U>(message), WTFMove(callback), destinationIdentifier);
+    });
+}
+#endif // ENABLE(NOTIFICATIONS)
+
 const char* WebNotificationManager::supplementName()
 {
     return "WebNotificationManager";
 }
 
 WebNotificationManager::WebNotificationManager(WebProcess& process)
-    : m_process(process)
 {
 #if ENABLE(NOTIFICATIONS)
-    m_process.addMessageReceiver(Messages::WebNotificationManager::messageReceiverName(), *this);
+    process.addMessageReceiver(Messages::WebNotificationManager::messageReceiverName(), *this);
 #endif
 }
 
@@ -102,15 +143,18 @@ void WebNotificationManager::didRemoveNotificationDecisions(const Vector<String>
 #endif
 }
 
-NotificationClient::Permission WebNotificationManager::policyForOrigin(const String& originString) const
+NotificationClient::Permission WebNotificationManager::policyForOrigin(const String& originString, WebPage* page) const
 {
 #if ENABLE(NOTIFICATIONS)
     if (originString.isEmpty())
         return NotificationClient::Permission::Default;
 
     auto it = m_permissionsMap.find(originString);
-    if (it != m_permissionsMap.end())
+    if (it != m_permissionsMap.end()) {
+        if (it->value && page)
+            sendNotificationMessage(Messages::NotificationManagerMessageHandler::PageWasNotifiedOfNotificationPermission(), page);
         return it->value ? NotificationClient::Permission::Granted : NotificationClient::Permission::Denied;
+    }
 #else
     UNUSED_PARAM(originString);
 #endif
@@ -124,44 +168,6 @@ void WebNotificationManager::removeAllPermissionsForTesting()
     m_permissionsMap.clear();
 #endif
 }
-
-#if ENABLE(NOTIFICATIONS)
-static bool sendMessage(WebPage* page, const Function<bool(IPC::Connection&, uint64_t)>& sendMessage)
-{
-#if ENABLE(BUILT_IN_NOTIFICATIONS)
-    if (DeprecatedGlobalSettings::builtInNotificationsEnabled())
-        return sendMessage(WebProcess::singleton().ensureNetworkProcessConnection().connection(), WebProcess::singleton().sessionID().toUInt64());
-#endif
-
-    std::optional<WebCore::PageIdentifier> pageIdentifier;
-    if (page)
-        pageIdentifier = page->identifier();
-#if ENABLE(SERVICE_WORKER)
-    else if (auto* connection = SWContextManager::singleton().connection()) {
-        // Pageless notification messages are, by default, on behalf of a service worker.
-        // So use the service worker connection's page identifier.
-        pageIdentifier = connection->pageIdentifier();
-    }
-#endif
-
-    ASSERT(pageIdentifier);
-    return sendMessage(*WebProcess::singleton().parentProcessConnection(), pageIdentifier->toUInt64());
-}
-
-template<typename U> bool WebNotificationManager::sendNotificationMessage(U&& message, WebPage* page)
-{
-    return sendMessage(page, [&] (auto& connection, auto destinationIdentifier) {
-        return connection.send(WTFMove(message), destinationIdentifier);
-    });
-}
-
-template<typename U> bool WebNotificationManager::sendNotificationMessageWithAsyncReply(U&& message, WebPage* page, CompletionHandler<void()>&& callback)
-{
-    return sendMessage(page, [&] (auto& connection, auto destinationIdentifier) {
-        return !!connection.sendWithAsyncReply(WTFMove(message), WTFMove(callback), destinationIdentifier);
-    });
-}
-#endif // ENABLE(NOTIFICATIONS)
 
 bool WebNotificationManager::show(NotificationData&& notification, RefPtr<NotificationResources>&& resources, WebPage* page, CompletionHandler<void()>&& callback)
 {
@@ -223,7 +229,7 @@ void WebNotificationManager::didDestroyNotification(NotificationData&& notificat
 #endif
 }
 
-void WebNotificationManager::didShowNotification(const UUID& notificationID)
+void WebNotificationManager::didShowNotification(const WTF::UUID& notificationID)
 {
     ASSERT(isMainRunLoop());
 
@@ -243,7 +249,7 @@ void WebNotificationManager::didShowNotification(const UUID& notificationID)
 #endif
 }
 
-void WebNotificationManager::didClickNotification(const UUID& notificationID)
+void WebNotificationManager::didClickNotification(const WTF::UUID& notificationID)
 {
     ASSERT(isMainRunLoop());
 
@@ -262,7 +268,7 @@ void WebNotificationManager::didClickNotification(const UUID& notificationID)
 
         // Indicate that this event is being dispatched in reaction to a user's interaction with a platform notification.
         if (isMainRunLoop()) {
-            UserGestureIndicator indicator(ProcessingUserGesture);
+            UserGestureIndicator indicator(IsProcessingUserGesture::Yes);
             notification->dispatchClickEvent();
         } else
             notification->dispatchClickEvent();
@@ -272,7 +278,7 @@ void WebNotificationManager::didClickNotification(const UUID& notificationID)
 #endif
 }
 
-void WebNotificationManager::didCloseNotifications(const Vector<UUID>& notificationIDs)
+void WebNotificationManager::didCloseNotifications(const Vector<WTF::UUID>& notificationIDs)
 {
     ASSERT(isMainRunLoop());
 

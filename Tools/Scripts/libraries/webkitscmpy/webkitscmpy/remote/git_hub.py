@@ -23,24 +23,28 @@
 import calendar
 import os
 import re
-import requests
-import six
 import sys
+import time
 
 from datetime import datetime
-from requests.auth import HTTPBasicAuth
 from webkitbugspy import User
 from webkitbugspy.github import Tracker
-from webkitcorepy import decorators
+from webkitcorepy import decorators, string_utils, CallByNeed
 from webkitscmpy import Commit, Contributor, PullRequest
 from webkitscmpy.remote.scm import Scm
 from xml.dom import minidom
+
+requests = CallByNeed(lambda: __import__('requests'))
+HTTPBasicAuth = CallByNeed(lambda: __import__('requests.auth', fromlist=['HTTPBasicAuth']).HTTPBasicAuth)
 
 
 class GitHub(Scm):
     URL_RE = re.compile(r'\Ahttps?://github.(?P<domain>\S+)/(?P<owner>\S+)/(?P<repository>\S+)\Z')
     EMAIL_RE = re.compile(r'(?P<email>[^@]+@[^@]+)(@.*)?')
     ACCEPT_HEADER = Tracker.ACCEPT_HEADER
+    KNOWN_400_MESSAGES = [
+        'No commit found for SHA',
+    ]
 
     class PRGenerator(Scm.PRGenerator):
         SUPPORTS_DRAFTS = True
@@ -346,7 +350,7 @@ class GitHub(Scm):
             if comment and pull_request._comments:
                 pull_request._comments.append(PullRequest.Comment(
                     author=me,
-                    timestamp=time.time(),
+                    timestamp=int(time.time()),
                     content=comment,
                 ))
 
@@ -357,11 +361,12 @@ class GitHub(Scm):
     def is_webserver(cls, url):
         return True if cls.URL_RE.match(url) else False
 
-    def __init__(self, url, dev_branches=None, prod_branches=None, contributors=None, id=None, proxies=None):
+    def __init__(self, url, dev_branches=None, prod_branches=None, contributors=None, id=None, proxies=None, classifier=None):
         match = self.URL_RE.match(url)
         if not match:
             raise self.Exception("'{}' is not a valid GitHub project".format(url))
         self.api_url = 'https://api.github.{}'.format(match.group('domain'))
+        self.domain = 'github.{}'.format(match.group('domain'))
         self.owner = match.group('owner')
         self.name = match.group('repository')
         self.session = requests.Session()
@@ -378,6 +383,7 @@ class GitHub(Scm):
             dev_branches=dev_branches, prod_branches=prod_branches,
             contributors=contributors,
             id=id or self.name.lower(),
+            classifier=classifier,
         )
 
         self.pull_requests = self.PRGenerator(self)
@@ -393,6 +399,13 @@ class GitHub(Scm):
     @property
     def is_git(self):
         return True
+
+    def checkout_url(self, ssh=False, http=False):
+        if ssh and http:
+            raise ValueError('Cannot specify request both a ssh and http URL')
+        if http:
+            return 'https://{}/{}/{}.git'.format(self.domain, self.owner, self.name)
+        return 'git@{}:{}/{}.git'.format(self.domain, self.owner, self.name)
 
     def request(self, path=None, params=None, headers=None, authenticated=None, paginate=True, json=None, method='GET', endpoint_url=None, files=None, data=None, stream=False):
         headers = {key: value for key, value in headers.items()} if headers else dict()
@@ -427,6 +440,9 @@ class GitHub(Scm):
         if response.status_code not in [200, 201]:
             sys.stderr.write("Request to '{}' returned status code '{}'\n".format(url, response.status_code))
             message = response.json().get('message') if is_json_response else ''
+            message_header = message.split(':')[0]
+            if message_header in self.KNOWN_400_MESSAGES:
+                return None
             if message:
                 sys.stderr.write('Message: {}\n'.format(message))
             if auth:
@@ -728,7 +744,7 @@ class GitHub(Scm):
 
 
     def find(self, argument, include_log=True, include_identifier=True):
-        if not isinstance(argument, six.string_types):
+        if not isinstance(argument, string_utils.basestring):
             raise ValueError("Expected 'argument' to be a string, not '{}'".format(type(argument)))
 
         if argument in self.DEFAULT_BRANCHES:
@@ -755,7 +771,7 @@ class GitHub(Scm):
 
     def files_changed(self, argument=None):
         if not argument:
-            return self.modified()
+            raise ValueError('No argument provided')
         if not Commit.HASH_RE.match(argument):
             commit = self.find(argument, include_log=False, include_identifier=False)
             if not commit:

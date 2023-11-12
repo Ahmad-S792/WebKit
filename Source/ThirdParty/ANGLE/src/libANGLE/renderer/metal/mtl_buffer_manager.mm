@@ -21,54 +21,6 @@ namespace mtl
 namespace
 {
 
-constexpr size_t Log2(size_t num)
-{
-    return num <= 1 ? 0 : (1 + Log2(num / 2));
-}
-
-constexpr size_t Log2Ceil(size_t num)
-{
-    size_t l    = Log2(num);
-    size_t size = size_t(1) << l;
-    return num == size ? l : l + 1;
-}
-
-#ifdef ANGLE_MTL_TRACK_BUFFER_MEM
-const char *memUnitSuffix(size_t powerOf2)
-{
-    if (powerOf2 < 10)
-    {
-        return "b";
-    }
-    if (powerOf2 < 20)
-    {
-        return "k";
-    }
-    if (powerOf2 < 30)
-    {
-        return "M";
-    }
-    return "G";
-}
-
-size_t memUnitValue(size_t powerOf2)
-{
-    if (powerOf2 < 10)
-    {
-        return 1u << powerOf2;
-    }
-    if (powerOf2 < 20)
-    {
-        return 1u << (powerOf2 - 10);
-    }
-    if (powerOf2 < 30)
-    {
-        return 1u << (powerOf2 - 20);
-    }
-    return 1u << (powerOf2 - 30);
-}
-#endif  // ANGLE_MTL_TRACK_BUFFER_MEM
-
 int storageModeToCacheIndex(MTLStorageMode storageMode)
 {
     static_assert(MTLStorageModeShared == 0);
@@ -80,11 +32,7 @@ int storageModeToCacheIndex(MTLStorageMode storageMode)
 
 }  // namespace
 
-BufferManager::BufferManager()
-#ifdef ANGLE_MTL_TRACK_BUFFER_MEM
-    : mAllocations(kMaxSizePowerOf2, 0)
-#endif
-{}
+BufferManager::BufferManager() {}
 
 void BufferManager::freeUnusedBuffers(ContextMtl *contextMtl)
 {
@@ -105,9 +53,7 @@ void BufferManager::addBufferRefToFreeLists(mtl::BufferRef &bufferRef)
 {
     int cacheIndex = storageModeToCacheIndex(bufferRef->storageMode());
     ASSERT(cacheIndex < kNumCachedStorageModes);
-    const size_t bucketIndex = Log2Ceil(bufferRef->size());
-    ASSERT(bucketIndex < kMaxSizePowerOf2);
-    mFreeBuffers[cacheIndex][bucketIndex].push_back(bufferRef);
+    mFreeBuffers[cacheIndex].insert(BufferMap::value_type(bufferRef->size(), bufferRef));
 }
 
 void BufferManager::returnBuffer(ContextMtl *contextMtl, BufferRef &bufferRef)
@@ -117,6 +63,8 @@ void BufferManager::returnBuffer(ContextMtl *contextMtl, BufferRef &bufferRef)
     {
         return;  // Storage mode that we do not have a cache for.
     }
+    bufferRef->setNumContextSwitchesAtLastUse(mContextSwitches);
+    bufferRef->setNumCommandBufferCommitsAtLastUse(mCommandBufferCommits);
     if (bufferRef->isBeingUsedByGPU(contextMtl))
     {
         mInUseBuffers.push_back(bufferRef);
@@ -127,22 +75,134 @@ void BufferManager::returnBuffer(ContextMtl *contextMtl, BufferRef &bufferRef)
     }
 }
 
+void BufferManager::incrementNumContextSwitches()
+{
+    ++mContextSwitches;
+    // Ignore wraparound for the moment
+    if (mContextSwitches - mContextSwitchesAtLastGC >= kContextSwitchesBetweenGC)
+    {
+        collectGarbage(GCReason::ContextSwitches);
+    }
+}
+
+void BufferManager::incrementNumCommandBufferCommits()
+{
+    ++mCommandBufferCommits;
+    // Ignore wraparound for the moment
+    if (mCommandBufferCommits - mCommandBufferCommitsAtLastGC >= kCommandBufferCommitsBetweenGC)
+    {
+        collectGarbage(GCReason::CommandBufferCommits);
+    }
+}
+
+void BufferManager::collectGarbage(BufferManager::GCReason reason)
+{
+    ANGLE_UNUSED_VARIABLE(reason);
+#ifdef ANGLE_MTL_TRACK_BUFFER_MEM
+    {
+        fprintf(stderr, "** Before BufferManager GC (reason=%s): totalMem: %zu, ",
+                (reason == GCReason::ContextSwitches
+                     ? "context switches"
+                     : (reason == GCReason::CommandBufferCommits ? "command buffer commits"
+                                                                 : "total memory")),
+                mTotalMem);
+        size_t numBuffers = 0;
+        for (auto iter = mAllocatedSizes.begin(); iter != mAllocatedSizes.end(); ++iter)
+        {
+            fprintf(stderr, "%zu: %zu, ", iter->first, iter->second);
+            numBuffers += iter->second;
+        }
+        fprintf(stderr, " total: %zu\n", numBuffers);
+    }
+#endif
+
+    for (int i = 0; i < kNumCachedStorageModes; ++i)
+    {
+        BufferMap &map = mFreeBuffers[i];
+        auto iter      = map.begin();
+        while (iter != map.end())
+        {
+            // Clean out cached buffers for the following reasons:
+            // 1) GC was triggered because of total memory use.
+            // 2) The buffer has gone unused for multiple context switches.
+            // 3) The buffer hasn't been used for many command buffer commits.
+            if (reason == GCReason::TotalMem ||
+                (mContextSwitches - iter->second->getNumContextSwitchesAtLastUse() >=
+                 kContextSwitchesBetweenGC) ||
+                (mCommandBufferCommits - iter->second->getNumCommandBufferCommitsAtLastUse() >=
+                 kCommandBufferCommitsBetweenGC))
+            {
+                iter = map.erase(iter);
+            }
+            else
+            {
+                ++iter;
+            }
+        }
+    }
+    mContextSwitchesAtLastGC      = mContextSwitches;
+    mCommandBufferCommitsAtLastGC = mCommandBufferCommits;
+
+    {
+        mTotalMem = 0;
+#ifdef ANGLE_MTL_TRACK_BUFFER_MEM
+        mAllocatedSizes.clear();
+#endif
+        for (auto iter = mInUseBuffers.begin(); iter != mInUseBuffers.end(); ++iter)
+        {
+            size_t sz = (*iter)->size();
+            mTotalMem += sz;
+#ifdef ANGLE_MTL_TRACK_BUFFER_MEM
+            ++mAllocatedSizes[sz];
+#endif
+        }
+
+        for (int i = 0; i < kNumCachedStorageModes; ++i)
+        {
+            BufferMap &map = mFreeBuffers[i];
+            for (auto iter = map.begin(); iter != map.end(); ++iter)
+            {
+                size_t sz = iter->first;
+#ifdef ANGLE_MTL_TRACK_BUFFER_MEM
+                ++mAllocatedSizes[sz];
+#endif
+                mTotalMem += sz;
+            }
+        }
+
+#ifdef ANGLE_MTL_TRACK_BUFFER_MEM
+        fprintf(stderr, "** After BufferManager GC: totalMem: %zu, ", mTotalMem);
+        size_t numBuffers = 0;
+        for (auto iter = mAllocatedSizes.begin(); iter != mAllocatedSizes.end(); ++iter)
+        {
+            fprintf(stderr, "%zu: %zu, ", iter->first, iter->second);
+            numBuffers += iter->second;
+        }
+        fprintf(stderr, " total: %zu\n", numBuffers);
+#endif
+
+        mTotalMemAtLastGC = mTotalMem;
+    }
+}
+
 angle::Result BufferManager::getBuffer(ContextMtl *contextMtl,
                                        MTLStorageMode storageMode,
                                        size_t size,
                                        BufferRef &bufferRef)
 {
     freeUnusedBuffers(contextMtl);
-    const size_t bucketIndex = Log2Ceil(size);
-    const int cacheIndex     = storageModeToCacheIndex(storageMode);
+    const int cacheIndex = storageModeToCacheIndex(storageMode);
     if (cacheIndex < kNumCachedStorageModes)
     {
         // Buffer has a storage mode that have a cache for.
-        BufferList &freeBuffers = mFreeBuffers[cacheIndex][bucketIndex];
-        if (!freeBuffers.empty())
+        BufferMap &freeBuffers = mFreeBuffers[cacheIndex];
+        auto iter              = freeBuffers.find(size);
+        if (iter != freeBuffers.end())
         {
-            bufferRef = freeBuffers.back();
-            freeBuffers.pop_back();
+            bufferRef = iter->second;
+            freeBuffers.erase(iter);
+            bufferRef->setNumContextSwitchesAtLastUse(mContextSwitches);
+            bufferRef->setNumCommandBufferCommitsAtLastUse(mCommandBufferCommits);
             return angle::Result::Continue;
         }
     }
@@ -150,28 +210,45 @@ angle::Result BufferManager::getBuffer(ContextMtl *contextMtl,
     // Create a new one
     mtl::BufferRef newBufferRef;
 
-    size_t allocSize = size_t(1) << bucketIndex;
-    ASSERT(allocSize >= size);
-    ANGLE_TRY(mtl::Buffer::MakeBufferWithStorageMode(contextMtl, storageMode, allocSize, nullptr,
+    ANGLE_TRY(mtl::Buffer::MakeBufferWithStorageMode(contextMtl, storageMode, size, nullptr,
                                                      &newBufferRef));
+
+    mTotalMem += size;
 
 #ifdef ANGLE_MTL_TRACK_BUFFER_MEM
     {
-        mTotalMem += allocSize;
-        mAllocations[bucketIndex]++;
+        mAllocatedSizes[size]++;
         fprintf(stderr, "totalMem: %zu, ", mTotalMem);
         size_t numBuffers = 0;
-        for (size_t i = 0; i < kMaxSizePowerOf2; ++i)
+        for (auto iter = mAllocatedSizes.begin(); iter != mAllocatedSizes.end(); ++iter)
         {
-            if (mAllocations[i])
-            {
-                numBuffers += mAllocations[i];
-                fprintf(stderr, "%zu%s: %zu, ", memUnitValue(i), memUnitSuffix(i), mAllocations[i]);
-            }
+            fprintf(stderr, "%zu: %zu, ", iter->first, iter->second);
+            numBuffers += iter->second;
         }
         fprintf(stderr, " total: %zu\n", numBuffers);
     }
 #endif
+
+    bool lotOfMemAllocedRecently = (mTotalMem > mTotalMemAtLastGC + kMemAllocedBetweenGC);
+    if (mTotalMem > kMinMemBasedGC &&
+        (mTotalMem > 2 * mTotalMemAtLastGC || lotOfMemAllocedRecently))
+    {
+        if (mInUseBuffers.size() > 0 && lotOfMemAllocedRecently)
+        {
+            // A considerable amount of memory has been allocated since the last GC. Wait for all
+            // pending GPU work to finish in order to unreference in-flight buffers more quickly.
+            contextMtl->flushCommandBuffer(mtl::WaitUntilFinished);
+        }
+        else
+        {
+            // Flush the current command buffer so that the in-flight buffers are scheduled and will
+            // eventually become unreferenced. They won't be collected during this GC cycle but
+            // hopefully will in the next one.
+            contextMtl->flushCommandBuffer(mtl::NoWait);
+        }
+        freeUnusedBuffers(contextMtl);
+        collectGarbage(GCReason::TotalMem);
+    }
 
     bufferRef = newBufferRef;
 

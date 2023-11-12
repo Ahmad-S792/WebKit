@@ -1,4 +1,4 @@
-# Copyright (C) 2021, 2022 Apple Inc. All rights reserved.
+# Copyright (C) 2021-2023 Apple Inc. All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
 # modification, are permitted provided that the following conditions
@@ -53,6 +53,18 @@ class Branch(Command):
             action=arguments.NoAction,
         )
 
+        if sys.version_info > (3, 0):
+            has_radar = bool(radar.Tracker.radarclient())
+        else:
+            has_radar = bool(radar.Tracker().radarclient())
+        if has_radar:
+            parser.add_argument(
+                '--cc-radar', '--no-cc-radar',
+                dest='cc_radar', default=None,
+                action=arguments.NoAction,
+                help='Explicitly CC (or do not CC) radar.',
+            )
+
     @classmethod
     def normalize_branch_name(cls, name, repository=None):
         if not name or (repository or local.Scm).DEV_BRANCHES.match(name):
@@ -76,22 +88,6 @@ class Branch(Command):
                 if branch in repository.branches_for(remote=name, cached=True):
                     return False
         return True
-
-    @classmethod
-    def branch_point(cls, repository, limit=None):
-        cnt = 0
-        commit = repository.commit(include_log=False, include_identifier=False)
-        while cls.editable(commit.branch, repository=repository):
-            cnt += 1
-            if limit and cnt > limit:
-                return None
-            commit = repository.find(argument='HEAD~{}'.format(cnt), include_log=False, include_identifier=False)
-            if cnt > 1 or commit.branch != repository.branch or cls.editable(commit.branch, repository=repository):
-                log.info('    Found {}...'.format(string_utils.pluralize(cnt, 'commit')))
-            else:
-                log.info('    No commits on editable branch')
-
-        return commit
 
     @classmethod
     def to_branch_name(cls, value):
@@ -156,7 +152,8 @@ class Branch(Command):
             for reference in issue.references
         ])
 
-        if needs_radar:
+        radar_cc_default = repository.config().get('webkitscmpy.cc-radar', 'true') == 'true'
+        if needs_radar and (args.cc_radar or (radar_cc_default and args.cc_radar is not False)):
             rdar = None
             if not getattr(args, 'defaults', None):
                 sys.stdout.write('Existing radar to CC (leave empty to create new radar)')
@@ -165,7 +162,10 @@ class Branch(Command):
                 if re.match(r'\d+', input):
                     input = '<rdar://problem/{}>'.format(input)
                 rdar = Tracker.from_string(input)
-            issue.cc_radar(block=True, radar=rdar)
+            cced = issue.cc_radar(block=True, radar=rdar)
+            if cced and rdar and cced.id != rdar.id:
+                print('Duping {} to {}'.format(cced.link, rdar.link))
+                cced.close(original=rdar)
 
         if issue and not issue.tracker.hide_title:
             args._title = issue.title
@@ -177,6 +177,16 @@ class Branch(Command):
         if run([repository.executable(), 'check-ref-format', args.issue], capture_output=True).returncode:
             sys.stderr.write("'{}' is an invalid branch name, cannot create it\n".format(args.issue))
             return 1
+
+        bug_urls = getattr(args, '_bug_urls', None) or ''
+        if isinstance(bug_urls, (list, tuple)):
+            bug_urls = '\n'.join(bug_urls)
+        title = getattr(args, '_title', None) or ''
+        cls.write_branch_variables(
+            repository, args.issue,
+            title=title,
+            bug=bug_urls,
+        )
 
         if args.issue in repository.branches_for(remote=target_remote):
             if not args.delete_existing:

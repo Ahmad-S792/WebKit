@@ -64,6 +64,8 @@ struct Config {
     bool disabledFreezingForTesting;
     bool restrictedOptionsEnabled;
     bool jitDisabled;
+    bool vmCreationDisallowed;
+    bool vmEntryDisallowed;
 
     bool useFastJITPermissions;
 
@@ -124,12 +126,20 @@ static_assert(roundUpToMultipleOf<alignmentOfJSCConfig>(WTF::offsetOfWTFConfigEx
 #else // not ENABLE(UNIFIED_AND_FREEZABLE_CONFIG_RECORD)
 
 extern "C" JS_EXPORT_PRIVATE Config g_jscConfig;
+#if OS(WINDOWS) && ENABLE(WEBASSEMBLY)
+extern "C" JS_EXPORT_PRIVATE WTF::Config g_wtfConfigForLLInt;
+#endif
 
 #endif // ENABLE(UNIFIED_AND_FREEZABLE_CONFIG_RECORD)
 
 constexpr size_t offsetOfJSCConfigInitializeHasBeenCalled = offsetof(JSC::Config, initializeHasBeenCalled);
 constexpr size_t offsetOfJSCConfigGateMap = offsetof(JSC::Config, llint.gateMap);
 constexpr size_t offsetOfJSCConfigStartOfStructureHeap = offsetof(JSC::Config, startOfStructureHeap);
+
+ALWAYS_INLINE PURE_FUNCTION uintptr_t startOfStructureHeap()
+{
+    return g_jscConfig.startOfStructureHeap;
+}
 
 } // namespace JSC
 

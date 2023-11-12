@@ -229,7 +229,7 @@ class Texture final : public Resource,
     // case texture doesn't need format view usage flag.
     TextureRef createViewWithCompatibleFormat(MTLPixelFormat format);
     // Create a swizzled view
-    TextureRef createSwizzleView(const TextureSwizzleChannels &swizzle);
+    TextureRef createSwizzleView(MTLPixelFormat format, const TextureSwizzleChannels &swizzle);
 
     MTLTextureType textureType() const;
     MTLPixelFormat pixelFormat() const;
@@ -339,7 +339,7 @@ class Texture final : public Resource,
     // Create a texture view
     Texture(Texture *original, MTLPixelFormat format);
     Texture(Texture *original, MTLTextureType type, NSRange mipmapLevelRange, NSRange slices);
-    Texture(Texture *original, const TextureSwizzleChannels &swizzle);
+    Texture(Texture *original, MTLPixelFormat format, const TextureSwizzleChannels &swizzle);
 
     // Creates a view for a shader image binding.
     Texture(Texture *original,
@@ -407,10 +407,18 @@ class Buffer final : public Resource, public WrappedObject<id<MTLBuffer>>
     size_t estimatedByteSize() const override { return size(); }
     id getID() const override { return get(); }
 
+    size_t getNumContextSwitchesAtLastUse() { return mContextSwitchesAtLastUse; }
+    void setNumContextSwitchesAtLastUse(size_t num) { mContextSwitchesAtLastUse = num; }
+    size_t getNumCommandBufferCommitsAtLastUse() { return mCommandBufferCommitsAtLastUse; }
+    void setNumCommandBufferCommitsAtLastUse(size_t num) { mCommandBufferCommitsAtLastUse = num; }
+
   private:
     Buffer(ContextMtl *context, MTLStorageMode storageMode, size_t size, const uint8_t *data);
 
     bool mMapReadOnly = true;
+    // For garbage collecting shadow buffers in BufferManager.
+    size_t mContextSwitchesAtLastUse      = 0;
+    size_t mCommandBufferCommitsAtLastUse = 0;
 };
 
 class NativeTexLevelArray

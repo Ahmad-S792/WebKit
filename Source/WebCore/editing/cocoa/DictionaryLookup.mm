@@ -35,10 +35,10 @@
 #import "Document.h"
 #import "Editing.h"
 #import "FocusController.h"
-#import "Frame.h"
 #import "FrameSelection.h"
 #import "GraphicsContextCG.h"
 #import "HitTestResult.h"
+#import "LocalFrame.h"
 #import "NotImplemented.h"
 #import "Page.h"
 #import "Range.h"
@@ -397,9 +397,7 @@ std::tuple<NSString *, NSDictionary *> DictionaryLookup::stringForPDFSelection(P
     auto fullPlainTextString = [selectionForLookup string];
     auto rangeToPass = NSMakeRange(charactersAddedBeforeStart, 0);
 
-    auto item = adoptNS([PAL::allocRVItemInstance() initWithText:fullPlainTextString selectedRange:rangeToPass]);
-    NSRange extractedRange = item.get().highlightRange;
-    
+    NSRange extractedRange = adoptNS([PAL::allocRVItemInstance() initWithText:fullPlainTextString selectedRange:rangeToPass]).get().highlightRange;
     if (extractedRange.location == NSNotFound)
         return { selection.string, nil };
 
@@ -424,10 +422,6 @@ static WKRevealController showPopupOrCreateAnimationController(bool createAnimat
 #if PLATFORM(MAC)
     if (!PAL::isRevealFrameworkAvailable() || !canCreateRevealItems() || !PAL::getRVPresenterClass())
         return nil;
-
-    auto mutableOptions = adoptNS([[NSMutableDictionary alloc] init]);
-    if (NSDictionary *options = dictionaryPopupInfo.platformData.options.get())
-        [mutableOptions addEntriesFromDictionary:options];
 
     auto textIndicator = TextIndicator::create(dictionaryPopupInfo.textIndicator);
 
@@ -457,8 +451,9 @@ static WKRevealController showPopupOrCreateAnimationController(bool createAnimat
         pointerLocation = [view convertPoint:textBaselineOrigin toView:nil];
     }
 
-    auto webHighlight = adoptNS([[WebRevealHighlight alloc] initWithHighlightRect:highlightRect useDefaultHighlight:!textIndicator.get().contentImage() attributedString:dictionaryPopupInfo.platformData.attributedString.get() clearTextIndicatorCallback:WTFMove(clearTextIndicator)]);
-    auto item = adoptNS([PAL::allocRVItemInstance() initWithText:dictionaryPopupInfo.platformData.attributedString.get().string selectedRange:NSMakeRange(0, dictionaryPopupInfo.platformData.attributedString.get().string.length)]);
+    auto attributedString = dictionaryPopupInfo.platformData.attributedString.nsAttributedString();
+    auto webHighlight = adoptNS([[WebRevealHighlight alloc] initWithHighlightRect:highlightRect useDefaultHighlight:!textIndicator.get().contentImage() attributedString:attributedString.get() clearTextIndicatorCallback:WTFMove(clearTextIndicator)]);
+    auto item = adoptNS([PAL::allocRVItemInstance() initWithText:attributedString.get().string selectedRange:NSMakeRange(0, attributedString.get().string.length)]);
     auto context = createRVPresentingContextWithRetainedDelegate(pointerLocation, view, webHighlight.get());
     if (createAnimationController)
         return [presenter animationControllerForItem:item.get() documentContext:nil presentingContext:context.get() options:nil];
@@ -472,7 +467,8 @@ static WKRevealController showPopupOrCreateAnimationController(bool createAnimat
     ASSERT_UNUSED(createAnimationController, !createAnimationController);
     auto textIndicator = TextIndicator::create(dictionaryPopupInfo.textIndicator);
     auto webHighlight = adoptNS([[WebRevealHighlight alloc] initWithHighlightRect:[view convertRect:textIndicator->selectionRectInRootViewCoordinates() toView:nil] view:view image:textIndicator->contentImage()]);
-    auto item = adoptNS([PAL::allocRVItemInstance() initWithText:dictionaryPopupInfo.platformData.attributedString.get().string selectedRange:NSMakeRange(0, dictionaryPopupInfo.platformData.attributedString.get().string.length)]);
+    auto attributedString = dictionaryPopupInfo.platformData.attributedString.nsAttributedString();
+    auto item = adoptNS([PAL::allocRVItemInstance() initWithText:attributedString.get().string selectedRange:NSMakeRange(0, attributedString.get().string.length)]);
 
     [UINSSharedRevealController() revealItem:item.get() locationInWindow:dictionaryPopupInfo.origin window:view.window highlighter:webHighlight.get()];
     return nil;

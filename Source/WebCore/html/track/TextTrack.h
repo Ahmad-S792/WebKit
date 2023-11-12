@@ -41,7 +41,6 @@ class TextTrack;
 class TextTrackList;
 class TextTrackClient;
 class TextTrackCueList;
-class VTTRegion;
 class VTTRegionList;
 
 class TextTrack : public TrackBase, public EventTarget, public ActiveDOMObject {
@@ -88,11 +87,9 @@ public:
     virtual ExceptionOr<void> removeCue(TextTrackCue&);
 
     VTTRegionList* regions();
-    void addRegion(Ref<VTTRegion>&&);
-    ExceptionOr<void> removeRegion(VTTRegion&);
 
     void cueWillChange(TextTrackCue&);
-    void cueDidChange(TextTrackCue&);
+    void cueDidChange(TextTrackCue&, bool);
 
     enum TextTrackType { TrackElement, AddTrack, InBand };
     TextTrackType trackType() const { return m_trackType; }
@@ -132,7 +129,7 @@ public:
     const std::optional<Vector<String>>& styleSheets() const { return m_styleSheets; }
 
     virtual bool shouldPurgeCuesFromUnbufferedRanges() const { return false; }
-    virtual void removeCuesNotInTimeRanges(PlatformTimeRanges&);
+    virtual void removeCuesNotInTimeRanges(const PlatformTimeRanges&);
 
     Document& document() const;
 

@@ -32,7 +32,7 @@
 namespace WebCore {
 
 class Attr;
-class MutableStyleProperties;
+class ImmutableStyleProperties;
 class ShareableElementData;
 class StyleProperties;
 class UniqueElementData;
@@ -48,9 +48,15 @@ public:
     const Attribute& operator*() const { return m_array[m_offset]; }
     const Attribute* operator->() const { return &m_array[m_offset]; }
     AttributeConstIterator& operator++() { ++m_offset; return *this; }
+    AttributeConstIterator& operator--() { ++m_offset; return *this; }
+
+    using difference_type = ptrdiff_t;
+    using value_type = Attribute;
+    using pointer = const Attribute*;
+    using reference = const Attribute&;
+    using iterator_category = std::random_access_iterator_tag;
 
     bool operator==(const AttributeConstIterator& other) const { return m_offset == other.m_offset; }
-    bool operator!=(const AttributeConstIterator& other) const { return !(*this == other); }
 
 private:
     const Attribute* m_array;
@@ -68,6 +74,7 @@ public:
     AttributeConstIterator begin() const { return AttributeConstIterator(m_array, 0); }
     AttributeConstIterator end() const { return AttributeConstIterator(m_array, m_size); }
 
+    unsigned size() const { return m_size; }
     unsigned attributeCount() const { return m_size; }
 
 private:
@@ -94,7 +101,7 @@ public:
     void setIdForStyleResolution(const AtomString& newId) const { m_idForStyleResolution = newId; }
 
     const StyleProperties* inlineStyle() const { return m_inlineStyle.get(); }
-    const MutableStyleProperties* presentationalHintStyle() const;
+    const ImmutableStyleProperties* presentationalHintStyle() const;
 
     unsigned length() const;
     bool isEmpty() const { return !length(); }
@@ -189,9 +196,9 @@ DECLARE_ALLOCATOR_WITH_HEAP_IDENTIFIER(ShareableElementData);
 class ShareableElementData : public ElementData {
     WTF_MAKE_FAST_ALLOCATED_WITH_HEAP_IDENTIFIER(ShareableElementData);
 public:
-    static Ref<ShareableElementData> createWithAttributes(const Vector<Attribute>&);
+    static Ref<ShareableElementData> createWithAttributes(std::span<const Attribute>);
 
-    explicit ShareableElementData(const Vector<Attribute>&);
+    explicit ShareableElementData(std::span<const Attribute>);
     explicit ShareableElementData(const UniqueElementData&);
     ~ShareableElementData();
 
@@ -222,7 +229,7 @@ public:
 
     static ptrdiff_t attributeVectorMemoryOffset() { return OBJECT_OFFSETOF(UniqueElementData, m_attributeVector); }
 
-    mutable RefPtr<MutableStyleProperties> m_presentationalHintStyle;
+    mutable RefPtr<ImmutableStyleProperties> m_presentationalHintStyle;
     typedef Vector<Attribute, 4> AttributeVector;
     AttributeVector m_attributeVector;
 };
@@ -248,7 +255,7 @@ inline const Attribute* ElementData::attributeBase() const
     return downcast<ShareableElementData>(*this).m_attributeArray;
 }
 
-inline const MutableStyleProperties* ElementData::presentationalHintStyle() const
+inline const ImmutableStyleProperties* ElementData::presentationalHintStyle() const
 {
     if (!is<UniqueElementData>(*this))
         return nullptr;

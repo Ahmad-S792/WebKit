@@ -28,7 +28,7 @@
 
 #if USE(CORE_IMAGE)
 
-#import "PlatformImageBuffer.h"
+#import "IOSurfaceImageBuffer.h"
 #import <CoreImage/CIContext.h>
 #import <CoreImage/CoreImage.h>
 #import <wtf/NeverDestroyed.h>
@@ -46,6 +46,12 @@ void FilterImage::setCIImage(RetainPtr<CIImage>&& ciImage)
 {
     ASSERT(ciImage);
     m_ciImage = WTFMove(ciImage);
+}
+
+size_t FilterImage::memoryCostOfCIImage() const
+{
+    ASSERT(m_ciImage);
+    return FloatSize([m_ciImage.get() extent].size).area() * 4;
 }
 
 ImageBuffer* FilterImage::imageBufferFromCIImage()

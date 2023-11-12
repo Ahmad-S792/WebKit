@@ -30,6 +30,7 @@
 
 #include "WebExtensionContextParameters.h"
 #include "WebExtensionContextProxyMessages.h"
+#include "WebPageProxy.h"
 #include <wtf/HashMap.h>
 #include <wtf/NeverDestroyed.h>
 
@@ -57,17 +58,52 @@ WebExtensionContext::WebExtensionContext()
 
 WebExtensionContextParameters WebExtensionContext::parameters() const
 {
-    WebExtensionContextParameters parameters;
+    return {
+        identifier(),
+        baseURL(),
+        uniqueIdentifier(),
+        extension().serializeLocalization(),
+        extension().serializeManifest(),
+        extension().manifestVersion(),
+        inTestingMode(),
+        backgroundPageIdentifier(),
+        popupPageIdentifiers(),
+        tabPageIdentifiers()
+    };
+}
 
-    parameters.identifier = identifier();
+bool WebExtensionContext::pageListensForEvent(const WebPageProxy& page, WebExtensionEventListenerType type, WebExtensionContentWorldType contentWorldType) const
+{
+    if (!hasAccessInPrivateBrowsing() && page.sessionID().isEphemeral())
+        return false;
 
-    parameters.baseURL = baseURL();
-    parameters.uniqueIdentifier = uniqueIdentifier();
-    parameters.manifest = extension().manifest();
-    parameters.manifestVersion = extension().manifestVersion();
-    parameters.testingMode = inTestingMode();
+    auto pagesEntry = m_eventListenerPages.find({ type, contentWorldType });
+    if (pagesEntry == m_eventListenerPages.end())
+        return false;
 
-    return parameters;
+    if (!pagesEntry->value.contains(page))
+        return false;
+
+    return page.process().canSendMessage();
+}
+
+WebExtensionContext::WebProcessProxySet WebExtensionContext::processes(WebExtensionEventListenerType type, WebExtensionContentWorldType contentWorldType) const
+{
+    auto pagesEntry = m_eventListenerPages.find({ type, contentWorldType });
+    if (pagesEntry == m_eventListenerPages.end())
+        return { };
+
+    WebProcessProxySet result;
+    for (auto entry : pagesEntry->value) {
+        if (!hasAccessInPrivateBrowsing() && entry.key.sessionID().isEphemeral())
+            continue;
+
+        Ref process = entry.key.process();
+        if (process->canSendMessage())
+            result.add(WTFMove(process));
+    }
+
+    return result;
 }
 
 } // namespace WebKit

@@ -21,6 +21,12 @@ using namespace angle;
 class EGLRobustnessTest : public ANGLETest<>
 {
   public:
+    enum class eglContextOpenglRobustAccess : bool
+    {
+        enable  = true,
+        disable = false,
+    };
+
     void testSetUp() override
     {
         mOSWindow = OSWindow::New();
@@ -51,14 +57,6 @@ class EGLRobustnessTest : public ANGLETest<>
         ASSERT_NE(EGL_NO_DISPLAY, mDisplay);
 
         ASSERT_TRUE(eglInitialize(mDisplay, nullptr, nullptr) == EGL_TRUE);
-
-        const char *extensions = eglQueryString(mDisplay, EGL_EXTENSIONS);
-        if (strstr(extensions, "EGL_EXT_create_context_robustness") == nullptr)
-        {
-            std::cout << "Test skipped due to missing EGL_EXT_create_context_robustness"
-                      << std::endl;
-            return;
-        }
 
         int nConfigs = 0;
         ASSERT_TRUE(eglGetConfigs(mDisplay, nullptr, 0, &nConfigs) == EGL_TRUE);
@@ -93,9 +91,9 @@ class EGLRobustnessTest : public ANGLETest<>
 
     void testTearDown() override
     {
-        eglDestroySurface(mDisplay, mWindow);
-        eglDestroyContext(mDisplay, mContext);
         eglMakeCurrent(mDisplay, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
+        eglDestroySurface(mDisplay, mWindow);
+        destroyContext();
         eglTerminate(mDisplay);
         EXPECT_EGL_SUCCESS();
 
@@ -104,10 +102,48 @@ class EGLRobustnessTest : public ANGLETest<>
 
     void createContext(EGLint resetStrategy)
     {
-        const EGLint contextAttribs[] = {EGL_CONTEXT_CLIENT_VERSION, 2,
-                                         EGL_CONTEXT_OPENGL_RESET_NOTIFICATION_STRATEGY_EXT,
-                                         resetStrategy, EGL_NONE};
-        mContext = eglCreateContext(mDisplay, mConfig, EGL_NO_CONTEXT, contextAttribs);
+        std::vector<EGLint> contextAttribs = {
+            EGL_CONTEXT_CLIENT_VERSION,
+            2,
+        };
+
+        if (IsEGLDisplayExtensionEnabled(mDisplay, "EGL_EXT_create_context_robustness"))
+        {
+            contextAttribs.push_back(EGL_CONTEXT_OPENGL_RESET_NOTIFICATION_STRATEGY_EXT);
+            contextAttribs.push_back(resetStrategy);
+        }
+        else
+        {
+            ASSERT_EQ(EGL_NO_RESET_NOTIFICATION_EXT, resetStrategy);
+        }
+        contextAttribs.push_back(EGL_NONE);
+        mContext = eglCreateContext(mDisplay, mConfig, EGL_NO_CONTEXT, contextAttribs.data());
+        ASSERT_NE(EGL_NO_CONTEXT, mContext);
+
+        eglMakeCurrent(mDisplay, mWindow, mWindow, mContext);
+        ASSERT_EGL_SUCCESS();
+
+        const char *extensionString = reinterpret_cast<const char *>(glGetString(GL_EXTENSIONS));
+        ASSERT_NE(nullptr, strstr(extensionString, "GL_ANGLE_instanced_arrays"));
+    }
+
+    void createClientVersion3NonRobustContext(EGLint resetStrategy)
+    {
+        std::vector<EGLint> contextAttribs = {
+            EGL_CONTEXT_CLIENT_VERSION,           3,         EGL_CONTEXT_MINOR_VERSION_KHR, 0,
+            EGL_CONTEXT_OPENGL_ROBUST_ACCESS_EXT, EGL_FALSE,
+        };
+        if (IsEGLDisplayExtensionEnabled(mDisplay, "EGL_EXT_create_context_robustness"))
+        {
+            contextAttribs.push_back(EGL_CONTEXT_OPENGL_RESET_NOTIFICATION_STRATEGY_EXT);
+            contextAttribs.push_back(resetStrategy);
+        }
+        else
+        {
+            ASSERT_EQ(EGL_NO_RESET_NOTIFICATION_EXT, resetStrategy);
+        }
+        contextAttribs.push_back(EGL_NONE);
+        mContext = eglCreateContext(mDisplay, mConfig, EGL_NO_CONTEXT, contextAttribs.data());
         ASSERT_NE(EGL_NO_CONTEXT, mContext);
 
         eglMakeCurrent(mDisplay, mWindow, mWindow, mContext);
@@ -136,14 +172,26 @@ class EGLRobustnessTest : public ANGLETest<>
         ASSERT_EGL_SUCCESS();
     }
 
-    void forceContextReset()
+    void destroyContext()
+    {
+        if (mContext != EGL_NO_CONTEXT)
+        {
+            eglDestroyContext(mDisplay, mContext);
+            mContext = EGL_NO_CONTEXT;
+        }
+    }
+
+    void submitLongRunningTask()
     {
         // Cause a GPU reset by drawing 100,000,000 fullscreen quads
         GLuint program = CompileProgram(
             "attribute vec4 pos;\n"
-            "void main() {gl_Position = pos;}\n",
+            "varying vec2 texcoord;\n"
+            "void main() {gl_Position = pos; texcoord = (pos.xy * 0.5) + 0.5;}\n",
             "precision mediump float;\n"
-            "void main() {gl_FragColor = vec4(1.0);}\n");
+            "uniform sampler2D tex;\n"
+            "varying vec2 texcoord;\n"
+            "void main() {gl_FragColor = gl_FragColor = texture2D(tex, texcoord);}\n");
         ASSERT_NE(0u, program);
         glUseProgram(program);
 
@@ -169,13 +217,21 @@ class EGLRobustnessTest : public ANGLETest<>
         glVertexAttribPointer(0, 4, GL_FLOAT, GL_FALSE, 0, vertices);
         glEnableVertexAttribArray(0);
 
+        GLTexture texture;
+        glActiveTexture(GL_TEXTURE0);
+        glBindTexture(GL_TEXTURE_2D, texture);
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, 256, 256, 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+
+        GLint textureUniformLocation = glGetUniformLocation(program, "tex");
+        glUniform1i(textureUniformLocation, 0);
+
         glViewport(0, 0, mOSWindow->getWidth(), mOSWindow->getHeight());
         glClearColor(1.0, 0.0, 0.0, 1.0);
         glClear(GL_COLOR_BUFFER_BIT);
         glDrawElementsInstancedANGLE(GL_TRIANGLES, kNumQuads * 6, GL_UNSIGNED_SHORT, indices.data(),
                                      10000);
-
-        glFinish();
     }
 
     const char *getInvalidShaderLocalVariableAccessFS()
@@ -195,7 +251,8 @@ class EGLRobustnessTest : public ANGLETest<>
         return kFS;
     }
 
-    void testInvalidShaderLocalVariableAccess(GLuint program)
+    void testInvalidShaderLocalVariableAccess(GLuint program,
+                                              const eglContextOpenglRobustAccess robustAccessAttrib)
     {
         glUseProgram(program);
         EXPECT_GL_NO_ERROR();
@@ -220,7 +277,17 @@ class EGLRobustnessTest : public ANGLETest<>
         // fragment shader will not suffer from write out-of-bounds issue, which resulted in context
         // reset and context loss.
         glFinish();
-        EXPECT_GL_NO_ERROR();
+
+        GLint errorCode = glGetError();
+
+        if (robustAccessAttrib == eglContextOpenglRobustAccess::enable)
+        {
+            ASSERT(errorCode == GL_NO_ERROR);
+        }
+        else
+        {
+            ASSERT(errorCode == GL_NO_ERROR || errorCode == GL_CONTEXT_LOST);
+        }
     }
 
   protected:
@@ -250,6 +317,8 @@ TEST_P(EGLRobustnessTest, NoErrorByDefault)
 // Checks that the application gets no loss with NO_RESET_NOTIFICATION
 TEST_P(EGLRobustnessTest, DISABLED_NoResetNotification)
 {
+    ANGLE_SKIP_TEST_IF(
+        !IsEGLDisplayExtensionEnabled(mDisplay, "EGL_EXT_create_context_robustness"));
     ANGLE_SKIP_TEST_IF(!mInitialized);
     createContext(EGL_NO_RESET_NOTIFICATION_EXT);
 
@@ -261,7 +330,8 @@ TEST_P(EGLRobustnessTest, DISABLED_NoResetNotification)
     }
     std::cout << "Causing a GPU reset, brace for impact." << std::endl;
 
-    forceContextReset();
+    submitLongRunningTask();
+    glFinish();
     ASSERT_TRUE(glGetGraphicsResetStatusEXT() == GL_NO_ERROR);
 }
 
@@ -272,6 +342,9 @@ TEST_P(EGLRobustnessTest, DISABLED_NoResetNotification)
 // the computer is rebooted.
 TEST_P(EGLRobustnessTest, DISABLED_ResettingDisplayWorks)
 {
+    ANGLE_SKIP_TEST_IF(
+        !IsEGLDisplayExtensionEnabled(mDisplay, "EGL_EXT_create_context_robustness"));
+
     // Note that on Windows the OpenGL driver fails hard (popup that closes the application)
     // on a TDR caused by D3D. Don't run D3D tests at the same time as the OpenGL tests.
     ANGLE_SKIP_TEST_IF(IsWindows() && isGLRenderer());
@@ -287,7 +360,8 @@ TEST_P(EGLRobustnessTest, DISABLED_ResettingDisplayWorks)
     }
     std::cout << "Causing a GPU reset, brace for impact." << std::endl;
 
-    forceContextReset();
+    submitLongRunningTask();
+    glFinish();
     ASSERT_TRUE(glGetGraphicsResetStatusEXT() != GL_NO_ERROR);
 
     recreateTestFixture();
@@ -308,7 +382,7 @@ TEST_P(EGLRobustnessTestES3, ContextResetOnInvalidLocalShaderVariableAccess)
     createRobustContext(EGL_LOSE_CONTEXT_ON_RESET, EGL_NO_CONTEXT);
 
     ANGLE_GL_PROGRAM(program, essl3_shaders::vs::Simple(), getInvalidShaderLocalVariableAccessFS());
-    testInvalidShaderLocalVariableAccess(program);
+    testInvalidShaderLocalVariableAccess(program, eglContextOpenglRobustAccess::enable);
 }
 
 // Similar to ContextResetOnInvalidLocalShaderVariableAccess, but the program is created on a
@@ -330,7 +404,7 @@ TEST_P(EGLRobustnessTestES3,
     ANGLE_GL_PROGRAM(program, essl3_shaders::vs::Simple(), getInvalidShaderLocalVariableAccessFS());
     eglMakeCurrent(mDisplay, mWindow, mWindow, mContext);
 
-    testInvalidShaderLocalVariableAccess(program);
+    testInvalidShaderLocalVariableAccess(program, eglContextOpenglRobustAccess::enable);
 
     eglDestroyContext(mDisplay, shareContext);
 }
@@ -352,7 +426,7 @@ TEST_P(EGLRobustnessTestES3,
     EGLContext shareContext = mContext;
 
     createRobustContext(EGL_LOSE_CONTEXT_ON_RESET, shareContext);
-    testInvalidShaderLocalVariableAccess(program);
+    testInvalidShaderLocalVariableAccess(program, eglContextOpenglRobustAccess::enable);
 
     eglDestroyContext(mDisplay, shareContext);
 }
@@ -370,7 +444,7 @@ TEST_P(EGLRobustnessTestES3, ContextNoResetOnInvalidLocalShaderVariableAccess)
     createRobustContext(EGL_NO_RESET_NOTIFICATION_EXT, EGL_NO_CONTEXT);
 
     ANGLE_GL_PROGRAM(program, essl3_shaders::vs::Simple(), getInvalidShaderLocalVariableAccessFS());
-    testInvalidShaderLocalVariableAccess(program);
+    testInvalidShaderLocalVariableAccess(program, eglContextOpenglRobustAccess::enable);
 }
 
 // Similar to ContextNoResetOnInvalidLocalShaderVariableAccess, but the program is created on a
@@ -391,7 +465,7 @@ TEST_P(EGLRobustnessTestES3,
     ANGLE_GL_PROGRAM(program, essl3_shaders::vs::Simple(), getInvalidShaderLocalVariableAccessFS());
     eglMakeCurrent(mDisplay, mWindow, mWindow, mContext);
 
-    testInvalidShaderLocalVariableAccess(program);
+    testInvalidShaderLocalVariableAccess(program, eglContextOpenglRobustAccess::enable);
 
     eglDestroyContext(mDisplay, shareContext);
 }
@@ -412,9 +486,33 @@ TEST_P(EGLRobustnessTestES3,
     EGLContext shareContext = mContext;
 
     createRobustContext(EGL_NO_RESET_NOTIFICATION_EXT, shareContext);
-    testInvalidShaderLocalVariableAccess(program);
+    testInvalidShaderLocalVariableAccess(program, eglContextOpenglRobustAccess::enable);
 
     eglDestroyContext(mDisplay, shareContext);
+}
+
+// Replicate test
+// dEQP-EGL.functional.robustness.reset_context.shaders.out_of_bounds_non_robust.reset_status.writes
+// .local_array.fragment
+// Test that when writing out-of-bounds in fragment shader:
+// 1) After draw command, test receives GL_CONTEXT_LOST error or GL_NO_ERROR.
+// 2) eglMakeCurrent(EGL_NO_CONTEXT) on lost context should return EGL_SUCCESS.
+TEST_P(EGLRobustnessTestES3, NonRobustContextOnInvalidLocalShaderVariableAccessShouldNotCrash)
+{
+
+    ANGLE_SKIP_TEST_IF(!mInitialized);
+    ANGLE_SKIP_TEST_IF(
+        !IsEGLDisplayExtensionEnabled(mDisplay, "EGL_KHR_create_context") ||
+        !IsEGLDisplayExtensionEnabled(mDisplay, "EGL_EXT_create_context_robustness"));
+
+    createClientVersion3NonRobustContext(EGL_LOSE_CONTEXT_ON_RESET_KHR);
+
+    ANGLE_GL_PROGRAM(program, essl3_shaders::vs::Simple(), getInvalidShaderLocalVariableAccessFS());
+    testInvalidShaderLocalVariableAccess(program, eglContextOpenglRobustAccess::disable);
+
+    eglMakeCurrent(mDisplay, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
+    GLint errorCode = eglGetError();
+    ASSERT(errorCode == EGL_SUCCESS);
 }
 
 // Test that using a program in a non-robust context, then sharing it with a robust context and
@@ -763,6 +861,16 @@ void main() {
     }
 }
 
+// Test context destruction after recovering from a long running task.
+TEST_P(EGLRobustnessTest, DISABLED_LongRunningTaskVulkanShutdown)
+{
+    ANGLE_SKIP_TEST_IF(!mInitialized);
+
+    createContext(EGL_NO_RESET_NOTIFICATION_EXT);
+    submitLongRunningTask();
+    destroyContext();
+}
+
 GTEST_ALLOW_UNINSTANTIATED_PARAMETERIZED_TEST(EGLRobustnessTest);
 GTEST_ALLOW_UNINSTANTIATED_PARAMETERIZED_TEST(EGLRobustnessTestES3);
 GTEST_ALLOW_UNINSTANTIATED_PARAMETERIZED_TEST(EGLRobustnessTestES31);
@@ -771,12 +879,14 @@ ANGLE_INSTANTIATE_TEST(EGLRobustnessTest,
                        WithNoFixture(ES2_D3D9()),
                        WithNoFixture(ES2_D3D11()),
                        WithNoFixture(ES2_OPENGL()),
-                       WithNoFixture(ES2_OPENGLES()));
+                       WithNoFixture(ES2_OPENGLES()),
+                       WithNoFixture(ES2_VULKAN_SWIFTSHADER()));
 ANGLE_INSTANTIATE_TEST(EGLRobustnessTestES3,
                        WithNoFixture(ES3_VULKAN()),
                        WithNoFixture(ES3_D3D11()),
                        WithNoFixture(ES3_OPENGL()),
-                       WithNoFixture(ES3_OPENGLES()));
+                       WithNoFixture(ES3_OPENGLES()),
+                       WithNoFixture(ES3_VULKAN_SWIFTSHADER()));
 ANGLE_INSTANTIATE_TEST(EGLRobustnessTestES31,
                        WithNoFixture(ES31_VULKAN()),
                        WithNoFixture(ES31_VULKAN_SWIFTSHADER()));

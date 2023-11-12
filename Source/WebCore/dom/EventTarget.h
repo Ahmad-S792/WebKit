@@ -37,6 +37,7 @@
 #include "ScriptWrappable.h"
 #include <memory>
 #include <variant>
+#include <wtf/CheckedPtr.h>
 #include <wtf/Forward.h>
 #include <wtf/IsoMalloc.h>
 #include <wtf/WeakPtr.h>
@@ -78,13 +79,13 @@ private:
     EventTargetData m_eventTargetData;
 };
 
-class EventTarget : public ScriptWrappable, public CanMakeWeakPtr<EventTarget, WeakPtrFactoryInitialization::Lazy, WeakPtrImplWithEventTargetData> {
+class EventTarget : public ScriptWrappable, public CanMakeWeakPtr<EventTarget, WeakPtrFactoryInitialization::Lazy, WeakPtrImplWithEventTargetData>, public CanMakeCheckedPtr {
     WTF_MAKE_ISO_ALLOCATED(EventTarget);
 public:
     static Ref<EventTarget> create(ScriptExecutionContext&);
 
-    void ref() { refEventTarget(); }
-    void deref() { derefEventTarget(); }
+    inline void ref(); // Defined in Node.h.
+    inline void deref(); // Defined in Node.h.
 
     virtual EventTargetInterface eventTargetInterface() const = 0;
     virtual ScriptExecutionContext* scriptExecutionContext() const = 0;
@@ -108,7 +109,7 @@ public:
     template<typename JSMaybeErrorEventListener>
     void setAttributeEventListener(const AtomString& eventType, JSC::JSValue listener, JSC::JSObject& jsEventTarget);
     bool setAttributeEventListener(const AtomString& eventType, RefPtr<EventListener>&&, DOMWrapperWorld&);
-    JSEventListener* attributeEventListener(const AtomString& eventType, DOMWrapperWorld&);
+    RefPtr<JSEventListener> attributeEventListener(const AtomString& eventType, DOMWrapperWorld&);
 
     bool hasEventListeners() const;
     bool hasEventListeners(const AtomString& eventType) const;
@@ -165,10 +166,9 @@ protected:
         IsNode = 1 << 1,
         // Element bits
         HasDuplicateAttribute = 1 << 2,
-        DisplayContentsChanged = 1 << 3,
-        HasLangAttr = 1 << 4,
-        HasXMLLangAttr = 1 << 5,
-        EffectiveLangKnownToMatchDocumentElement = 1 << 6,
+        HasLangAttr = 1 << 3,
+        HasXMLLangAttr = 1 << 4,
+        EffectiveLangKnownToMatchDocumentElement = 1 << 5,
     };
 
     EventTargetData& ensureEventTargetData()

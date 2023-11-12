@@ -62,7 +62,7 @@ static String formatByteNumber(size_t number)
 
 static String gcTimerString(MonotonicTime timerFireDate, MonotonicTime now)
 {
-    if (std::isnan(timerFireDate))
+    if (timerFireDate.isNaN())
         return "[not scheduled]"_s;
     return String::numberToStringFixedPrecision((timerFireDate - now).seconds());
 }
@@ -88,7 +88,7 @@ public:
     ~ResourceUsageOverlayPainter() = default;
 
 private:
-    void paintContents(const GraphicsLayer*, GraphicsContext& context, const FloatRect& clip, GraphicsLayerPaintBehavior) override
+    void paintContents(const GraphicsLayer*, GraphicsContext& context, const FloatRect& clip, OptionSet<GraphicsLayerPaintBehavior>) override
     {
         GraphicsContextStateSaver stateSaver(context);
         context.fillRect(clip, Color::black.colorWithAlphaByte(204));

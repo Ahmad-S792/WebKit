@@ -33,8 +33,9 @@
 
 namespace WebCore {
 
-class Frame;
 class HistoryItem;
+class HistoryItemClient;
+class LocalFrame;
 class SerializedScriptValue;
 
 enum class ShouldTreatAsContinuingLoad : uint8_t;
@@ -43,11 +44,11 @@ struct StringWithDirection;
 
 class FrameLoader::HistoryController {
     WTF_MAKE_NONCOPYABLE(HistoryController);
-    WTF_MAKE_FAST_ALLOCATED;
+    WTF_MAKE_FAST_ALLOCATED_WITH_HEAP_IDENTIFIER(Loader);
 public:
     enum HistoryUpdateType { UpdateAll, UpdateAllExceptBackForwardList };
 
-    explicit HistoryController(Frame&);
+    explicit HistoryController(LocalFrame&);
     ~HistoryController();
 
     WEBCORE_EXPORT void saveScrollPositionAndViewStateToItem(HistoryItem*);
@@ -72,6 +73,7 @@ public:
     void updateForFrameLoadCompleted();
 
     HistoryItem* currentItem() const { return m_currentItem.get(); }
+    RefPtr<HistoryItem> protectedCurrentItem() const;
     WEBCORE_EXPORT void setCurrentItem(HistoryItem&);
     void setCurrentItemTitle(const StringWithDirection&);
     bool currentItemShouldBeReplaced() const;
@@ -81,6 +83,7 @@ public:
     void clearPreviousItem();
 
     HistoryItem* provisionalItem() const { return m_provisionalItem.get(); }
+    RefPtr<HistoryItem> protectedProvisionalItem() const;
     void setProvisionalItem(HistoryItem*);
 
     void pushState(RefPtr<SerializedScriptValue>&&, const String& title, const String& url);
@@ -94,8 +97,8 @@ private:
     void goToItem(HistoryItem&, FrameLoadType, ShouldTreatAsContinuingLoad);
 
     void initializeItem(HistoryItem&);
-    Ref<HistoryItem> createItem();
-    Ref<HistoryItem> createItemTree(Frame& targetFrame, bool clipAtTarget);
+    Ref<HistoryItem> createItem(HistoryItemClient&);
+    Ref<HistoryItem> createItemTree(HistoryItemClient&, LocalFrame& targetFrame, bool clipAtTarget);
 
     void recursiveSetProvisionalItem(HistoryItem&, HistoryItem*);
     void recursiveGoToItem(HistoryItem&, HistoryItem*, FrameLoadType, ShouldTreatAsContinuingLoad);
@@ -108,7 +111,7 @@ private:
     void updateBackForwardListClippedAtTarget(bool doClip);
     void updateCurrentItem();
 
-    Frame& m_frame;
+    LocalFrame& m_frame;
 
     RefPtr<HistoryItem> m_currentItem;
     RefPtr<HistoryItem> m_previousItem;

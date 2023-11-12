@@ -34,15 +34,18 @@
 
 namespace rx
 {
-TextureStorage11::SamplerKey::SamplerKey()
-    : baseLevel(0), mipLevels(0), swizzle(false), dropStencil(false)
-{}
+TextureStorage11::SamplerKey::SamplerKey() : SamplerKey(0, 0, false, false, false) {}
 
 TextureStorage11::SamplerKey::SamplerKey(int baseLevel,
                                          int mipLevels,
                                          bool swizzle,
-                                         bool dropStencil)
-    : baseLevel(baseLevel), mipLevels(mipLevels), swizzle(swizzle), dropStencil(dropStencil)
+                                         bool dropStencil,
+                                         bool forceLinearSampler)
+    : baseLevel(baseLevel),
+      mipLevels(mipLevels),
+      swizzle(swizzle),
+      dropStencil(dropStencil),
+      forceLinearSampler(forceLinearSampler)
 {}
 
 bool TextureStorage11::SamplerKey::operator<(const SamplerKey &rhs) const
@@ -262,7 +265,10 @@ angle::Result TextureStorage11::getSRVForSampler(const gl::Context *context,
         (getLevelWidth(effectiveTopLevel) <= 2 || getLevelHeight(effectiveTopLevel) <= 2);
 
     const bool useDropStencil = (emulateTinyStencilTextures && hasStencil && hasSmallMips);
-    const SamplerKey key(effectiveBaseLevel, mipLevels, swizzleRequired, useDropStencil);
+    const bool forceLinearSampler =
+        false;  // If supporting non-default sRGB Decode, this is where it will be passed.
+    const SamplerKey key(effectiveBaseLevel, mipLevels, swizzleRequired, useDropStencil,
+                         forceLinearSampler);
     if (useDropStencil)
     {
         // Ensure drop texture gets created.
@@ -310,6 +316,19 @@ angle::Result TextureStorage11::getCachedOrCreateSRVForSampler(const gl::Context
         ASSERT(mDropStencilTexture.valid());
         texture = &mDropStencilTexture;
         format  = DXGI_FORMAT_R32_FLOAT;
+    }
+    else if (key.forceLinearSampler)
+    {
+        ANGLE_TRY(getResource(context, &texture));
+        if (mFormatInfo.linearSRVFormat != DXGI_FORMAT_UNKNOWN)
+        {
+            ASSERT(requiresTypelessTextureFormat());
+            format = mFormatInfo.linearSRVFormat;
+        }
+        else
+        {
+            format = mFormatInfo.srvFormat;
+        }
     }
     else
     {
@@ -378,6 +397,7 @@ angle::Result TextureStorage11::getSRVLevel(const gl::Context *context,
 angle::Result TextureStorage11::getSRVLevels(const gl::Context *context,
                                              GLint baseLevel,
                                              GLint maxLevel,
+                                             bool forceLinearSampler,
                                              const d3d11::SharedSRV **outSRV)
 {
     ANGLE_TRY(resolveTexture(context));
@@ -400,7 +420,7 @@ angle::Result TextureStorage11::getSRVLevels(const gl::Context *context,
 
     // TODO(jmadill): Assert we don't need to drop stencil.
 
-    SamplerKey key(baseLevel, mipLevels, false, false);
+    SamplerKey key(baseLevel, mipLevels, false, false, forceLinearSampler);
     ANGLE_TRY(getCachedOrCreateSRVForSampler(context, key, outSRV));
 
     return angle::Result::Continue;
@@ -661,6 +681,12 @@ angle::Result TextureStorage11::copySubresourceLevel(const gl::Context *context,
                                          region.z, srcTexture->get(), srcSubresource, pSrcBox);
 
     return angle::Result::Continue;
+}
+
+bool TextureStorage11::requiresTypelessTextureFormat() const
+{
+    return isUnorderedAccess() || (mFormatInfo.typelessFormat != DXGI_FORMAT_UNKNOWN &&
+                                   mFormatInfo.linearSRVFormat != DXGI_FORMAT_UNKNOWN);
 }
 
 angle::Result TextureStorage11::generateMipmap(const gl::Context *context,
@@ -1292,7 +1318,8 @@ angle::Result TextureStorage11_2D::ensureTextureExists(const gl::Context *contex
         desc.Height    = mTextureHeight;
         desc.MipLevels = mipLevels;
         desc.ArraySize = 1;
-        desc.Format    = isUnorderedAccess() ? mFormatInfo.typelessFormat : mFormatInfo.texFormat;
+        desc.Format =
+            requiresTypelessTextureFormat() ? mFormatInfo.typelessFormat : mFormatInfo.texFormat;
         desc.SampleDesc.Count   = 1;
         desc.SampleDesc.Quality = 0;
         desc.Usage              = D3D11_USAGE_DEFAULT;
@@ -1305,11 +1332,11 @@ angle::Result TextureStorage11_2D::ensureTextureExists(const gl::Context *contex
 
         if (useLevelZeroTexture)
         {
-            outputTexture->setLabels("TexStorage2D.Level0Texture", &mKHRDebugLabel);
+            outputTexture->setLabels("TexStorage2D.Level0", &mKHRDebugLabel);
         }
         else
         {
-            outputTexture->setLabels("TexStorage2D.Texture", &mKHRDebugLabel);
+            outputTexture->setLabels("TexStorage2D", &mKHRDebugLabel);
         }
     }
 
@@ -1570,7 +1597,7 @@ angle::Result TextureStorage11_2D::getSwizzleTexture(const gl::Context *context,
 
         ANGLE_TRY(mRenderer->allocateTexture(GetImplAs<Context11>(context), desc, format,
                                              &mSwizzleTexture));
-        mSwizzleTexture.setLabels("TexStorage2D.SwizzleTexture", &mKHRDebugLabel);
+        mSwizzleTexture.setLabels("TexStorage2D.Swizzle", &mKHRDebugLabel);
     }
 
     *outTexture = &mSwizzleTexture;
@@ -1653,7 +1680,8 @@ TextureStorage11_External::TextureStorage11_External(
     egl::Stream *stream,
     const egl::Stream::GLTextureDescription &glDesc,
     const std::string &label)
-    : TextureStorage11(renderer, D3D11_BIND_SHADER_RESOURCE, 0, glDesc.internalFormat, label)
+    : TextureStorage11(renderer, D3D11_BIND_SHADER_RESOURCE, 0, glDesc.internalFormat, label),
+      mAssociatedImage(nullptr)
 {
     ASSERT(stream->getProducerType() == egl::Stream::ProducerType::D3D11Texture);
     auto *producer = static_cast<StreamProducerD3DTexture *>(stream->getImplementation());
@@ -1677,6 +1705,15 @@ angle::Result TextureStorage11_External::onDestroy(const gl::Context *context)
         // If the keyed mutex is released that will unbind it and cause the state cache to become
         // desynchronized.
         mRenderer->getStateManager()->invalidateBoundViews();
+    }
+
+    if (mAssociatedImage != nullptr)
+    {
+        mAssociatedImage->verifyAssociatedStorageValid(this);
+
+        // We must let the Images recover their data before we delete it from the
+        // TextureStorage.
+        ANGLE_TRY(mAssociatedImage->recoverFromAssociatedStorage(context));
     }
 
     return angle::Result::Continue;
@@ -1886,7 +1923,8 @@ TextureStorage11_EGLImage::TextureStorage11_EGLImage(Renderer11 *renderer,
       mImage(eglImage),
       mCurrentRenderTarget(0),
       mSwizzleTexture(),
-      mSwizzleRenderTargets(gl::IMPLEMENTATION_MAX_TEXTURE_LEVELS)
+      mSwizzleRenderTargets(gl::IMPLEMENTATION_MAX_TEXTURE_LEVELS),
+      mAssociatedImage(nullptr)
 {
     mCurrentRenderTarget = reinterpret_cast<uintptr_t>(renderTarget11);
 
@@ -1897,6 +1935,20 @@ TextureStorage11_EGLImage::TextureStorage11_EGLImage(Renderer11 *renderer,
 }
 
 TextureStorage11_EGLImage::~TextureStorage11_EGLImage() {}
+
+angle::Result TextureStorage11_EGLImage::onDestroy(const gl::Context *context)
+{
+    if (mAssociatedImage != nullptr)
+    {
+        mAssociatedImage->verifyAssociatedStorageValid(this);
+
+        // We must let the Images recover their data before we delete it from the
+        // TextureStorage.
+        ANGLE_TRY(mAssociatedImage->recoverFromAssociatedStorage(context));
+    }
+
+    return angle::Result::Continue;
+}
 
 angle::Result TextureStorage11_EGLImage::getSubresourceIndex(const gl::Context *context,
                                                              const gl::ImageIndex &index,
@@ -2014,7 +2066,7 @@ angle::Result TextureStorage11_EGLImage::getSwizzleTexture(const gl::Context *co
 
         ANGLE_TRY(mRenderer->allocateTexture(GetImplAs<Context11>(context), desc, format,
                                              &mSwizzleTexture));
-        mSwizzleTexture.setLabels("TexStorageEGLImage.SwizzleTexture", &mKHRDebugLabel);
+        mSwizzleTexture.setLabels("TexStorageEGLImage.Swizzle", &mKHRDebugLabel);
     }
 
     *outTexture = &mSwizzleTexture;
@@ -2119,6 +2171,42 @@ void TextureStorage11_EGLImage::onLabelUpdate()
     {
         mSwizzleTexture.setKHRDebugLabel(&mKHRDebugLabel);
     }
+}
+
+void TextureStorage11_EGLImage::associateImage(Image11 *image, const gl::ImageIndex &index)
+{
+    ASSERT(index.getLevelIndex() == 0);
+    mAssociatedImage = image;
+}
+
+void TextureStorage11_EGLImage::verifyAssociatedImageValid(const gl::ImageIndex &index,
+                                                           Image11 *expectedImage)
+{
+    ASSERT(index.getLevelIndex() == 0 && mAssociatedImage == expectedImage);
+}
+
+void TextureStorage11_EGLImage::disassociateImage(const gl::ImageIndex &index,
+                                                  Image11 *expectedImage)
+{
+    ASSERT(index.getLevelIndex() == 0);
+    ASSERT(mAssociatedImage == expectedImage);
+    mAssociatedImage = nullptr;
+}
+
+angle::Result TextureStorage11_EGLImage::releaseAssociatedImage(const gl::Context *context,
+                                                                const gl::ImageIndex &index,
+                                                                Image11 *incomingImage)
+{
+    ASSERT(index.getLevelIndex() == 0);
+
+    if (mAssociatedImage != nullptr && mAssociatedImage != incomingImage)
+    {
+        mAssociatedImage->verifyAssociatedStorageValid(this);
+
+        ANGLE_TRY(mAssociatedImage->recoverFromAssociatedStorage(context));
+    }
+
+    return angle::Result::Continue;
 }
 
 TextureStorage11_Cube::TextureStorage11_Cube(Renderer11 *renderer,
@@ -2433,7 +2521,8 @@ angle::Result TextureStorage11_Cube::ensureTextureExists(const gl::Context *cont
         desc.Height    = mTextureHeight;
         desc.MipLevels = mipLevels;
         desc.ArraySize = gl::kCubeFaceCount;
-        desc.Format    = isUnorderedAccess() ? mFormatInfo.typelessFormat : mFormatInfo.texFormat;
+        desc.Format =
+            requiresTypelessTextureFormat() ? mFormatInfo.typelessFormat : mFormatInfo.texFormat;
         desc.SampleDesc.Count   = 1;
         desc.SampleDesc.Quality = 0;
         desc.Usage              = D3D11_USAGE_DEFAULT;
@@ -2443,7 +2532,7 @@ angle::Result TextureStorage11_Cube::ensureTextureExists(const gl::Context *cont
 
         ANGLE_TRY(mRenderer->allocateTexture(GetImplAs<Context11>(context), desc, mFormatInfo,
                                              outputTexture));
-        outputTexture->setLabels("TexStorageCube.Texture", &mKHRDebugLabel);
+        outputTexture->setLabels("TexStorageCube", &mKHRDebugLabel);
     }
 
     return angle::Result::Continue;
@@ -2754,7 +2843,7 @@ angle::Result TextureStorage11_Cube::getSwizzleTexture(const gl::Context *contex
 
         ANGLE_TRY(mRenderer->allocateTexture(GetImplAs<Context11>(context), desc, format,
                                              &mSwizzleTexture));
-        mSwizzleTexture.setLabels("TexStorageCube.SwizzleTexture", &mKHRDebugLabel);
+        mSwizzleTexture.setLabels("TexStorageCube.Swizzle", &mKHRDebugLabel);
     }
 
     *outTexture = &mSwizzleTexture;
@@ -2976,15 +3065,16 @@ angle::Result TextureStorage11_3D::getResource(const gl::Context *context,
         desc.Height    = mTextureHeight;
         desc.Depth     = mTextureDepth;
         desc.MipLevels = mMipLevels;
-        desc.Format    = isUnorderedAccess() ? mFormatInfo.typelessFormat : mFormatInfo.texFormat;
-        desc.Usage     = D3D11_USAGE_DEFAULT;
-        desc.BindFlags = getBindFlags();
+        desc.Format =
+            requiresTypelessTextureFormat() ? mFormatInfo.typelessFormat : mFormatInfo.texFormat;
+        desc.Usage          = D3D11_USAGE_DEFAULT;
+        desc.BindFlags      = getBindFlags();
         desc.CPUAccessFlags = 0;
         desc.MiscFlags      = getMiscFlags();
 
         ANGLE_TRY(mRenderer->allocateTexture(GetImplAs<Context11>(context), desc, mFormatInfo,
                                              &mTexture));
-        mTexture.setLabels("TexStorage3D.Texture", &mKHRDebugLabel);
+        mTexture.setLabels("TexStorage3D", &mKHRDebugLabel);
     }
 
     *outResource = &mTexture;
@@ -3184,7 +3274,7 @@ angle::Result TextureStorage11_3D::getSwizzleTexture(const gl::Context *context,
 
         ANGLE_TRY(mRenderer->allocateTexture(GetImplAs<Context11>(context), desc, format,
                                              &mSwizzleTexture));
-        mSwizzleTexture.setLabels("TexStorage3D.SwizzleTexture", &mKHRDebugLabel);
+        mSwizzleTexture.setLabels("TexStorage3D.Swizzle", &mKHRDebugLabel);
     }
 
     *outTexture = &mSwizzleTexture;
@@ -3369,7 +3459,8 @@ angle::Result TextureStorage11_2DArray::getResource(const gl::Context *context,
         desc.Height    = mTextureHeight;
         desc.MipLevels = mMipLevels;
         desc.ArraySize = mTextureDepth;
-        desc.Format    = isUnorderedAccess() ? mFormatInfo.typelessFormat : mFormatInfo.texFormat;
+        desc.Format =
+            requiresTypelessTextureFormat() ? mFormatInfo.typelessFormat : mFormatInfo.texFormat;
         desc.SampleDesc.Count   = 1;
         desc.SampleDesc.Quality = 0;
         desc.Usage              = D3D11_USAGE_DEFAULT;
@@ -3379,7 +3470,7 @@ angle::Result TextureStorage11_2DArray::getResource(const gl::Context *context,
 
         ANGLE_TRY(mRenderer->allocateTexture(GetImplAs<Context11>(context), desc, mFormatInfo,
                                              &mTexture));
-        mTexture.setLabels("TexStorage2DArray.Texture", &mKHRDebugLabel);
+        mTexture.setLabels("TexStorage2DArray", &mKHRDebugLabel);
     }
 
     *outResource = &mTexture;
@@ -3594,7 +3685,7 @@ angle::Result TextureStorage11_2DArray::getSwizzleTexture(const gl::Context *con
 
         ANGLE_TRY(mRenderer->allocateTexture(GetImplAs<Context11>(context), desc, format,
                                              &mSwizzleTexture));
-        mSwizzleTexture.setLabels("TexStorage2DArray.SwizzleTexture", &mKHRDebugLabel);
+        mSwizzleTexture.setLabels("TexStorage2DArray.Swizzle", &mKHRDebugLabel);
     }
 
     *outTexture = &mSwizzleTexture;
@@ -3768,7 +3859,7 @@ angle::Result TextureStorage11_2DMultisample::ensureTextureExists(const gl::Cont
 
         ANGLE_TRY(mRenderer->allocateTexture(GetImplAs<Context11>(context), desc, mFormatInfo,
                                              &mTexture));
-        mTexture.setLabels("TexStorage2DMS.Texture", &mKHRDebugLabel);
+        mTexture.setLabels("TexStorage2DMS", &mKHRDebugLabel);
     }
 
     return angle::Result::Continue;
@@ -3989,7 +4080,7 @@ angle::Result TextureStorage11_2DMultisampleArray::ensureTextureExists(const gl:
 
         ANGLE_TRY(mRenderer->allocateTexture(GetImplAs<Context11>(context), desc, mFormatInfo,
                                              &mTexture));
-        mTexture.setLabels("TexStorage2DMSArray.Texture", &mKHRDebugLabel);
+        mTexture.setLabels("TexStorage2DMSArray", &mKHRDebugLabel);
     }
 
     return angle::Result::Continue;

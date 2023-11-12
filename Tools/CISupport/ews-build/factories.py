@@ -24,21 +24,21 @@
 from buildbot.process import factory
 from buildbot.steps import trigger
 
-from steps import (AddReviewerToCommitMessage, ApplyPatch, ApplyWatchList, Canonicalize, CommitPatch,
+from .steps import (AddReviewerToCommitMessage, ApplyPatch, ApplyWatchList, Canonicalize, CommitPatch,
                    CheckOutPullRequest, CheckOutSource, CheckOutSpecificRevision, CheckChangeRelevance,
-                   CheckStatusOnEWSQueues, CheckStyle, CleanGitRepo, CompileJSC, CompileWebKit, ConfigureBuild,
-                   DownloadBuiltProduct, ExtractBuiltProduct, FetchBranches, FindModifiedLayoutTests,
-                   InstallGtkDependencies, InstallWpeDependencies, KillOldProcesses, PrintConfiguration, PushCommitToWebKitRepo, PushPullRequestBranch,
-                   MapBranchAlias, RunAPITests, RunBindingsTests, RunBuildWebKitOrgUnitTests, RunBuildbotCheckConfigForBuildWebKit, RunBuildbotCheckConfigForEWS,
+                   CheckStatusOnEWSQueues, CheckStyle, CleanGitRepo, CompileJSC, CompileWebKit, ConfigureBuild, DetermineLabelOwner,
+                   DownloadBuiltProduct, ExtractBuiltProduct, FetchBranches, FindModifiedLayoutTests, GitHub,
+                   InstallGtkDependencies, InstallHooks, InstallWpeDependencies, KillOldProcesses, PrintConfiguration, PushCommitToWebKitRepo, PushPullRequestBranch,
+                   MapBranchAlias, RemoveAndAddLabels, RetrievePRDataFromLabel, RunAPITests, RunBindingsTests, RunBuildWebKitOrgUnitTests, RunBuildbotCheckConfigForBuildWebKit, RunBuildbotCheckConfigForEWS,
                    RunEWSUnitTests, RunResultsdbpyTests, RunJavaScriptCoreTests, RunWebKit1Tests, RunWebKitPerlTests, RunWebKitPyPython2Tests,
                    RunWebKitPyPython3Tests, RunWebKitTests, RunWebKitTestsRedTree, RunWebKitTestsInStressMode, RunWebKitTestsInStressGuardmallocMode,
                    SetBuildSummary, ShowIdentifier, TriggerCrashLogSubmission, UpdateWorkingDirectory, UpdatePullRequest,
                    ValidateCommitMessage, ValidateChange, ValidateCommitterAndReviewer, WaitForCrashCollection,
-                   InstallBuiltProduct, ValidateRemote, ValidateSquashed)
-
+                   InstallBuiltProduct, ValidateRemote, ValidateSquashed, GITHUB_PROJECTS)
 
 class Factory(factory.BuildFactory):
     findModifiedLayoutTests = False
+    branches = None
 
     def __init__(self, platform, configuration=None, architectures=None, buildOnly=True, triggers=None, triggered_by=None, remotes=None, additionalArguments=None, checkRelevance=False, **kwargs):
         factory.BuildFactory.__init__(self)
@@ -47,7 +47,7 @@ class Factory(factory.BuildFactory):
             self.addStep(CheckChangeRelevance())
         if self.findModifiedLayoutTests:
             self.addStep(FindModifiedLayoutTests())
-        self.addStep(ValidateChange())
+        self.addStep(ValidateChange(branches=self.branches))
         self.addStep(PrintConfiguration())
         self.addStep(CleanGitRepo())
         self.addStep(CheckOutSource())
@@ -124,6 +124,8 @@ class BuildFactory(Factory):
         self.addStep(KillOldProcesses())
         if platform == 'gtk':
             self.addStep(InstallGtkDependencies())
+        elif platform == 'wpe':
+            self.addStep(InstallWpeDependencies())
         self.addStep(ValidateChange(addURLs=False))
         self.addStep(CompileWebKit(skipUpload=self.skipUpload))
         if platform == 'gtk':
@@ -143,13 +145,15 @@ class TestFactory(Factory):
         Factory.__init__(self, platform=platform, configuration=configuration, architectures=architectures, buildOnly=False, triggered_by=triggered_by, additionalArguments=additionalArguments, checkRelevance=checkRelevance)
         if platform == 'gtk':
             self.addStep(InstallGtkDependencies())
+        elif platform == 'wpe':
+            self.addStep(InstallWpeDependencies())
         self.getProduct()
         if self.willTriggerCrashLogSubmission:
             self.addStep(WaitForCrashCollection())
         self.addStep(KillOldProcesses())
         if self.LayoutTestClass:
             self.addStep(FindModifiedLayoutTests(skipBuildIfNoResult=False))
-            self.addStep(RunWebKitTestsInStressMode(num_iterations=10))
+            self.addStep(RunWebKitTestsInStressMode(num_iterations=10, layout_test_class=self.LayoutTestClass))
             self.addStep(self.LayoutTestClass())
         if self.APITestClass:
             self.addStep(self.APITestClass())
@@ -249,6 +253,8 @@ class macOSWK2Factory(TestFactory):
 
 
 class WinCairoFactory(Factory):
+    branches = [r'main']
+
     def __init__(self, platform, configuration=None, architectures=None, triggers=None, additionalArguments=None, **kwargs):
         Factory.__init__(self, platform=platform, configuration=configuration, architectures=architectures, buildOnly=True, triggers=triggers, additionalArguments=additionalArguments)
         self.addStep(KillOldProcesses())
@@ -257,20 +263,19 @@ class WinCairoFactory(Factory):
 
 
 class GTKBuildFactory(BuildFactory):
-    pass
+    branches = [r'main', r'webkit.+']
 
 
 class GTKTestsFactory(TestFactory):
     LayoutTestClass = RunWebKitTestsRedTree
 
 
-class WPEFactory(Factory):
-    def __init__(self, platform, configuration=None, architectures=None, triggers=None, additionalArguments=None, **kwargs):
-        Factory.__init__(self, platform=platform, configuration=configuration, architectures=architectures, buildOnly=True, triggers=triggers, additionalArguments=additionalArguments)
-        self.addStep(KillOldProcesses())
-        self.addStep(InstallWpeDependencies())
-        self.addStep(ValidateChange(verifyBugClosed=False, addURLs=False))
-        self.addStep(CompileWebKit(skipUpload=True))
+class WPEBuildFactory(BuildFactory):
+    branches = [r'main', r'webkit.+']
+
+
+class WPETestsFactory(TestFactory):
+    LayoutTestClass = RunWebKitTestsRedTree
 
 
 class ServicesFactory(Factory):
@@ -296,6 +301,7 @@ class CommitQueueFactory(factory.BuildFactory):
         self.addStep(FetchBranches())
         self.addStep(UpdateWorkingDirectory())
         self.addStep(ShowIdentifier())
+        self.addStep(InstallHooks())
         self.addStep(CommitPatch())
 
         self.addStep(ValidateSquashed())
@@ -321,6 +327,7 @@ class MergeQueueFactoryBase(factory.BuildFactory):
         super(MergeQueueFactoryBase, self).__init__()
         self.addStep(ConfigureBuild(platform=platform, configuration=configuration, architectures=architectures, buildOnly=False, triggers=None, remotes=None, additionalArguments=additionalArguments))
         self.addStep(ValidateChange(verifyMergeQueue=True, verifyNoDraftForMergeQueue=True, enableSkipEWSLabel=False))
+        self.addStep(DetermineLabelOwner())
         self.addStep(ValidateCommitterAndReviewer())
         self.addStep(PrintConfiguration())
         self.addStep(CleanGitRepo())
@@ -329,6 +336,7 @@ class MergeQueueFactoryBase(factory.BuildFactory):
         self.addStep(MapBranchAlias())
         self.addStep(UpdateWorkingDirectory())
         self.addStep(ShowIdentifier())
+        self.addStep(InstallHooks())
         self.addStep(CheckOutPullRequest())
         self.addStep(ValidateRemote())
         self.addStep(ValidateSquashed())
@@ -360,9 +368,16 @@ class UnsafeMergeQueueFactory(MergeQueueFactoryBase):
     def __init__(self, platform, **kwargs):
         super(UnsafeMergeQueueFactory, self).__init__(platform, **kwargs)
 
-        self.addStep(ValidateChange(verifyMergeQueue=True, verifyNoDraftForMergeQueue=True, enableSkipEWSLabel=False))
         self.addStep(Canonicalize())
+        self.addStep(ValidateChange(verifyMergeQueue=True, verifyNoDraftForMergeQueue=True, enableSkipEWSLabel=False))
         self.addStep(PushPullRequestBranch())
         self.addStep(UpdatePullRequest())
         self.addStep(PushCommitToWebKitRepo())
         self.addStep(SetBuildSummary())
+
+
+class SafeMergeQueueFactory(factory.BuildFactory):
+    def __init__(self, platform, configuration=None, architectures=None, additionalArguments=None, **kwargs):
+        super().__init__()
+        for project in GITHUB_PROJECTS:
+            self.addStep(RetrievePRDataFromLabel(project, label=GitHub.SAFE_MERGE_QUEUE_LABEL))

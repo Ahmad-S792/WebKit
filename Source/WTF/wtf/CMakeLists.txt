@@ -13,8 +13,8 @@ set(WTF_PUBLIC_HEADERS
     BackwardsGraph.h
     Bag.h
     BagToHashMap.h
+    BitSet.h
     BitVector.h
-    Bitmap.h
     BlockObjCExceptions.h
     BlockPtr.h
     BloomFilter.h
@@ -24,6 +24,7 @@ set(WTF_PUBLIC_HEADERS
     Brigand.h
     BubbleSort.h
     BumpPointerAllocator.h
+    ButterflyArray.h
     ByteOrder.h
     CPUTime.h
     CagedPtr.h
@@ -91,7 +92,6 @@ set(WTF_PUBLIC_HEADERS
     FunctionDispatcher.h
     FunctionPtr.h
     FunctionTraits.h
-    GenerateProfiles.h
     GenericHashKey.h
     GenericTimeMixin.h
     GetPtr.h
@@ -166,6 +166,7 @@ set(WTF_PUBLIC_HEADERS
     MonotonicTime.h
     NakedPtr.h
     NakedRef.h
+    NativePromise.h
     NaturalLoops.h
     NeverDestroyed.h
     NoLock.h
@@ -175,7 +176,6 @@ set(WTF_PUBLIC_HEADERS
     NotFound.h
     NumberOfCores.h
     OSAllocator.h
-    OSLogPrintStream.h
     OSObjectPtr.h
     OSRandomSource.h
     ObjCRuntimeExtras.h
@@ -202,8 +202,8 @@ set(WTF_PUBLIC_HEADERS
     PlatformCPU.h
     PlatformEnable.h
     PlatformEnableCocoa.h
+    PlatformEnableGlib.h
     PlatformEnablePlayStation.h
-    PlatformEnableWinApple.h
     PlatformEnableWinCairo.h
     PlatformHave.h
     PlatformLegacy.h
@@ -236,6 +236,7 @@ set(WTF_PUBLIC_HEADERS
     RefCounter.h
     RefPtr.h
     RefVector.h
+    ReferenceWrapperVector.h
     ResourceUsage.h
     RetainPtr.h
     RobinHoodHashMap.h
@@ -262,7 +263,6 @@ set(WTF_PUBLIC_HEADERS
     SmallSet.h
     SoftLinking.h
     SortedArrayMap.h
-    Span.h
     SpanningTree.h
     Spectrum.h
     StackBounds.h
@@ -310,6 +310,7 @@ set(WTF_PUBLIC_HEADERS
     TranslatedProcess.h
     TriState.h
     TypeCasts.h
+    TypeTraits.h
     URL.h
     URLHelpers.h
     URLHash.h
@@ -328,6 +329,7 @@ set(WTF_PUBLIC_HEADERS
     VectorHash.h
     VectorTraits.h
     WTFConfig.h
+    WTFProcess.h
     WTFSemaphore.h
     WallTime.h
     WeakHashCountedSet.h
@@ -380,9 +382,9 @@ set(WTF_PUBLIC_HEADERS
     text/ConversionMode.h
     text/EscapedFormsForJSON.h
     text/ExternalStringImpl.h
+    text/FastCharacterComparison.h
     text/IntegerToStringConversion.h
     text/LChar.h
-    text/LineBreakIteratorPoolICU.h
     text/LineEnding.h
     text/NullTextBreakIterator.h
     text/OrdinalNumber.h
@@ -394,6 +396,9 @@ set(WTF_PUBLIC_HEADERS
     text/StringConcatenateNumbers.h
     text/StringHash.h
     text/StringHasher.h
+    text/StringHasherInlines.h
+    text/SuperFastHash.h
+    text/WYHash.h
     text/StringImpl.h
     text/StringOperators.h
     text/StringParsingBuffer.h
@@ -432,6 +437,7 @@ set(WTF_SOURCES
     AutomaticThread.cpp
     Bag.cpp
     BitVector.cpp
+    BloomFilter.cpp
     CPUTime.cpp
     ClockType.cpp
     CodePtr.cpp
@@ -447,6 +453,7 @@ set(WTF_SOURCES
     DataLog.cpp
     DateMath.cpp
     DebugHeap.cpp
+    EmbeddedFixedVector.cpp
     FastBitVector.cpp
     FastFloat.cpp
     FastMalloc.cpp
@@ -474,8 +481,8 @@ set(WTF_SOURCES
     MemoryPressureHandler.cpp
     MetaAllocator.cpp
     MonotonicTime.cpp
+    NativePromise.cpp
     NumberOfCores.cpp
-    OSLogPrintStream.cpp
     OSRandomSource.cpp
     ObjectIdentifier.cpp
     PageBlock.cpp
@@ -516,7 +523,9 @@ set(WTF_SOURCES
     Vector.cpp
     WTFAssertions.cpp
     WTFConfig.cpp
+    WTFProcess.cpp
     WallTime.cpp
+    WeakPtr.cpp
     WeakRandomNumber.cpp
     WordLock.cpp
     WorkQueue.cpp
@@ -543,7 +552,6 @@ set(WTF_SOURCES
     text/Base64.cpp
     text/CString.cpp
     text/ExternalStringImpl.cpp
-    text/LineBreakIteratorPoolICU.cpp
     text/LineEnding.cpp
     text/StringBuffer.cpp
     text/StringBuilder.cpp
@@ -570,6 +578,15 @@ set(WTF_SOURCES
     unicode/icu/CollatorICU.cpp
     unicode/icu/ICUHelpers.cpp
 )
+
+if (APPLE)
+    list(APPEND WTF_PUBLIC_HEADERS
+        darwin/OSLogPrintStream.h
+    )
+    list(APPEND WTF_SOURCES
+        darwin/OSLogPrintStream.mm
+    )
+endif ()
 
 set(WTF_PRIVATE_INCLUDE_DIRECTORIES
     "${CMAKE_BINARY_DIR}"
@@ -623,20 +640,6 @@ WEBKIT_FRAMEWORK(WTF)
 if (MSVC)
     set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} /SUBSYSTEM:WINDOWS")
     set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} /SUBSYSTEM:WINDOWS")
-endif ()
-
-if (USE_VERSION_STAMPER)
-    add_custom_command(
-        TARGET WTF
-        PRE_BUILD
-        COMMAND ${PERL_EXECUTABLE} ${WEBKIT_LIBRARIES_DIR}/tools/scripts/auto-version.pl ${WTF_DERIVED_SOURCES_DIR}
-        VERBATIM)
-
-    add_custom_command(
-        TARGET WTF
-        POST_BUILD
-        COMMAND ${PERL_EXECUTABLE} ${WEBKIT_LIBRARIES_DIR}/tools/scripts/version-stamp.pl ${WTF_DERIVED_SOURCES_DIR} $<TARGET_FILE:WTF>
-        VERBATIM)
 endif ()
 
 file(MAKE_DIRECTORY ${WTF_SCRIPTS_DIR})

@@ -71,13 +71,15 @@ static void connectionEventHandler(xpc_object_t request)
     auto messageType { static_cast<PCM::MessageType>(xpc_dictionary_get_uint64(request, PCM::protocolMessageTypeKey)) };
     size_t dataSize { 0 };
     const void* data = xpc_dictionary_get_data(request, PCM::protocolEncodedMessageKey, &dataSize);
-    Span<const uint8_t> encodedMessage { static_cast<const uint8_t*>(data), dataSize };
+    std::span<const uint8_t> encodedMessage { static_cast<const uint8_t*>(data), dataSize };
     decodeMessageAndSendToManager(Daemon::Connection(xpc_dictionary_get_remote_connection(request)), messageType, encodedMessage, replySender(messageType, request));
 }
 
 static void registerScheduledActivityHandler()
 {
     NSLog(@"Registering XPC activity");
+
+ALLOW_DEPRECATED_DECLARATIONS_BEGIN
     xpc_activity_register("com.apple.webkit.adattributiond.activity", XPC_ACTIVITY_CHECK_IN, ^(xpc_activity_t activity) {
         if (xpc_activity_get_state(activity) == XPC_ACTIVITY_STATE_CHECK_IN) {
             NSLog(@"Activity checking in");
@@ -97,6 +99,7 @@ static void registerScheduledActivityHandler()
             xpc_activity_set_criteria(activity, criteria.get());
             return;
         }
+ALLOW_DEPRECATED_DECLARATIONS_END
 
         dispatch_async(dispatch_get_main_queue(), ^{
             NSLog(@"XPC activity happening");

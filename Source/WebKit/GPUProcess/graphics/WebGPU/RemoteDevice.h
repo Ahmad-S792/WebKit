@@ -27,24 +27,45 @@
 
 #if ENABLE(GPU_PROCESS)
 
+#include "GPUConnectionToWebProcess.h"
 #include "RemoteQueue.h"
+#include "RemoteVideoFrameIdentifier.h"
+#include "SharedVideoFrame.h"
 #include "StreamMessageReceiver.h"
 #include "WebGPUError.h"
 #include "WebGPUIdentifier.h"
-#include <pal/graphics/WebGPU/WebGPUErrorFilter.h>
+#include <WebCore/MediaPlayerIdentifier.h>
+#include <WebCore/WebGPUErrorFilter.h>
 #include <wtf/CompletionHandler.h>
 #include <wtf/Ref.h>
 #include <wtf/text/WTFString.h>
 
-namespace PAL::WebGPU {
+#if ENABLE(VIDEO)
+#include "RemoteVideoFrameObjectHeap.h"
+#endif
+
+typedef struct __CVBuffer* CVPixelBufferRef;
+
+namespace WebCore::WebGPU {
 class Device;
+enum class DeviceLostReason : uint8_t;
 }
 
 namespace IPC {
+class Semaphore;
 class StreamServerConnection;
 }
 
+namespace WebCore {
+class MediaPlayer;
+class VideoFrame;
+}
+
 namespace WebKit {
+
+class RemoteGPU;
+class SharedMemoryHandle;
+struct SharedVideoFrame;
 
 namespace WebGPU {
 struct BindGroupDescriptor;
@@ -66,9 +87,9 @@ struct TextureDescriptor;
 class RemoteDevice final : public IPC::StreamMessageReceiver {
     WTF_MAKE_FAST_ALLOCATED;
 public:
-    static Ref<RemoteDevice> create(PAL::WebGPU::Device& device, WebGPU::ObjectHeap& objectHeap, Ref<IPC::StreamServerConnection>&& streamConnection, WebGPUIdentifier identifier, WebGPUIdentifier queueIdentifier)
+    static Ref<RemoteDevice> create(GPUConnectionToWebProcess& gpuConnectionToWebProcess, WebCore::WebGPU::Device& device, WebGPU::ObjectHeap& objectHeap, Ref<IPC::StreamServerConnection>&& streamConnection, WebGPUIdentifier identifier, WebGPUIdentifier queueIdentifier)
     {
-        return adoptRef(*new RemoteDevice(device, objectHeap, WTFMove(streamConnection), identifier, queueIdentifier));
+        return adoptRef(*new RemoteDevice(gpuConnectionToWebProcess, device, objectHeap, WTFMove(streamConnection), identifier, queueIdentifier));
     }
 
     ~RemoteDevice();
@@ -80,23 +101,26 @@ public:
 private:
     friend class WebGPU::ObjectHeap;
 
-    RemoteDevice(PAL::WebGPU::Device&, WebGPU::ObjectHeap&, Ref<IPC::StreamServerConnection>&&, WebGPUIdentifier, WebGPUIdentifier queueIdentifier);
+    RemoteDevice(GPUConnectionToWebProcess&, WebCore::WebGPU::Device&, WebGPU::ObjectHeap&, Ref<IPC::StreamServerConnection>&&, WebGPUIdentifier, WebGPUIdentifier queueIdentifier);
 
     RemoteDevice(const RemoteDevice&) = delete;
     RemoteDevice(RemoteDevice&&) = delete;
     RemoteDevice& operator=(const RemoteDevice&) = delete;
     RemoteDevice& operator=(RemoteDevice&&) = delete;
 
-    PAL::WebGPU::Device& backing() { return m_backing; }
+    WebCore::WebGPU::Device& backing() { return m_backing; }
 
     void didReceiveStreamMessage(IPC::StreamServerConnection&, IPC::Decoder&) final;
 
     void destroy();
+    void destruct();
 
     void createBuffer(const WebGPU::BufferDescriptor&, WebGPUIdentifier);
     void createTexture(const WebGPU::TextureDescriptor&, WebGPUIdentifier);
     void createSampler(const WebGPU::SamplerDescriptor&, WebGPUIdentifier);
-    void importExternalTexture(const WebGPU::ExternalTextureDescriptor&, WebGPUIdentifier);
+#if PLATFORM(COCOA) && ENABLE(VIDEO)
+    void importExternalTextureFromVideoFrame(const WebGPU::ExternalTextureDescriptor&, WebGPUIdentifier);
+#endif
 
     void createBindGroupLayout(const WebGPU::BindGroupLayoutDescriptor&, WebGPUIdentifier);
     void createPipelineLayout(const WebGPU::PipelineLayoutDescriptor&, WebGPUIdentifier);
@@ -105,24 +129,34 @@ private:
     void createShaderModule(const WebGPU::ShaderModuleDescriptor&, WebGPUIdentifier);
     void createComputePipeline(const WebGPU::ComputePipelineDescriptor&, WebGPUIdentifier);
     void createRenderPipeline(const WebGPU::RenderPipelineDescriptor&, WebGPUIdentifier);
-    void createComputePipelineAsync(const WebGPU::ComputePipelineDescriptor&, WebGPUIdentifier, CompletionHandler<void()>&&);
-    void createRenderPipelineAsync(const WebGPU::RenderPipelineDescriptor&, WebGPUIdentifier, CompletionHandler<void()>&&);
+    void createComputePipelineAsync(const WebGPU::ComputePipelineDescriptor&, WebGPUIdentifier, CompletionHandler<void(bool)>&&);
+    void createRenderPipelineAsync(const WebGPU::RenderPipelineDescriptor&, WebGPUIdentifier, CompletionHandler<void(bool)>&&);
 
     void createCommandEncoder(const std::optional<WebGPU::CommandEncoderDescriptor>&, WebGPUIdentifier);
     void createRenderBundleEncoder(const WebGPU::RenderBundleEncoderDescriptor&, WebGPUIdentifier);
 
     void createQuerySet(const WebGPU::QuerySetDescriptor&, WebGPUIdentifier);
 
-    void pushErrorScope(PAL::WebGPU::ErrorFilter);
+    void pushErrorScope(WebCore::WebGPU::ErrorFilter);
     void popErrorScope(CompletionHandler<void(std::optional<WebGPU::Error>&&)>&&);
+    void resolveDeviceLostPromise(CompletionHandler<void(WebCore::WebGPU::DeviceLostReason)>&&);
 
     void setLabel(String&&);
+    void setSharedVideoFrameSemaphore(IPC::Semaphore&&);
+    void setSharedVideoFrameMemory(SharedMemoryHandle&&);
 
-    Ref<PAL::WebGPU::Device> m_backing;
+    Ref<WebCore::WebGPU::Device> m_backing;
     WebGPU::ObjectHeap& m_objectHeap;
     Ref<IPC::StreamServerConnection> m_streamConnection;
     WebGPUIdentifier m_identifier;
     Ref<RemoteQueue> m_queue;
+#if ENABLE(VIDEO)
+    Ref<RemoteVideoFrameObjectHeap> m_videoFrameObjectHeap;
+#if PLATFORM(COCOA)
+    SharedVideoFrameReader m_sharedVideoFrameReader;
+#endif
+#endif
+    GPUConnectionToWebProcess& m_gpuConnectionToWebProcess;
 };
 
 } // namespace WebKit

@@ -26,15 +26,16 @@
 #pragma once
 
 #include <WebCore/StorageNamespaceProvider.h>
+#include <wtf/CheckedRef.h>
 #include <wtf/WeakHashMap.h>
 
 namespace WebCore {
-struct SecurityOriginData;
+class SecurityOriginData;
 }
 
 namespace WebKit {
 
-class WebStorageNamespaceProvider final : public WebCore::StorageNamespaceProvider {
+class WebStorageNamespaceProvider final : public WebCore::StorageNamespaceProvider, public CanMakeCheckedPtr {
 public:
     static Ref<WebStorageNamespaceProvider> create(const String& localStorageDatabasePath);
     virtual ~WebStorageNamespaceProvider();

@@ -34,6 +34,7 @@
 #include "RenderElement.h"
 #include "RenderImage.h"
 #include "RenderQuote.h"
+#include "RenderStyleInlines.h"
 #include "StyleResolver.h"
 #include <wtf/IsoMallocInlines.h>
 
@@ -53,7 +54,6 @@ PseudoElement::PseudoElement(Element& host, PseudoId pseudoId)
     , m_pseudoId(pseudoId)
 {
     ASSERT(pseudoId == PseudoId::Before || pseudoId == PseudoId::After);
-    setHasCustomStyleResolveCallbacks();
 }
 
 PseudoElement::~PseudoElement()
@@ -63,16 +63,16 @@ PseudoElement::~PseudoElement()
 
 Ref<PseudoElement> PseudoElement::create(Element& host, PseudoId pseudoId)
 {
-    auto pseudoElement = adoptRef(*new PseudoElement(host, pseudoId));
+    Ref pseudoElement = adoptRef(*new PseudoElement(host, pseudoId));
 
-    InspectorInstrumentation::pseudoElementCreated(host.document().page(), pseudoElement.get());
+    InspectorInstrumentation::pseudoElementCreated(host.document().checkedPage().get(), pseudoElement.get());
 
     return pseudoElement;
 }
 
 void PseudoElement::clearHostElement()
 {
-    InspectorInstrumentation::pseudoElementDestroyed(document().page(), *this);
+    InspectorInstrumentation::pseudoElementDestroyed(document().checkedPage().get(), *this);
 
     Styleable::fromElement(*this).elementWasRemoved();
 

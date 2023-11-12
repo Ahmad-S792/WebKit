@@ -35,56 +35,68 @@
 #include "RemoteComputePipeline.h"
 #include "RemoteDeviceMessages.h"
 #include "RemoteExternalTexture.h"
+#include "RemoteGPU.h"
+#include "RemoteMediaPlayerManagerProxy.h"
 #include "RemotePipelineLayout.h"
 #include "RemoteQuerySet.h"
 #include "RemoteQueue.h"
 #include "RemoteRenderBundleEncoder.h"
 #include "RemoteRenderPipeline.h"
+#include "RemoteRenderingBackend.h"
 #include "RemoteSampler.h"
 #include "RemoteShaderModule.h"
 #include "RemoteTexture.h"
+#include "RemoteVideoFrameIdentifier.h"
 #include "StreamServerConnection.h"
 #include "WebGPUCommandEncoderDescriptor.h"
 #include "WebGPUObjectHeap.h"
 #include "WebGPUOutOfMemoryError.h"
 #include "WebGPUValidationError.h"
-#include <pal/graphics/WebGPU/WebGPUBindGroup.h>
-#include <pal/graphics/WebGPU/WebGPUBindGroupDescriptor.h>
-#include <pal/graphics/WebGPU/WebGPUBindGroupLayout.h>
-#include <pal/graphics/WebGPU/WebGPUBindGroupLayoutDescriptor.h>
-#include <pal/graphics/WebGPU/WebGPUBuffer.h>
-#include <pal/graphics/WebGPU/WebGPUBufferDescriptor.h>
-#include <pal/graphics/WebGPU/WebGPUCommandEncoder.h>
-#include <pal/graphics/WebGPU/WebGPUCommandEncoderDescriptor.h>
-#include <pal/graphics/WebGPU/WebGPUComputePipeline.h>
-#include <pal/graphics/WebGPU/WebGPUComputePipelineDescriptor.h>
-#include <pal/graphics/WebGPU/WebGPUDevice.h>
-#include <pal/graphics/WebGPU/WebGPUExternalTexture.h>
-#include <pal/graphics/WebGPU/WebGPUExternalTextureDescriptor.h>
-#include <pal/graphics/WebGPU/WebGPUPipelineLayout.h>
-#include <pal/graphics/WebGPU/WebGPUPipelineLayoutDescriptor.h>
-#include <pal/graphics/WebGPU/WebGPUQuerySet.h>
-#include <pal/graphics/WebGPU/WebGPUQuerySetDescriptor.h>
-#include <pal/graphics/WebGPU/WebGPUQueue.h>
-#include <pal/graphics/WebGPU/WebGPURenderBundleEncoder.h>
-#include <pal/graphics/WebGPU/WebGPURenderBundleEncoderDescriptor.h>
-#include <pal/graphics/WebGPU/WebGPURenderPipeline.h>
-#include <pal/graphics/WebGPU/WebGPURenderPipelineDescriptor.h>
-#include <pal/graphics/WebGPU/WebGPUSampler.h>
-#include <pal/graphics/WebGPU/WebGPUSamplerDescriptor.h>
-#include <pal/graphics/WebGPU/WebGPUShaderModule.h>
-#include <pal/graphics/WebGPU/WebGPUShaderModuleDescriptor.h>
-#include <pal/graphics/WebGPU/WebGPUTexture.h>
-#include <pal/graphics/WebGPU/WebGPUTextureDescriptor.h>
+#include <WebCore/VideoFrame.h>
+#include <WebCore/WebGPUBindGroup.h>
+#include <WebCore/WebGPUBindGroupDescriptor.h>
+#include <WebCore/WebGPUBindGroupLayout.h>
+#include <WebCore/WebGPUBindGroupLayoutDescriptor.h>
+#include <WebCore/WebGPUBuffer.h>
+#include <WebCore/WebGPUBufferDescriptor.h>
+#include <WebCore/WebGPUCommandEncoder.h>
+#include <WebCore/WebGPUCommandEncoderDescriptor.h>
+#include <WebCore/WebGPUComputePipeline.h>
+#include <WebCore/WebGPUComputePipelineDescriptor.h>
+#include <WebCore/WebGPUDevice.h>
+#include <WebCore/WebGPUExternalTexture.h>
+#include <WebCore/WebGPUExternalTextureDescriptor.h>
+#include <WebCore/WebGPUPipelineLayout.h>
+#include <WebCore/WebGPUPipelineLayoutDescriptor.h>
+#include <WebCore/WebGPUQuerySet.h>
+#include <WebCore/WebGPUQuerySetDescriptor.h>
+#include <WebCore/WebGPUQueue.h>
+#include <WebCore/WebGPURenderBundleEncoder.h>
+#include <WebCore/WebGPURenderBundleEncoderDescriptor.h>
+#include <WebCore/WebGPURenderPipeline.h>
+#include <WebCore/WebGPURenderPipelineDescriptor.h>
+#include <WebCore/WebGPUSampler.h>
+#include <WebCore/WebGPUSamplerDescriptor.h>
+#include <WebCore/WebGPUShaderModule.h>
+#include <WebCore/WebGPUShaderModuleDescriptor.h>
+#include <WebCore/WebGPUTexture.h>
+#include <WebCore/WebGPUTextureDescriptor.h>
 
 namespace WebKit {
 
-RemoteDevice::RemoteDevice(PAL::WebGPU::Device& device, WebGPU::ObjectHeap& objectHeap, Ref<IPC::StreamServerConnection>&& streamConnection, WebGPUIdentifier identifier, WebGPUIdentifier queueIdentifier)
+RemoteDevice::RemoteDevice(GPUConnectionToWebProcess& gpuConnectionToWebProcess, WebCore::WebGPU::Device& device, WebGPU::ObjectHeap& objectHeap, Ref<IPC::StreamServerConnection>&& streamConnection, WebGPUIdentifier identifier, WebGPUIdentifier queueIdentifier)
     : m_backing(device)
     , m_objectHeap(objectHeap)
     , m_streamConnection(streamConnection.copyRef())
     , m_identifier(identifier)
     , m_queue(RemoteQueue::create(device.queue(), objectHeap, WTFMove(streamConnection), queueIdentifier))
+#if ENABLE(VIDEO)
+    , m_videoFrameObjectHeap(gpuConnectionToWebProcess.videoFrameObjectHeap())
+#if PLATFORM(COCOA)
+    , m_sharedVideoFrameReader(m_videoFrameObjectHeap.ptr(), gpuConnectionToWebProcess.webProcessIdentity())
+#endif
+#endif
+    , m_gpuConnectionToWebProcess(gpuConnectionToWebProcess)
 {
     m_streamConnection->startReceivingMessages(*this, Messages::RemoteDevice::messageReceiverName(), m_identifier.toUInt64());
 }
@@ -104,6 +116,11 @@ Ref<RemoteQueue> RemoteDevice::queue()
 void RemoteDevice::destroy()
 {
     m_backing->destroy();
+}
+
+void RemoteDevice::destruct()
+{
+    m_objectHeap.removeObject(m_identifier);
 }
 
 void RemoteDevice::createBuffer(const WebGPU::BufferDescriptor& descriptor, WebGPUIdentifier identifier)
@@ -142,9 +159,38 @@ void RemoteDevice::createSampler(const WebGPU::SamplerDescriptor& descriptor, We
     m_objectHeap.addObject(identifier, remoteSampler);
 }
 
-void RemoteDevice::importExternalTexture(const WebGPU::ExternalTextureDescriptor& descriptor, WebGPUIdentifier identifier)
+#if ENABLE(VIDEO) && PLATFORM(COCOA)
+void RemoteDevice::setSharedVideoFrameSemaphore(IPC::Semaphore&& semaphore)
 {
-    auto convertedDescriptor = m_objectHeap.convertFromBacking(descriptor);
+    m_sharedVideoFrameReader.setSemaphore(WTFMove(semaphore));
+}
+
+void RemoteDevice::setSharedVideoFrameMemory(SharedMemory::Handle&& handle)
+{
+    m_sharedVideoFrameReader.setSharedMemory(WTFMove(handle));
+}
+#endif
+
+#if PLATFORM(COCOA) && ENABLE(VIDEO)
+void RemoteDevice::importExternalTextureFromVideoFrame(const WebGPU::ExternalTextureDescriptor& descriptor, WebGPUIdentifier identifier)
+{
+#if PLATFORM(COCOA) && ENABLE(VIDEO)
+    std::optional<WebKit::SharedVideoFrame> sharedVideoFrame = descriptor.sharedFrame;
+    RetainPtr<CVPixelBufferRef> pixelBuffer { nullptr };
+    if (sharedVideoFrame) {
+        if (auto videoFrame = m_sharedVideoFrameReader.read(WTFMove(*sharedVideoFrame)))
+            pixelBuffer = videoFrame->pixelBuffer();
+    } else {
+        m_gpuConnectionToWebProcess.performWithMediaPlayerOnMainThread(*descriptor.mediaIdentifier, [&] (auto& player) mutable {
+            auto videoFrame = player.videoFrameForCurrentTime();
+            pixelBuffer = videoFrame ? videoFrame->pixelBuffer() : nullptr;
+        });
+    }
+
+    if (!pixelBuffer)
+        return;
+
+    auto convertedDescriptor = m_objectHeap.convertFromBacking(descriptor, pixelBuffer);
     ASSERT(convertedDescriptor);
     if (!convertedDescriptor)
         return;
@@ -152,7 +198,11 @@ void RemoteDevice::importExternalTexture(const WebGPU::ExternalTextureDescriptor
     auto externalTexture = m_backing->importExternalTexture(*convertedDescriptor);
     auto remoteExternalTexture = RemoteExternalTexture::create(externalTexture, m_objectHeap, m_streamConnection.copyRef(), identifier);
     m_objectHeap.addObject(identifier, remoteExternalTexture);
+#else
+    UNUSED_PARAM(identifier);
+#endif
 }
+#endif // PLATFORM(COCOA) && ENABLE(VIDEO)
 
 void RemoteDevice::createBindGroupLayout(const WebGPU::BindGroupLayoutDescriptor& descriptor, WebGPUIdentifier identifier)
 {
@@ -181,7 +231,6 @@ void RemoteDevice::createPipelineLayout(const WebGPU::PipelineLayoutDescriptor& 
 void RemoteDevice::createBindGroup(const WebGPU::BindGroupDescriptor& descriptor, WebGPUIdentifier identifier)
 {
     auto convertedDescriptor = m_objectHeap.convertFromBacking(descriptor);
-    ASSERT(convertedDescriptor);
     if (!convertedDescriptor)
         return;
 
@@ -226,41 +275,47 @@ void RemoteDevice::createRenderPipeline(const WebGPU::RenderPipelineDescriptor& 
     m_objectHeap.addObject(identifier, remoteRenderPipeline);
 }
 
-void RemoteDevice::createComputePipelineAsync(const WebGPU::ComputePipelineDescriptor& descriptor, WebGPUIdentifier identifier, CompletionHandler<void()>&& callback)
+void RemoteDevice::createComputePipelineAsync(const WebGPU::ComputePipelineDescriptor& descriptor, WebGPUIdentifier identifier, CompletionHandler<void(bool)>&& callback)
 {
     auto convertedDescriptor = m_objectHeap.convertFromBacking(descriptor);
     ASSERT(convertedDescriptor);
     if (!convertedDescriptor) {
-        callback();
+        callback(false);
         return;
     }
 
-    m_backing->createComputePipelineAsync(*convertedDescriptor, [callback = WTFMove(callback), objectHeap = Ref { m_objectHeap }, streamConnection = m_streamConnection.copyRef(), identifier] (Ref<PAL::WebGPU::ComputePipeline>&& computePipeline) mutable {
-        auto remoteComputePipeline = RemoteComputePipeline::create(computePipeline, objectHeap, WTFMove(streamConnection), identifier);
-        objectHeap->addObject(identifier, remoteComputePipeline);
-        callback();
+    m_backing->createComputePipelineAsync(*convertedDescriptor, [callback = WTFMove(callback), objectHeap = Ref { m_objectHeap }, streamConnection = m_streamConnection.copyRef(), identifier] (RefPtr<WebCore::WebGPU::ComputePipeline>&& computePipeline) mutable {
+        bool result = computePipeline.get();
+        if (result) {
+            auto remoteComputePipeline = RemoteComputePipeline::create(computePipeline.releaseNonNull(), objectHeap, WTFMove(streamConnection), identifier);
+            objectHeap->addObject(identifier, remoteComputePipeline);
+        }
+        callback(result);
     });
 }
 
-void RemoteDevice::createRenderPipelineAsync(const WebGPU::RenderPipelineDescriptor& descriptor, WebGPUIdentifier identifier, CompletionHandler<void()>&& callback)
+void RemoteDevice::createRenderPipelineAsync(const WebGPU::RenderPipelineDescriptor& descriptor, WebGPUIdentifier identifier, CompletionHandler<void(bool)>&& callback)
 {
     auto convertedDescriptor = m_objectHeap.convertFromBacking(descriptor);
     ASSERT(convertedDescriptor);
     if (!convertedDescriptor) {
-        callback();
+        callback(false);
         return;
     }
 
-    m_backing->createRenderPipelineAsync(*convertedDescriptor, [callback = WTFMove(callback), objectHeap = Ref { m_objectHeap }, streamConnection = m_streamConnection.copyRef(), identifier] (Ref<PAL::WebGPU::RenderPipeline>&& renderPipeline) mutable {
-        auto remoteRenderPipeline = RemoteRenderPipeline::create(renderPipeline, objectHeap, WTFMove(streamConnection), identifier);
-        objectHeap->addObject(identifier, remoteRenderPipeline);
-        callback();
+    m_backing->createRenderPipelineAsync(*convertedDescriptor, [callback = WTFMove(callback), objectHeap = Ref { m_objectHeap }, streamConnection = m_streamConnection.copyRef(), identifier] (RefPtr<WebCore::WebGPU::RenderPipeline>&& renderPipeline) mutable {
+        bool result = renderPipeline.get();
+        if (result) {
+            auto remoteRenderPipeline = RemoteRenderPipeline::create(renderPipeline.releaseNonNull(), objectHeap, WTFMove(streamConnection), identifier);
+            objectHeap->addObject(identifier, remoteRenderPipeline);
+        }
+        callback(result);
     });
 }
 
 void RemoteDevice::createCommandEncoder(const std::optional<WebGPU::CommandEncoderDescriptor>& descriptor, WebGPUIdentifier identifier)
 {
-    std::optional<PAL::WebGPU::CommandEncoderDescriptor> convertedDescriptor;
+    std::optional<WebCore::WebGPU::CommandEncoderDescriptor> convertedDescriptor;
     if (descriptor) {
         auto resultDescriptor = m_objectHeap.convertFromBacking(*descriptor);
         ASSERT(resultDescriptor);
@@ -297,24 +352,31 @@ void RemoteDevice::createQuerySet(const WebGPU::QuerySetDescriptor& descriptor, 
     m_objectHeap.addObject(identifier, remoteQuerySet);
 }
 
-void RemoteDevice::pushErrorScope(PAL::WebGPU::ErrorFilter errorFilter)
+void RemoteDevice::pushErrorScope(WebCore::WebGPU::ErrorFilter errorFilter)
 {
     m_backing->pushErrorScope(errorFilter);
 }
 
 void RemoteDevice::popErrorScope(CompletionHandler<void(std::optional<WebGPU::Error>&&)>&& callback)
 {
-    m_backing->popErrorScope([callback = WTFMove(callback)] (std::optional<PAL::WebGPU::Error>&& error) mutable {
+    m_backing->popErrorScope([callback = WTFMove(callback)] (std::optional<WebCore::WebGPU::Error>&& error) mutable {
         if (!error) {
             callback(std::nullopt);
             return;
         }
 
-        WTF::switchOn(*error, [&] (Ref<PAL::WebGPU::OutOfMemoryError> outOfMemoryError) {
+        WTF::switchOn(*error, [&] (Ref<WebCore::WebGPU::OutOfMemoryError> outOfMemoryError) {
             callback({ WebGPU::OutOfMemoryError { } });
-        }, [&] (Ref<PAL::WebGPU::ValidationError> validationError) {
+        }, [&] (Ref<WebCore::WebGPU::ValidationError> validationError) {
             callback({ WebGPU::ValidationError { validationError->message() } });
         });
+    });
+}
+
+void RemoteDevice::resolveDeviceLostPromise(CompletionHandler<void(WebCore::WebGPU::DeviceLostReason)>&& callback)
+{
+    m_backing->resolveDeviceLostPromise([callback = WTFMove(callback)] (WebCore::WebGPU::DeviceLostReason reason) mutable {
+        callback(reason);
     });
 }
 

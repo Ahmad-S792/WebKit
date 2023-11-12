@@ -603,6 +603,40 @@ TEST_F(WTF_URL, URLRemoveQueryParameters)
     checkRemovedParameters(__LINE__, removedParameters14, { "key1"_s });
 }
 
+TEST_F(WTF_URL, URLStrippedForUseAsReport)
+{
+    const auto expectedHTTPSURL = createURL("https://example.com/api"_s);
+    const auto expectedHTTPURL = createURL("http://example.com/api"_s);
+
+    const auto url = createURL("https://example.com/api"_s);
+    const auto url1 = createURL("https://example.com/api?key=value"_s);
+    auto url2 = createURL("https://user:password@example.com/api"_s);
+    auto url3 = createURL("https://user:password@example.com/api?key=value&key1=value1"_s);
+    auto url4 = createURL("https://example.com/api#fragment"_s);
+    auto url5 = createURL("https://user:password@example.com/api#fragment"_s);
+    auto url6 = createURL("https://example.com/api?key=value&key1=value1#fragment"_s);
+    auto url7 = createURL("https://user:password@example.com/api?key=value#fragment"_s);
+
+    const auto url8 = createURL("http://example.com/api#fragment"_s);
+    auto url9 = createURL("http://example.com/api?key=value#fragment"_s);
+    const auto url10 = createURL("http://user:password@example.com/api#fragment"_s);
+    auto url11 = createURL("http://user:password@example.com/api?key=value#fragment"_s);
+
+    EXPECT_EQ(expectedHTTPSURL.string(), url.strippedForUseAsReport());
+    EXPECT_EQ(expectedHTTPSURL.string(), url1.strippedForUseAsReport());
+    EXPECT_EQ(expectedHTTPSURL.string(), url2.strippedForUseAsReport());
+    EXPECT_EQ(expectedHTTPSURL.string(), url3.strippedForUseAsReport());
+    EXPECT_EQ(expectedHTTPSURL.string(), url4.strippedForUseAsReport());
+    EXPECT_EQ(expectedHTTPSURL.string(), url5.strippedForUseAsReport());
+    EXPECT_EQ(expectedHTTPSURL.string(), url6.strippedForUseAsReport());
+    EXPECT_EQ(expectedHTTPSURL.string(), url7.strippedForUseAsReport());
+
+    EXPECT_EQ(expectedHTTPURL.string(), url8.strippedForUseAsReport());
+    EXPECT_EQ(expectedHTTPURL.string(), url9.strippedForUseAsReport());
+    EXPECT_EQ(expectedHTTPURL.string(), url10.strippedForUseAsReport());
+    EXPECT_EQ(expectedHTTPURL.string(), url11.strippedForUseAsReport());
+}
+
 TEST_F(WTF_URL, IsolatedCopy)
 {
     URL url1 { "http://www.apple.com"_str };
@@ -617,6 +651,23 @@ TEST_F(WTF_URL, IsolatedCopy)
     URL url2Copy = WTFMove(url2).isolatedCopy();
     EXPECT_EQ(url2Copy, URL { "https://www.webkit.org"_str });
     EXPECT_EQ(url2Copy.string().impl(), originalStringImpl); // Should have adopted the StringImpl of url2.
+}
+
+TEST_F(WTF_URL, MoveInvalidatesURL)
+{
+    URL url1 { "http://www.apple.com"_str };
+    EXPECT_TRUE(url1.isValid());
+    URL url2 { WTFMove(url1) };
+    EXPECT_TRUE(url2.isValid());
+    EXPECT_FALSE(url1.isValid());
+
+    URL url3 { "http://www.webkit.org"_str };
+    url3 = WTFMove(url2);
+    EXPECT_TRUE(url3.isValid());
+    EXPECT_FALSE(url2.isValid());
+
+    url3 = { };
+    EXPECT_FALSE(url3.isValid());
 }
 
 } // namespace TestWebKitAPI

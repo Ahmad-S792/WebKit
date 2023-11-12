@@ -29,6 +29,7 @@
 #include "CSSCustomPropertyValue.h"
 #include "CSSParser.h"
 #include "CSSValuePool.h"
+#include "ImmutableStyleProperties.h"
 #include "PropertySetCSSStyleDeclaration.h"
 #include "StylePropertiesInlines.h"
 #include "StylePropertyShorthand.h"
@@ -82,8 +83,13 @@ Ref<MutableStyleProperties> MutableStyleProperties::createEmpty()
     return adoptRef(*new MutableStyleProperties({ }));
 }
 
+Ref<ImmutableStyleProperties> MutableStyleProperties::immutableCopy() const
+{
+    return ImmutableStyleProperties::createDeduplicating(m_propertyVector.data(), m_propertyVector.size(), cssParserMode());
+}
+
 // FIXME: Change StylePropertyShorthand::properties to return a Span and delete this.
-static inline Span<const CSSPropertyID> span(const StylePropertyShorthand& shorthand)
+static inline std::span<const CSSPropertyID> span(const StylePropertyShorthand& shorthand)
 {
     return { shorthand.properties(), shorthand.length() };
 }
@@ -275,7 +281,7 @@ void MutableStyleProperties::clear()
     m_propertyVector.clear();
 }
 
-bool MutableStyleProperties::removeProperties(Span<const CSSPropertyID> properties)
+bool MutableStyleProperties::removeProperties(std::span<const CSSPropertyID> properties)
 {
     if (m_propertyVector.isEmpty())
         return false;

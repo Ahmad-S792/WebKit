@@ -59,7 +59,7 @@ public:
     NSWindow *window() const;
 
 #if ENABLE(IMAGE_ANALYSIS_ENHANCEMENTS)
-    CGImageRef copySubjectResult() const final { return m_copySubjectResult.get(); }
+    RetainPtr<CGImageRef> imageForCopySubject() const final { return m_copySubjectResult; }
 #endif
 
 private:
@@ -68,6 +68,8 @@ private:
     void show() override;
     void showContextMenuWithItems(Vector<Ref<WebContextMenuItem>>&&) override;
     void useContextMenuItems(Vector<Ref<WebContextMenuItem>>&&) override;
+
+    bool showAfterPostProcessingContextData();
 
     void getContextMenuItem(const WebContextMenuItemData&, CompletionHandler<void(NSMenuItem *)>&&);
     void getContextMenuFromItems(const Vector<WebContextMenuItemData>&, CompletionHandler<void(NSMenu *)>&&);

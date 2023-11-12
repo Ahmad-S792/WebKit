@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2012 Apple Inc. All rights reserved.
+ * Copyright (C) 2012-2023 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -23,10 +23,9 @@
  * THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifndef PDFPluginChoiceAnnotation_h
-#define PDFPluginChoiceAnnotation_h
+#pragma once
 
-#if ENABLE(PDFKIT_PLUGIN)
+#if ENABLE(LEGACY_PDFKIT_PLUGIN)
 
 #include "PDFPluginAnnotation.h"
 
@@ -53,13 +52,11 @@ private:
 
     Ref<WebCore::Element> createAnnotationElement() override;
 
-    ALLOW_DEPRECATED_DECLARATIONS_BEGIN
+ALLOW_DEPRECATED_DECLARATIONS_BEGIN
     PDFAnnotationChoiceWidget *choiceAnnotation() { return static_cast<PDFAnnotationChoiceWidget *>(annotation()); }
-    ALLOW_DEPRECATED_DECLARATIONS_END
+ALLOW_DEPRECATED_DECLARATIONS_END
 };
 
 } // namespace WebKit
 
-#endif // ENABLE(PDFKIT_PLUGIN)
-
-#endif // PDFPluginChoiceAnnotation_h
+#endif // ENABLE(LEGACY_PDFKIT_PLUGIN)

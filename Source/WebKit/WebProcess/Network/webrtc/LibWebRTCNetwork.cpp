@@ -113,14 +113,14 @@ void LibWebRTCNetwork::signalAddressReady(WebCore::LibWebRTCSocketIdentifier ide
 {
     ASSERT(!WTF::isMainRunLoop());
     if (auto* socket = m_socketFactory.socket(identifier))
-        socket->signalAddressReady(address.value);
+        socket->signalAddressReady(address.rtcAddress());
 }
 
 void LibWebRTCNetwork::signalReadPacket(WebCore::LibWebRTCSocketIdentifier identifier, const IPC::DataReference& data, const RTCNetwork::IPAddress& address, uint16_t port, int64_t timestamp)
 {
     ASSERT(!WTF::isMainRunLoop());
     if (auto* socket = m_socketFactory.socket(identifier))
-        socket->signalReadPacket(data.data(), data.size(), rtc::SocketAddress(address.value, port), timestamp);
+        socket->signalReadPacket(data.data(), data.size(), rtc::SocketAddress(address.rtcAddress(), port), timestamp);
 }
 
 void LibWebRTCNetwork::signalSentPacket(WebCore::LibWebRTCSocketIdentifier identifier, int rtcPacketID, int64_t sendTimeMs)
@@ -142,6 +142,13 @@ void LibWebRTCNetwork::signalClose(WebCore::LibWebRTCSocketIdentifier identifier
     ASSERT(!WTF::isMainRunLoop());
     if (auto* socket = m_socketFactory.socket(identifier))
         socket->signalClose(error);
+}
+
+void LibWebRTCNetwork::signalUsedInterface(WebCore::LibWebRTCSocketIdentifier identifier, String&& interfaceName)
+{
+    ASSERT(!WTF::isMainRunLoop());
+    if (auto* socket = m_socketFactory.socket(identifier))
+        socket->signalUsedInterface(WTFMove(interfaceName));
 }
 
 #endif

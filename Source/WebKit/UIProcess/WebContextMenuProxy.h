@@ -55,7 +55,7 @@ public:
 #endif // PLATFORM(COCOA)
 
 #if ENABLE(IMAGE_ANALYSIS_ENHANCEMENTS)
-    virtual CGImageRef copySubjectResult() const { return nullptr; }
+    virtual RetainPtr<CGImageRef> imageForCopySubject() const { return { }; }
 #endif
 
 protected:
@@ -64,7 +64,7 @@ protected:
     // WebContextMenuListenerProxy::Client
     void useContextMenuItems(Vector<Ref<WebContextMenuItem>>&&) override;
 
-    const ContextMenuContextData m_context;
+    ContextMenuContextData m_context;
     const UserData m_userData;
 
 private:

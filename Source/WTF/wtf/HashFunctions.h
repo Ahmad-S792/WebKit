@@ -205,13 +205,7 @@ namespace WTF {
             return DefaultHash<IthTupleElementType>::equal(std::get<I>(a), std::get<I>(b));
         }
 
-        // We should use safeToCompareToEmptyOrDeleted = DefaultHash<Types>::safeToCompareToEmptyOrDeleted &&... whenever
-        // we switch to C++17. We can't do anything better here right now because GCC can't do C++.
-        template<typename BoolType>
-        static constexpr bool allTrue(BoolType value) { return value; }
-        template<typename BoolType, typename... BoolTypes>
-        static constexpr bool allTrue(BoolType value, BoolTypes... values) { return value && allTrue(values...); }
-        static constexpr bool safeToCompareToEmptyOrDeleted = allTrue(DefaultHash<Types>::safeToCompareToEmptyOrDeleted...);
+        static constexpr bool safeToCompareToEmptyOrDeleted = (DefaultHash<Types>::safeToCompareToEmptyOrDeleted && ...);
     };
 
     // make IntHash the default hash function for many integer types
@@ -237,7 +231,7 @@ namespace WTF {
     // make PtrHash the default hash function for pointer types that don't specialize
 
     template<typename P> struct DefaultHash<P*> : PtrHash<P*> { };
-    template<typename P> struct DefaultHash<RefPtr<P>> : PtrHash<RefPtr<P>> { };
+    template<typename P, typename Q, typename R> struct DefaultHash<RefPtr<P, Q, R>> : PtrHash<RefPtr<P, Q, R>> { };
     template<typename P> struct DefaultHash<Ref<P>> : PtrHash<Ref<P>> { };
 
     template<typename P, typename Deleter> struct DefaultHash<std::unique_ptr<P, Deleter>> : PtrHash<std::unique_ptr<P, Deleter>> { };

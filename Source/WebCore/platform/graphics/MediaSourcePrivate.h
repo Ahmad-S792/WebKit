@@ -41,13 +41,18 @@ namespace WebCore {
 
 class ContentType;
 class SourceBufferPrivate;
+#if ENABLE(LEGACY_ENCRYPTED_MEDIA)
+class LegacyCDMSession;
+#endif
 
-class MediaSourcePrivate : public RefCounted<MediaSourcePrivate> {
+class WEBCORE_EXPORT MediaSourcePrivate
+    : public RefCounted<MediaSourcePrivate>
+    , public CanMakeWeakPtr<MediaSourcePrivate> {
 public:
     typedef Vector<String> CodecsArray;
 
     MediaSourcePrivate() = default;
-    virtual ~MediaSourcePrivate() = default;
+    virtual ~MediaSourcePrivate();
 
     enum class AddStatus : uint8_t {
         Ok,
@@ -55,28 +60,43 @@ public:
         ReachedIdLimit
     };
     virtual AddStatus addSourceBuffer(const ContentType&, bool webMParserEnabled, RefPtr<SourceBufferPrivate>&) = 0;
+    virtual void removeSourceBuffer(SourceBufferPrivate&);
+    void sourceBufferPrivateDidChangeActiveState(SourceBufferPrivate&, bool active);
+    virtual void notifyActiveSourceBuffersChanged() = 0;
     virtual void durationChanged(const MediaTime&) = 0;
     virtual void bufferedChanged(const PlatformTimeRanges&) { }
+
     enum EndOfStreamStatus { EosNoError, EosNetworkError, EosDecodeError };
-    virtual void markEndOfStream(EndOfStreamStatus) = 0;
-    virtual void unmarkEndOfStream() = 0;
-    virtual bool isEnded() const = 0;
+    virtual void markEndOfStream(EndOfStreamStatus) { m_isEnded = true; }
+    virtual void unmarkEndOfStream() { m_isEnded = false; }
+    bool isEnded() const { return m_isEnded; }
 
     virtual MediaPlayer::ReadyState readyState() const = 0;
     virtual void setReadyState(MediaPlayer::ReadyState) = 0;
+    virtual MediaTime currentMediaTime() const = 0;
+    virtual MediaTime duration() const = 0;
 
-    virtual void setIsSeeking(bool isSeeking) { m_isSeeking = isSeeking; }
-    virtual void waitForSeekCompleted() = 0;
-    virtual void seekCompleted() = 0;
+    virtual void waitForTarget(const SeekTarget&, CompletionHandler<void(const MediaTime&)>&&) = 0;
+    virtual void seekToTime(const MediaTime&, CompletionHandler<void()>&&) = 0;
 
     virtual void setTimeFudgeFactor(const MediaTime& fudgeFactor) { m_timeFudgeFactor = fudgeFactor; }
-
     MediaTime timeFudgeFactor() const { return m_timeFudgeFactor; }
-    bool isSeeking() const { return m_isSeeking; }
+
+    bool hasFutureTime(const MediaTime& currentTime, const MediaTime& duration, const PlatformTimeRanges&) const;
+    bool hasAudio() const;
+    bool hasVideo() const;
+
+#if ENABLE(LEGACY_ENCRYPTED_MEDIA)
+    void setCDMSession(LegacyCDMSession*);
+#endif
+
+protected:
+    Vector<RefPtr<SourceBufferPrivate>> m_sourceBuffers;
+    Vector<SourceBufferPrivate*> m_activeSourceBuffers;
+    bool m_isEnded { false };
 
 private:
     MediaTime m_timeFudgeFactor;
-    bool m_isSeeking { false };
 };
 
 String convertEnumerationToString(MediaSourcePrivate::AddStatus);
@@ -96,6 +116,15 @@ struct LogArgument<WebCore::MediaSourcePrivate::AddStatus> {
     }
 };
 
+template<> struct EnumTraits<WebCore::MediaSourcePrivate::AddStatus> {
+    using values = EnumValues<
+        WebCore::MediaSourcePrivate::AddStatus,
+        WebCore::MediaSourcePrivate::AddStatus::Ok,
+        WebCore::MediaSourcePrivate::AddStatus::NotSupported,
+        WebCore::MediaSourcePrivate::AddStatus::ReachedIdLimit
+    >;
+};
+
 template <>
 struct LogArgument<WebCore::MediaSourcePrivate::EndOfStreamStatus> {
     static String toString(const WebCore::MediaSourcePrivate::EndOfStreamStatus status)
@@ -104,12 +133,12 @@ struct LogArgument<WebCore::MediaSourcePrivate::EndOfStreamStatus> {
     }
 };
 
-template<> struct EnumTraits<WebCore::MediaSourcePrivate::AddStatus> {
+template<> struct EnumTraits<WebCore::MediaSourcePrivate::EndOfStreamStatus> {
     using values = EnumValues<
-        WebCore::MediaSourcePrivate::AddStatus,
-        WebCore::MediaSourcePrivate::AddStatus::Ok,
-        WebCore::MediaSourcePrivate::AddStatus::NotSupported,
-        WebCore::MediaSourcePrivate::AddStatus::ReachedIdLimit
+        WebCore::MediaSourcePrivate::EndOfStreamStatus,
+        WebCore::MediaSourcePrivate::EndOfStreamStatus::EosNoError,
+        WebCore::MediaSourcePrivate::EndOfStreamStatus::EosNetworkError,
+        WebCore::MediaSourcePrivate::EndOfStreamStatus::EosDecodeError
     >;
 };
 

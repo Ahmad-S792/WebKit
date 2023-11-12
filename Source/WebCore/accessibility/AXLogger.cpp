@@ -33,7 +33,8 @@
 #include "AXIsolatedObject.h"
 #endif
 #include "AXObjectCache.h"
-#include "FrameView.h"
+#include "DocumentInlines.h"
+#include "LocalFrameView.h"
 #include "LogInitialization.h"
 #include "Logging.h"
 #include <algorithm>
@@ -78,13 +79,18 @@ AXLogger::AXLogger(const String& methodName)
         if (!m_methodName.isEmpty())
             LOG_WITH_STREAM(Accessibility, stream << m_methodName << " {");
     }
+    m_startTime = MonotonicTime::now();
 }
 
 AXLogger::~AXLogger()
 {
-    if (shouldLog()) {
-        if (!m_methodName.isEmpty())
-            LOG_WITH_STREAM(Accessibility, stream << "} " << m_methodName);
+    static const Seconds ExecutionTimeThreshold { 1_s };
+    auto elapsedTime = MonotonicTime::now() - m_startTime;
+    if (shouldLog() && !m_methodName.isEmpty()) {
+        if (elapsedTime > ExecutionTimeThreshold)
+            LOG_WITH_STREAM(Accessibility, stream << "} " << m_methodName << " exceeded ExecutionTimeThreshold " << elapsedTime);
+        else
+            LOG_WITH_STREAM(Accessibility, stream << "} " << m_methodName << " took " << elapsedTime);
     }
 }
 
@@ -202,6 +208,10 @@ void AXLogger::log(const String& collectionName, const AXObjectCache::DeferredCo
         [&size] (const Vector<std::pair<Node*, Node*>>& typedCollection) { size = typedCollection.size(); },
         [&size] (const WeakHashSet<Element, WeakPtrImplWithEventTargetData>& typedCollection) { size = typedCollection.computeSize(); },
         [&size] (const WeakHashSet<HTMLTableElement, WeakPtrImplWithEventTargetData>& typedCollection) { size = typedCollection.computeSize(); },
+        [&size] (const WeakHashSet<AccessibilityTable>& typedCollection) { size = typedCollection.computeSize(); },
+        [&size] (const WeakHashSet<AccessibilityTableCell>& typedCollection) { size = typedCollection.computeSize(); },
+        [&size] (const WeakListHashSet<Node, WeakPtrImplWithEventTargetData>& typedCollection) { size = typedCollection.computeSize(); },
+        [&size] (const WeakHashMap<Element, String, WeakPtrImplWithEventTargetData>& typedCollection) { size = typedCollection.computeSize(); },
         [] (auto&) {
             ASSERT_NOT_REACHED();
             return;
@@ -253,8 +263,8 @@ TextStream& operator<<(TextStream& stream, AccessibilitySearchKey searchKey)
     case AccessibilitySearchKey::Button:
         stream << "Button";
         break;
-    case AccessibilitySearchKey::CheckBox:
-        stream << "CheckBox";
+    case AccessibilitySearchKey::Checkbox:
+        stream << "Checkbox";
         break;
     case AccessibilitySearchKey::Control:
         stream << "Control";
@@ -391,6 +401,46 @@ TextStream& operator<<(TextStream& stream, const AccessibilitySearchCriteria& cr
     return stream;
 }
 
+TextStream& operator<<(TextStream& stream, AccessibilityTextSource source)
+{
+    switch (source) {
+    case AccessibilityTextSource::Alternative:
+        stream << "Alternative";
+        break;
+    case AccessibilityTextSource::Children:
+        stream << "Children";
+        break;
+    case AccessibilityTextSource::Summary:
+        stream << "Summary";
+        break;
+    case AccessibilityTextSource::Help:
+        stream << "Help";
+        break;
+    case AccessibilityTextSource::Visible:
+        stream << "Visible";
+        break;
+    case AccessibilityTextSource::TitleTag:
+        stream << "TitleTag";
+        break;
+    case AccessibilityTextSource::Placeholder:
+        stream << "Placeholder";
+        break;
+    case AccessibilityTextSource::LabelByElement:
+        stream << "LabelByElement";
+        break;
+    case AccessibilityTextSource::Title:
+        stream << "Title";
+        break;
+    case AccessibilityTextSource::Subtitle:
+        stream << "Subtitle";
+        break;
+    case AccessibilityTextSource::Action:
+        stream << "Action";
+        break;
+    }
+    return stream;
+}
+
 TextStream& operator<<(TextStream& stream, AccessibilityObjectInclusion inclusion)
 {
     switch (inclusion) {
@@ -408,17 +458,91 @@ TextStream& operator<<(TextStream& stream, AccessibilityObjectInclusion inclusio
     return stream;
 }
 
+TextStream& operator<<(TextStream& stream, AXRelationType relationType)
+{
+    switch (relationType) {
+    case AXRelationType::None:
+        stream << "None";
+        break;
+    case AXRelationType::ActiveDescendant:
+        stream << "ActiveDescendant";
+        break;
+    case AXRelationType::ActiveDescendantOf:
+        stream << "ActiveDescendantOf";
+        break;
+    case AXRelationType::ControlledBy:
+        stream << "ControlledBy";
+        break;
+    case AXRelationType::ControllerFor:
+        stream << "ControllerFor";
+        break;
+    case AXRelationType::DescribedBy:
+        stream << "DescribedBy";
+        break;
+    case AXRelationType::DescriptionFor:
+        stream << "DescriptionFor";
+        break;
+    case AXRelationType::Details:
+        stream << "Details";
+        break;
+    case AXRelationType::DetailsFor:
+        stream << "DetailsFor";
+        break;
+    case AXRelationType::ErrorMessage:
+        stream << "ErrorMessage";
+        break;
+    case AXRelationType::ErrorMessageFor:
+        stream << "ErrorMessageFor";
+        break;
+    case AXRelationType::FlowsFrom:
+        stream << "FlowsFrom";
+        break;
+    case AXRelationType::FlowsTo:
+        stream << "FlowsTo";
+        break;
+    case AXRelationType::Headers:
+        stream << "Headers";
+        break;
+    case AXRelationType::HeaderFor:
+        stream << "HeaderFor";
+        break;
+    case AXRelationType::LabelledBy:
+        stream << "LabelledBy";
+        break;
+    case AXRelationType::LabelFor:
+        stream << "LabelFor";
+        break;
+    case AXRelationType::OwnedBy:
+        stream << "OwnedBy";
+        break;
+    case AXRelationType::OwnerFor:
+        stream << "OwnerFor";
+        break;
+    }
+
+    return stream;
+}
+
 TextStream& operator<<(TextStream& stream, AXObjectCache::AXNotification notification)
 {
     switch (notification) {
+    case AXObjectCache::AXNotification::AXAccessKeyChanged:
+        stream << "AXAccessKeyChanged";
+        break;
     case AXObjectCache::AXNotification::AXActiveDescendantChanged:
         stream << "AXActiveDescendantChanged";
+        break;
+    case AXObjectCache::AXNotification::AXAnnouncementRequested:
+        stream << "AXAnnouncement";
         break;
     case AXObjectCache::AXNotification::AXAutocorrectionOccured:
         stream << "AXAutocorrectionOccured";
         break;
     case AXObjectCache::AXNotification::AXAutofillTypeChanged:
         stream << "AXAutofillTypeChanged";
+        break;
+    case AXObjectCache::AXNotification::AXCellSlotsChanged:
+        stream << "AXCellSlotsChanged";
         break;
     case AXObjectCache::AXNotification::AXCheckedStateChanged:
         stream << "AXCheckedStateChanged";
@@ -450,8 +574,14 @@ TextStream& operator<<(TextStream& stream, AXObjectCache::AXNotification notific
     case AXObjectCache::AXNotification::AXDropEffectChanged:
         stream << "AXDropEffectChanged";
         break;
+    case AXObjectCache::AXNotification::AXExtendedDescriptionChanged:
+        stream << "AXExtendedDescriptionChanged";
+        break;
     case AXObjectCache::AXNotification::AXFlowToChanged:
         stream << "AXFlowToChanged";
+        break;
+    case AXObjectCache::AXNotification::AXFocusableStateChanged:
+        stream << "AXFocusableStateChanged";
         break;
     case AXObjectCache::AXNotification::AXFocusedUIElementChanged:
         stream << "AXFocusedUIElementChanged";
@@ -501,6 +631,9 @@ TextStream& operator<<(TextStream& stream, AXObjectCache::AXNotification notific
     case AXObjectCache::AXNotification::AXMultiSelectableStateChanged:
         stream << "AXMultiSelectableStateChanged";
         break;
+    case AXObjectCache::AXNotification::AXNameChanged:
+        stream << "AXNameChanged";
+        break;
     case AXObjectCache::AXNotification::AXNewDocumentLoadComplete:
         stream << "AXNewDocumentLoadComplete";
         break;
@@ -509,6 +642,9 @@ TextStream& operator<<(TextStream& stream, AXObjectCache::AXNotification notific
         break;
     case AXObjectCache::AXNotification::AXPageScrolled:
         stream << "AXPageScrolled";
+        break;
+    case AXObjectCache::AXNotification::AXPopoverTargetChanged:
+        stream << "AXPopoverTargetChanged";
         break;
     case AXObjectCache::AXNotification::AXPositionInSetChanged:
         stream << "AXPositionInSetChanged";
@@ -525,11 +661,14 @@ TextStream& operator<<(TextStream& stream, AXObjectCache::AXNotification notific
     case AXObjectCache::AXNotification::AXRowSpanChanged:
         stream << "AXRowSpanChanged";
         break;
+    case AXObjectCache::AXNotification::AXCellScopeChanged:
+        stream << "AXCellScopeChanged";
+        break;
     case AXObjectCache::AXNotification::AXSelectedChildrenChanged:
         stream << "AXSelectedChildrenChanged";
         break;
-    case AXObjectCache::AXNotification::AXSelectedCellChanged:
-        stream << "AXSelectedCellChanged";
+    case AXObjectCache::AXNotification::AXSelectedCellsChanged:
+        stream << "AXSelectedCellsChanged";
         break;
     case AXObjectCache::AXNotification::AXSelectedStateChanged:
         stream << "AXSelectedStateChanged";
@@ -551,6 +690,9 @@ TextStream& operator<<(TextStream& stream, AXObjectCache::AXNotification notific
         break;
     case AXObjectCache::AXNotification::AXScrolledToAnchor:
         stream << "AXScrolledToAnchor";
+        break;
+    case AXObjectCache::AXNotification::AXLabelCreated:
+        stream << "AXLabelCreated";
         break;
     case AXObjectCache::AXNotification::AXLiveRegionCreated:
         stream << "AXLiveRegionCreated";
@@ -612,6 +754,12 @@ TextStream& operator<<(TextStream& stream, AXObjectCache::AXNotification notific
     case AXObjectCache::AXNotification::AXTextChanged:
         stream << "AXTextChanged";
         break;
+    case AXObjectCache::AXNotification::AXTextCompositionChanged:
+        stream << "AXTextCompositionChanged";
+        break;
+    case AXObjectCache::AXNotification::AXTextSecurityChanged:
+        stream << "AXTextSecurityChanged";
+        break;
     case AXObjectCache::AXNotification::AXElementBusyChanged:
         stream << "AXElementBusyChanged";
         break;
@@ -629,6 +777,12 @@ TextStream& operator<<(TextStream& stream, AXObjectCache::AXNotification notific
         break;
     case AXObjectCache::AXNotification::AXDraggingExitedDropZone:
         stream << "AXDraggingExitedDropZone";
+        break;
+    case AXObjectCache::AXNotification::AXTextCompositionBegan:
+        stream << "AXTextCompositionBegan";
+        break;
+    case AXObjectCache::AXNotification::AXTextCompositionEnded:
+        stream << "AXTextCompositionEnded";
         break;
     }
 

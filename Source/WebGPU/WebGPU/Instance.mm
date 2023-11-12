@@ -190,6 +190,11 @@ void Instance::requestAdapter(const WGPURequestAdapterOptions& options, Completi
 
 #pragma mark WGPU Stubs
 
+void wgpuInstanceReference(WGPUInstance instance)
+{
+    WebGPU::fromAPI(instance).ref();
+}
+
 void wgpuInstanceRelease(WGPUInstance instance)
 {
     WebGPU::fromAPI(instance).deref();
@@ -200,13 +205,9 @@ WGPUInstance wgpuCreateInstance(const WGPUInstanceDescriptor* descriptor)
     return WebGPU::releaseToAPI(WebGPU::Instance::create(*descriptor));
 }
 
-WGPUProc wgpuGetProcAddress(WGPUDevice, const char* procName)
+WGPUProc wgpuGetProcAddress(WGPUDevice, const char*)
 {
-    void* selfSymbol = dlsym(RTLD_SELF, procName);
-    void* nextSymbol = dlsym(RTLD_NEXT, procName);
-    if (!selfSymbol || selfSymbol == nextSymbol)
-        return nullptr;
-    return reinterpret_cast<WGPUProc>(selfSymbol);
+    return nullptr;
 }
 
 WGPUSurface wgpuInstanceCreateSurface(WGPUInstance instance, const WGPUSurfaceDescriptor* descriptor)

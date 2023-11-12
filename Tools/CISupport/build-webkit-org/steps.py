@@ -1,4 +1,4 @@
-# Copyright (C) 2017-2022 Apple Inc. All rights reserved.
+# Copyright (C) 2017-2023 Apple Inc. All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
 # modification, are permitted provided that the following conditions
@@ -21,8 +21,8 @@
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 from buildbot.plugins import steps, util
-from buildbot.process import buildstep, factory, logobserver, properties
-from buildbot.process.results import Results, SUCCESS, FAILURE, WARNINGS, SKIPPED, EXCEPTION, RETRY
+from buildbot.process import buildstep, logobserver, properties
+from buildbot.process.results import Results, SUCCESS, FAILURE, CANCELLED, WARNINGS, SKIPPED, EXCEPTION, RETRY
 from buildbot.steps import master, shell, transfer, trigger
 from buildbot.steps.source import git
 from twisted.internet import defer
@@ -32,8 +32,6 @@ import os
 import re
 import socket
 import sys
-import urllib
-from pathlib import Path
 
 if sys.version_info < (3, 5):
     print('ERROR: Please use Python 3. This code is not compatible with Python 2.')
@@ -47,6 +45,38 @@ RESULTS_SERVER_API_KEY = 'RESULTS_SERVER_API_KEY'
 S3URL = 'https://s3-us-west-2.amazonaws.com/'
 WithProperties = properties.WithProperties
 Interpolate = properties.Interpolate
+THRESHOLD_FOR_EXCESSIVE_LOGS = 1000000
+MSG_FOR_EXCESSIVE_LOGS = f'Stopped due to excessive logging, limit: {THRESHOLD_FOR_EXCESSIVE_LOGS}'
+
+
+class CustomFlagsMixin(object):
+
+    def appendCrossTargetFlags(self, additionalArguments):
+        if additionalArguments:
+            for additionalArgument in additionalArguments:
+                if additionalArgument.startswith('--cross-target='):
+                    self.command.append(additionalArgument)
+                    return
+
+    def appendCustomBuildFlags(self, platform, fullPlatform):
+        if platform not in ('gtk', 'wincairo', 'ios', 'jsc-only', 'wpe', 'playstation', 'tvos', 'watchos',):
+            return
+        if 'simulator' in fullPlatform:
+            platform = platform + '-simulator'
+        elif platform in ['ios', 'tvos', 'watchos']:
+            platform = platform + '-device'
+        self.setCommand(self.command + ['--' + platform])
+
+    def appendCustomTestingFlags(self, platform, device_model):
+        if platform not in ('gtk', 'wincairo', 'ios', 'jsc-only', 'wpe'):
+            return
+        if device_model == 'iphone':
+            device_model = 'iphone-simulator'
+        elif device_model == 'ipad':
+            device_model = 'ipad-simulator'
+        else:
+            device_model = platform
+        self.setCommand(self.command + ['--' + device_model])
 
 
 class ParseByLineLogObserver(logobserver.LineConsumerLogObserver):
@@ -152,8 +182,15 @@ class CheckOutSource(git.Git):
         else:
             return {'step': 'Cleaned and updated working directory'}
 
+    @defer.inlineCallbacks
+    def run(self):
+        rc = yield super().run()
+        if rc == SUCCESS:
+            yield self._dovccmd(['remote', 'set-url', '--push', 'origin', 'PUSH_DISABLED_BY_ADMIN'])
+        defer.returnValue(rc)
 
-class CleanUpGitIndexLock(shell.ShellCommand):
+
+class CleanUpGitIndexLock(shell.ShellCommandNewStyle):
     name = 'clean-git-index-lock'
     command = ['rm', '-f', '.git/index.lock']
     descriptionDone = ['Deleted .git/index.lock']
@@ -161,19 +198,19 @@ class CleanUpGitIndexLock(shell.ShellCommand):
     def __init__(self, **kwargs):
         super(CleanUpGitIndexLock, self).__init__(timeout=2 * 60, logEnviron=False, **kwargs)
 
-    def start(self):
+    @defer.inlineCallbacks
+    def run(self):
         platform = self.getProperty('platform', '*')
         if platform == 'wincairo':
             self.command = ['del', r'.git\index.lock']
 
-        return shell.ShellCommand.start(self)
+        rc = yield super().run()
+        if rc != SUCCESS:
+            self.build.buildFinished(['Git issue, retrying build'], RETRY)
+        defer.returnValue(rc)
 
-    def evaluateCommand(self, cmd):
-        self.build.buildFinished(['Git issue, retrying build'], RETRY)
-        return super(CleanUpGitIndexLock, self).evaluateCommand(cmd)
 
-
-class CheckOutSpecificRevision(shell.ShellCommand):
+class CheckOutSpecificRevision(shell.ShellCommandNewStyle):
     name = 'checkout-specific-revision'
     descriptionDone = ['Checked out required revision']
     flunkOnFailure = True
@@ -188,9 +225,9 @@ class CheckOutSpecificRevision(shell.ShellCommand):
     def hideStepIf(self, results, step):
         return not self.doStepIf(step)
 
-    def start(self):
-        self.setCommand(['git', 'checkout', self.getProperty('user_provided_git_hash')])
-        return shell.ShellCommand.start(self)
+    def run(self):
+        self.command = ['git', 'checkout', self.getProperty('user_provided_git_hash')]
+        return super().run()
 
 
 class InstallWin32Dependencies(shell.Compile):
@@ -206,7 +243,7 @@ class KillOldProcesses(shell.Compile):
     command = ["python3", "Tools/CISupport/kill-old-processes", "buildbot"]
 
 
-class PruneCoreSymbolicationdCacheIfTooLarge(shell.ShellCommand):
+class PruneCoreSymbolicationdCacheIfTooLarge(shell.ShellCommandNewStyle):
     name = "prune-coresymbolicationd-cache-if-too-large"
     description = ["pruning coresymbolicationd cache to < 10GB"]
     descriptionDone = ["pruned coresymbolicationd cache"]
@@ -256,59 +293,47 @@ class DeleteStaleBuildFiles(shell.Compile):
         return shell.Compile.start(self)
 
 
-class InstallWinCairoDependencies(shell.ShellCommand):
+class InstallWinCairoDependencies(shell.ShellCommandNewStyle):
     name = 'wincairo-requirements'
     description = ['updating wincairo dependencies']
     descriptionDone = ['updated wincairo dependencies']
-    command = ['python', './Tools/Scripts/update-webkit-wincairo-libs.py']
+    command = ['python3', './Tools/Scripts/update-webkit-wincairo-libs.py']
     haltOnFailure = True
 
 
-class InstallGtkDependencies(shell.ShellCommand):
+class InstallGtkDependencies(shell.ShellCommandNewStyle, CustomFlagsMixin):
     name = "jhbuild"
     description = ["updating gtk dependencies"]
     descriptionDone = ["updated gtk dependencies"]
     command = ["perl", "Tools/Scripts/update-webkitgtk-libs", WithProperties("--%(configuration)s")]
     haltOnFailure = True
 
+    def run(self):
+        self.appendCrossTargetFlags(self.getProperty('additionalArguments'))
+        return super().run()
 
-class InstallWpeDependencies(shell.ShellCommand):
+
+class InstallWpeDependencies(shell.ShellCommandNewStyle, CustomFlagsMixin):
     name = "jhbuild"
     description = ["updating wpe dependencies"]
     descriptionDone = ["updated wpe dependencies"]
     command = ["perl", "Tools/Scripts/update-webkitwpe-libs", WithProperties("--%(configuration)s")]
     haltOnFailure = True
 
-
-def appendCustomBuildFlags(step, platform, fullPlatform):
-    if platform not in ('gtk', 'wincairo', 'ios', 'jsc-only', 'wpe', 'playstation', 'tvos', 'watchos',):
-        return
-    if 'simulator' in fullPlatform:
-        platform = platform + '-simulator'
-    elif platform in ['ios', 'tvos', 'watchos']:
-        platform = platform + '-device'
-    step.setCommand(step.command + ['--' + platform])
+    def run(self):
+        self.appendCrossTargetFlags(self.getProperty('additionalArguments'))
+        return super().run()
 
 
-def appendCustomTestingFlags(step, platform, device_model):
-    if platform not in ('gtk', 'wincairo', 'ios', 'jsc-only', 'wpe'):
-        return
-    if device_model == 'iphone':
-        device_model = 'iphone-simulator'
-    elif device_model == 'ipad':
-        device_model = 'ipad-simulator'
-    else:
-        device_model = platform
-    step.setCommand(step.command + ['--' + device_model])
-
-
-class CompileWebKit(shell.Compile):
+class CompileWebKit(shell.Compile, CustomFlagsMixin):
     command = ["perl", "Tools/Scripts/build-webkit", "--no-fatal-warnings", WithProperties("--%(configuration)s")]
     env = {'MFLAGS': ''}
     name = "compile-webkit"
     description = ["compiling"]
     descriptionDone = ["compiled"]
     warningPattern = ".*arning: .*"
+    cancelled_due_to_huge_logs = False
+    line_count = 0
 
     def start(self):
         platform = self.getProperty('platform')
@@ -342,26 +367,32 @@ class CompileWebKit(shell.Compile):
             prefix = os.path.join("/app", "webkit", "WebKitBuild", self.getProperty("configuration").title(), "install")
             self.setCommand(self.command + [f'--prefix={prefix}'])
 
-        appendCustomBuildFlags(self, platform, self.getProperty('fullPlatform'))
+        self.appendCustomBuildFlags(platform, self.getProperty('fullPlatform'))
 
         return shell.Compile.start(self)
 
     def buildCommandKwargs(self, warnings):
         kwargs = super(CompileWebKit, self).buildCommandKwargs(warnings)
-        # https://bugs.webkit.org/show_bug.cgi?id=239455: The timeout needs to be >20 min to
-        # work around log output delays on slower machines.
-        # https://bugs.webkit.org/show_bug.cgi?id=247506: Only applies to Xcode 12.x.
-        if self.getProperty('fullPlatform') == 'mac-bigsur':
-            kwargs['timeout'] = 60 * 60
-        else:
-            kwargs['timeout'] = 60 * 30
+        kwargs['timeout'] = 60 * 30
         return kwargs
 
     def parseOutputLine(self, line):
+        self.line_count += 1
+        if self.line_count == THRESHOLD_FOR_EXCESSIVE_LOGS:
+            self.handleExcessiveLogging()
+            return
+
         if "arning:" in line:
             self._addToLog('warnings', line + '\n')
         if "rror:" in line:
             self._addToLog('errors', line + '\n')
+
+    def handleExcessiveLogging(self):
+        build_url = f'{self.master.config.buildbotURL}#/builders/{self.build._builderid}/builds/{self.build.number}'
+        print(f'\n{MSG_FOR_EXCESSIVE_LOGS}, {build_url}\n')
+        self.cancelled_due_to_huge_logs = True
+        self.build.stopBuild(reason=MSG_FOR_EXCESSIVE_LOGS, results=FAILURE)
+        self.build.buildFinished([MSG_FOR_EXCESSIVE_LOGS], FAILURE)
 
     @defer.inlineCallbacks
     def _addToLog(self, logName, message):
@@ -372,10 +403,17 @@ class CompileWebKit(shell.Compile):
         log.addStdout(message)
 
     def evaluateCommand(self, cmd):
-        rc = shell.ShellCommand.evaluateCommand(self, cmd)
+        rc = super().evaluateCommand(cmd)
         if rc in (SUCCESS, WARNINGS) and self.getProperty('user_provided_git_hash'):
             self.build.addStepsAfterCurrentStep([ArchiveMinifiedBuiltProduct(), UploadMinifiedBuiltProduct(), TransferToS3(terminate_build=True)])
         return rc
+
+    def getResultSummary(self):
+        if self.cancelled_due_to_huge_logs:
+            return {'step': MSG_FOR_EXCESSIVE_LOGS, 'build': MSG_FOR_EXCESSIVE_LOGS}
+        if self.results == FAILURE:
+            return {'step': f'Failed {self.name}'}
+        return shell.Compile.getResultSummary(self)
 
 
 class CompileLLINTCLoop(CompileWebKit):
@@ -383,14 +421,16 @@ class CompileLLINTCLoop(CompileWebKit):
 
 
 class Compile32bitJSC(CompileWebKit):
+    name = 'compile-jsc-32bit'
     command = ["perl", "Tools/Scripts/build-jsc", "--32-bit", WithProperties("--%(configuration)s")]
 
 
 class CompileJSCOnly(CompileWebKit):
+    name = 'compile-jsc'
     command = ["perl", "Tools/Scripts/build-jsc", WithProperties("--%(configuration)s")]
 
 
-class InstallBuiltProduct(shell.ShellCommand):
+class InstallBuiltProduct(shell.ShellCommandNewStyle):
     name = 'install-built-product'
     description = ['Installing Built Product']
     descriptionDone = ['Installed Built Product']
@@ -398,44 +438,97 @@ class InstallBuiltProduct(shell.ShellCommand):
                WithProperties("--platform=%(fullPlatform)s"), WithProperties("--%(configuration)s")]
 
 
-class ArchiveBuiltProduct(shell.ShellCommand):
+class ArchiveBuiltProduct(shell.ShellCommandNewStyle, CustomFlagsMixin):
     command = ["python3", "Tools/CISupport/built-product-archive",
-               WithProperties("--platform=%(fullPlatform)s"), WithProperties("--%(configuration)s"), "archive"]
+               WithProperties("--platform=%(fullPlatform)s"), WithProperties("--%(configuration)s")]
     name = "archive-built-product"
     description = ["archiving built product"]
     descriptionDone = ["archived built product"]
     haltOnFailure = True
 
+    def run(self):
+        self.appendCrossTargetFlags(self.getProperty('additionalArguments'))
+        self.command.append("archive")
+        return super().run()
+
 
 class ArchiveMinifiedBuiltProduct(ArchiveBuiltProduct):
     name = 'archive-minified-built-product'
     command = ["python3", "Tools/CISupport/built-product-archive",
-               WithProperties("--platform=%(fullPlatform)s"), WithProperties("--%(configuration)s"), "archive", "--minify"]
+               WithProperties("--platform=%(fullPlatform)s"), WithProperties("--%(configuration)s"), "--minify"]
 
 
-class GenerateJSCBundle(shell.ShellCommand):
+# UploadBuiltProductViaSftp() is still unused. Check HOWTO_config_SFTP_uploads.md about how to enable it.
+class UploadBuiltProductViaSftp(shell.ShellCommandNewStyle):
+    command = ["python3", "Tools/CISupport/Shared/transfer-archive-via-sftp",
+               "--remote-config-file", "../../remote-built-product-upload-config.json",
+               "--user-name", WithProperties("%(buildername)s"),
+               "--remote-dir", WithProperties("%(buildername)s"),
+               "--remote-file", WithProperties("%(archive_revision)s.zip"),
+               WithProperties("WebKitBuild/%(configuration)s.zip")]
+    name = "upload-built-product-via-sftp"
+    description = ["uploading built product via sftp"]
+    descriptionDone = ["uploaded built product via sftp"]
+    haltOnFailure = True
+
+
+class UploadMiniBrowserBundleViaSftp(shell.ShellCommandNewStyle):
+    command = ["python3", "Tools/CISupport/Shared/transfer-archive-via-sftp",
+               "--remote-config-file", "../../remote-minibrowser-bundle-upload-config.json",
+               "--remote-file", WithProperties("MiniBrowser_%(fullPlatform)s_%(archive_revision)s.zip"),
+               WithProperties("WebKitBuild/MiniBrowser_%(fullPlatform)s_%(configuration)s.zip")]
+    name = "upload-minibrowser-bundle-via-sftp"
+    description = ["uploading minibrowser bundle via sftp"]
+    descriptionDone = ["uploaded minibrowser bundle via sftp"]
+    haltOnFailure = False
+
+
+class UploadJSCBundleViaSftp(shell.ShellCommandNewStyle):
+    command = ["python3", "Tools/CISupport/Shared/transfer-archive-via-sftp",
+               "--remote-config-file", "../../remote-jsc-bundle-upload-config.json",
+               "--remote-file", WithProperties("%(archive_revision)s.zip"),
+               WithProperties("WebKitBuild/jsc_%(fullPlatform)s_%(configuration)s.zip")]
+    name = "upload-jsc-bundle-via-sftp"
+    description = ["uploading jsc bundle via sftp"]
+    descriptionDone = ["uploaded jsc bundle via sftp"]
+    haltOnFailure = False
+
+
+class GenerateJSCBundle(shell.ShellCommandNewStyle):
     command = ["Tools/Scripts/generate-bundle", "--builder-name", WithProperties("%(buildername)s"),
                "--bundle=jsc", "--syslibs=bundle-all", WithProperties("--platform=%(fullPlatform)s"),
-               WithProperties("--%(configuration)s"), WithProperties("--revision=%(archive_revision)s"),
-               "--remote-config-file", "../../remote-jsc-bundle-upload-config.json"]
+               WithProperties("--%(configuration)s"), WithProperties("--revision=%(archive_revision)s")]
     name = "generate-jsc-bundle"
     description = ["generating jsc bundle"]
     descriptionDone = ["generated jsc bundle"]
     haltOnFailure = False
 
+    @defer.inlineCallbacks
+    def run(self):
+        rc = yield super().run()
+        if rc in (SUCCESS, WARNINGS):
+            self.build.addStepsAfterCurrentStep([UploadJSCBundleViaSftp()])
+        defer.returnValue(rc)
 
-class GenerateMiniBrowserBundle(shell.ShellCommand):
+
+class GenerateMiniBrowserBundle(shell.ShellCommandNewStyle):
     command = ["Tools/Scripts/generate-bundle", "--builder-name", WithProperties("%(buildername)s"),
                "--bundle=MiniBrowser", WithProperties("--platform=%(fullPlatform)s"),
-               WithProperties("--%(configuration)s"), WithProperties("--revision=%(archive_revision)s"),
-               "--remote-config-file", "../../remote-minibrowser-bundle-upload-config.json"]
+               WithProperties("--%(configuration)s"), WithProperties("--revision=%(archive_revision)s")]
     name = "generate-minibrowser-bundle"
     description = ["generating minibrowser bundle"]
     descriptionDone = ["generated minibrowser bundle"]
     haltOnFailure = False
 
+    @defer.inlineCallbacks
+    def run(self):
+        rc = yield super().run()
+        if rc in (SUCCESS, WARNINGS):
+            self.build.addStepsAfterCurrentStep([UploadMiniBrowserBundleViaSftp()])
+        defer.returnValue(rc)
 
-class ExtractBuiltProduct(shell.ShellCommand):
+
+class ExtractBuiltProduct(shell.ShellCommandNewStyle):
     command = ["python3", "Tools/CISupport/built-product-archive",
                WithProperties("--platform=%(fullPlatform)s"), WithProperties("--%(configuration)s"), "extract"]
     name = "extract-built-product"
@@ -464,7 +557,7 @@ class UploadMinifiedBuiltProduct(UploadBuiltProduct):
     masterdest = WithProperties("archives/%(fullPlatform)s-%(architecture)s-%(configuration)s/minified-%(archive_revision)s.zip")
 
 
-class DownloadBuiltProduct(shell.ShellCommand):
+class DownloadBuiltProduct(shell.ShellCommandNewStyle):
     command = ["python3", "Tools/CISupport/download-built-product",
         WithProperties("--platform=%(platform)s"), WithProperties("--%(configuration)s"),
         WithProperties(S3URL + "archives.webkit.org/%(fullPlatform)s-%(architecture)s-%(configuration)s/%(archive_revision)s.zip")]
@@ -474,19 +567,17 @@ class DownloadBuiltProduct(shell.ShellCommand):
     haltOnFailure = False
     flunkOnFailure = False
 
-    def start(self):
+    @defer.inlineCallbacks
+    def run(self):
         # Only try to download from S3 on the official deployment <https://webkit.org/b/230006>
-        if CURRENT_HOSTNAME == BUILD_WEBKIT_HOSTNAME:
-            return shell.ShellCommand.start(self)
-        self.build.addStepsAfterCurrentStep([DownloadBuiltProductFromMaster()])
-        self.finished(SKIPPED)
-        return defer.succeed(None)
+        if CURRENT_HOSTNAME != BUILD_WEBKIT_HOSTNAME:
+            self.build.addStepsAfterCurrentStep([DownloadBuiltProductFromMaster()])
+            defer.returnValue(SKIPPED)
 
-    def evaluateCommand(self, cmd):
-        rc = shell.ShellCommand.evaluateCommand(self, cmd)
+        rc = yield super().run()
         if rc == FAILURE:
             self.build.addStepsAfterCurrentStep([DownloadBuiltProductFromMaster()])
-        return rc
+        defer.returnValue(rc)
 
 
 class DownloadBuiltProductFromMaster(transfer.FileDownload):
@@ -513,7 +604,7 @@ class DownloadBuiltProductFromMaster(transfer.FileDownload):
         return super(DownloadBuiltProductFromMaster, self).getResultSummary()
 
 
-class RunJavaScriptCoreTests(TestWithFailureCount):
+class RunJavaScriptCoreTests(TestWithFailureCount, CustomFlagsMixin):
     name = "jscore-test"
     description = ["jscore-tests running"]
     descriptionDone = ["jscore-tests"]
@@ -552,7 +643,7 @@ class RunJavaScriptCoreTests(TestWithFailureCount):
         # high enough.
         self.command += self.commandExtra
         # Currently run-javascriptcore-test doesn't support run javascript core test binaries list below remotely
-        if architecture in ['mips', 'aarch64'] or platform in ['win']:
+        if architecture in ['aarch64'] or platform in ['win']:
             self.command += ['--no-testmasm', '--no-testair', '--no-testb3', '--no-testdfg', '--no-testapi']
         # Linux bots have currently problems with JSC tests that try to use large amounts of memory.
         # Check: https://bugs.webkit.org/show_bug.cgi?id=175140
@@ -562,7 +653,7 @@ class RunJavaScriptCoreTests(TestWithFailureCount):
         elif platform == 'wincairo':
             self.setCommand(self.command + ['--test-writer=ruby'])
 
-        appendCustomBuildFlags(self, platform, self.getProperty('fullPlatform'))
+        self.appendCustomBuildFlags(platform, self.getProperty('fullPlatform'))
         return shell.Test.start(self)
 
     def countFailures(self, cmd):
@@ -584,7 +675,7 @@ class RunJavaScriptCoreTests(TestWithFailureCount):
         return count
 
 
-class RunTest262Tests(TestWithFailureCount):
+class RunTest262Tests(TestWithFailureCount, CustomFlagsMixin):
     name = "test262-test"
     description = ["test262-tests running"]
     descriptionDone = ["test262-tests"]
@@ -596,7 +687,7 @@ class RunTest262Tests(TestWithFailureCount):
         self.log_observer = ParseByLineLogObserver(self.parseOutputLine)
         self.addLogObserver('stdio', self.log_observer)
         self.failedTestCount = 0
-        appendCustomBuildFlags(self, self.getProperty('platform'), self.getProperty('fullPlatform'))
+        self.appendCustomBuildFlags(self.getProperty('platform'), self.getProperty('fullPlatform'))
         return shell.Test.start(self)
 
     def parseOutputLine(self, line):
@@ -608,7 +699,7 @@ class RunTest262Tests(TestWithFailureCount):
         return self.failedTestCount
 
 
-class RunWebKitTests(shell.Test):
+class RunWebKitTests(shell.Test, CustomFlagsMixin):
     name = "layout-test"
     description = ["layout-tests running"]
     descriptionDone = ["layout-tests"]
@@ -635,6 +726,8 @@ class RunWebKitTests(shell.Test):
         ('missing results', re.compile(r'Regressions: Unexpected missing results\s+\((\d+)\)')),
         ('failures', re.compile(r'Regressions: Unexpected.+\((\d+)\)')),
     ]
+    cancelled_due_to_huge_logs = False
+    line_count = 0
 
     def __init__(self, *args, **kwargs):
         kwargs['logEnviron'] = False
@@ -648,7 +741,7 @@ class RunWebKitTests(shell.Test):
         self.testFailures = {}
 
         platform = self.getProperty('platform')
-        appendCustomTestingFlags(self, platform, self.getProperty('device_model'))
+        self.appendCustomTestingFlags(platform, self.getProperty('device_model'))
         additionalArguments = self.getProperty('additionalArguments')
 
         self.setCommand(self.command + ["--results-directory", self.resultDirectory])
@@ -656,6 +749,9 @@ class RunWebKitTests(shell.Test):
 
         if platform == "win":
             self.setCommand(self.command + ['--batch-size', '100', '--root=' + os.path.join("WebKitBuild", self.getProperty('configuration'), "bin64")])
+
+        if platform in ['gtk', 'wpe']:
+            self.setCommand(self.command + ['--enable-core-dumps-nolimit'])
 
         if additionalArguments:
             self.setCommand(self.command + additionalArguments)
@@ -668,6 +764,11 @@ class RunWebKitTests(shell.Test):
         return line
 
     def parseOutputLine(self, line):
+        self.line_count += 1
+        if self.line_count == THRESHOLD_FOR_EXCESSIVE_LOGS:
+            self.handleExcessiveLogging()
+            return
+
         if r'Exiting early' in line or r'leaks found' in line:
             self.incorrectLayoutLines.append(self._strip_python_logging_prefix(line))
             return
@@ -708,12 +809,18 @@ class RunWebKitTests(shell.Test):
         return result
 
     def getResultSummary(self):
-        status = self.name
-
+        if self.cancelled_due_to_huge_logs:
+            return {'step': MSG_FOR_EXCESSIVE_LOGS, 'build': MSG_FOR_EXCESSIVE_LOGS}
         if self.results != SUCCESS and self.incorrectLayoutLines:
-            status = ' '.join(self.incorrectLayoutLines)
-            return {'step': status}
-        return super(RunWebKitTests, self).getResultSummary()
+            return {'step': ' '.join(self.incorrectLayoutLines)}
+        return super().getResultSummary()
+
+    def handleExcessiveLogging(self):
+        build_url = f'{self.master.config.buildbotURL}#/builders/{self.build._builderid}/builds/{self.build.number}'
+        print(f'\n{MSG_FOR_EXCESSIVE_LOGS}, {build_url}\n')
+        self.cancelled_due_to_huge_logs = True
+        self.build.stopBuild(reason=MSG_FOR_EXCESSIVE_LOGS, results=FAILURE)
+        self.build.buildFinished([MSG_FOR_EXCESSIVE_LOGS], FAILURE)
 
 
 class RunDashboardTests(RunWebKitTests):
@@ -727,7 +834,7 @@ class RunDashboardTests(RunWebKitTests):
         return RunWebKitTests.start(self)
 
 
-class RunAPITests(TestWithFailureCount):
+class RunAPITests(TestWithFailureCount, CustomFlagsMixin):
     name = "run-api-tests"
     VALID_ADDITIONAL_ARGUMENTS_LIST = ["--remote-layer-tree", "--use-gpu-process"]
     description = ["api tests running"]
@@ -749,6 +856,8 @@ class RunAPITests(TestWithFailureCount):
     ]
     failedTestsFormatString = "%d api test%s failed or timed out"
     test_summary_re = re.compile(r'Ran (?P<ran>\d+) tests of (?P<total>\d+) with (?P<passed>\d+) successful')
+    cancelled_due_to_huge_logs = False
+    line_count = 0
 
     def __init__(self, *args, **kwargs):
         kwargs['logEnviron'] = False
@@ -759,7 +868,7 @@ class RunAPITests(TestWithFailureCount):
         self.log_observer = ParseByLineLogObserver(self.parseOutputLine)
         self.addLogObserver('stdio', self.log_observer)
         self.failedTestCount = 0
-        appendCustomTestingFlags(self, self.getProperty('platform'), self.getProperty('device_model'))
+        self.appendCustomTestingFlags(self.getProperty('platform'), self.getProperty('device_model'))
         additionalArguments = self.getProperty("additionalArguments")
         for additionalArgument in additionalArguments or []:
             if additionalArgument in self.VALID_ADDITIONAL_ARGUMENTS_LIST:
@@ -770,9 +879,26 @@ class RunAPITests(TestWithFailureCount):
         return self.failedTestCount
 
     def parseOutputLine(self, line):
+        self.line_count += 1
+        if self.line_count == THRESHOLD_FOR_EXCESSIVE_LOGS:
+            self.handleExcessiveLogging()
+            return
+
         match = self.test_summary_re.match(line)
         if match:
             self.failedTestCount = int(match.group('ran')) - int(match.group('passed'))
+
+    def handleExcessiveLogging(self):
+        build_url = f'{self.master.config.buildbotURL}#/builders/{self.build._builderid}/builds/{self.build.number}'
+        print(f'\n{MSG_FOR_EXCESSIVE_LOGS}, {build_url}\n')
+        self.cancelled_due_to_huge_logs = True
+        self.build.stopBuild(reason=MSG_FOR_EXCESSIVE_LOGS, results=FAILURE)
+        self.build.buildFinished([MSG_FOR_EXCESSIVE_LOGS], FAILURE)
+
+    def getResultSummary(self):
+        if self.cancelled_due_to_huge_logs:
+            return {'step': MSG_FOR_EXCESSIVE_LOGS, 'build': MSG_FOR_EXCESSIVE_LOGS}
+        return super().getResultSummary()
 
 
 class RunPythonTests(TestWithFailureCount):
@@ -1034,60 +1160,47 @@ class RunWPEAPITests(RunGLibAPITests):
     command = ["python3", "Tools/Scripts/run-wpe-tests", WithProperties("--%(configuration)s")]
 
 
-class RunWebDriverTests(shell.Test):
+class RunWebDriverTests(shell.Test, CustomFlagsMixin):
     name = "webdriver-test"
     description = ["webdriver-tests running"]
     descriptionDone = ["webdriver-tests"]
     jsonFileName = "webdriver_tests.json"
     command = ["python3", "Tools/Scripts/run-webdriver-tests", "--json-output={0}".format(jsonFileName), WithProperties("--%(configuration)s")]
     logfiles = {"json": jsonFileName}
+    cancelled_due_to_huge_logs = False
+    line_count = 0
 
     def start(self):
         additionalArguments = self.getProperty('additionalArguments')
         if additionalArguments:
             self.setCommand(self.command + additionalArguments)
 
-        appendCustomBuildFlags(self, self.getProperty('platform'), self.getProperty('fullPlatform'))
+        self.log_observer = ParseByLineLogObserver(self.parseOutputLine)
+        self.addLogObserver('stdio', self.log_observer)
+
+        self.appendCustomBuildFlags(self.getProperty('platform'), self.getProperty('fullPlatform'))
         return shell.Test.start(self)
 
-    def commandComplete(self, cmd):
-        shell.Test.commandComplete(self, cmd)
-        logText = cmd.logs['stdio'].getText()
+    def getResultSummary(self):
+        # TODO: Parse logs to count number of failures and unexpected passes. https://webkit.org/b/261698
+        if self.cancelled_due_to_huge_logs:
+            return {'step': MSG_FOR_EXCESSIVE_LOGS, 'build': MSG_FOR_EXCESSIVE_LOGS}
+        if self.results == FAILURE:
+            return {'step': f'Failed {self.name}'}
+        return super().getResultSummary()
 
-        self.failuresCount = 0
-        self.newPassesCount = 0
-        foundItems = re.findall(r"^Unexpected .+ \((\d+)\)", logText, re.MULTILINE)
-        if foundItems:
-            self.failuresCount = int(foundItems[0])
-        foundItems = re.findall(r"^Expected to .+, but passed \((\d+)\)", logText, re.MULTILINE)
-        if foundItems:
-            self.newPassesCount = int(foundItems[0])
+    def parseOutputLine(self, line):
+        self.line_count += 1
+        if self.line_count == THRESHOLD_FOR_EXCESSIVE_LOGS:
+            self.handleExcessiveLogging()
+            return
 
-    def evaluateCommand(self, cmd):
-        if self.failuresCount:
-            return FAILURE
-
-        if self.newPassesCount:
-            return WARNINGS
-
-        if cmd.rc != 0:
-            return FAILURE
-
-        return SUCCESS
-
-    def getText(self, cmd, results):
-        return self.getText2(cmd, results)
-
-    def getText2(self, cmd, results):
-        if results != SUCCESS and (self.failuresCount or self.newPassesCount):
-            lines = []
-            if self.failuresCount:
-                lines.append("%d failures" % self.failuresCount)
-            if self.newPassesCount:
-                lines.append("%d new passes" % self.newPassesCount)
-            return ["%s %s" % (self.name, ", ".join(lines))]
-
-        return [self.name]
+    def handleExcessiveLogging(self):
+        build_url = f'{self.master.config.buildbotURL}#/builders/{self.build._builderid}/builds/{self.build.number}'
+        print(f'\n{MSG_FOR_EXCESSIVE_LOGS}, {build_url}\n')
+        self.cancelled_due_to_huge_logs = True
+        self.build.stopBuild(reason=MSG_FOR_EXCESSIVE_LOGS, results=FAILURE)
+        self.build.buildFinished([MSG_FOR_EXCESSIVE_LOGS], FAILURE)
 
 
 class RunWebKit1Tests(RunWebKitTests):
@@ -1157,9 +1270,10 @@ class RunBenchmarkTests(shell.Test):
     name = "benchmark-test"
     description = ["benchmark tests running"]
     descriptionDone = ["benchmark tests"]
-    command = ["python3", "Tools/Scripts/browserperfdash-benchmark", "--allplans",
+    command = ["python3", "Tools/Scripts/browserperfdash-benchmark", "--plans-from-config",
                "--config-file", "../../browserperfdash-benchmark-config.txt",
-               "--browser-version", WithProperties("%(archive_revision)s")]
+               "--browser-version", WithProperties("%(archive_revision)s"),
+               "--timestamp-from-repo", "."]
 
     def start(self):
         platform = self.getProperty("platform")
@@ -1177,7 +1291,7 @@ class RunBenchmarkTests(shell.Test):
         return [self.name]
 
 
-class ArchiveTestResults(shell.ShellCommand):
+class ArchiveTestResults(shell.ShellCommandNewStyle):
     command = ["python3", "Tools/CISupport/test-result-archive",
                WithProperties("--platform=%(platform)s"), WithProperties("--%(configuration)s"), "archive"]
     name = "archive-test-results"
@@ -1198,7 +1312,7 @@ class UploadTestResults(transfer.FileUpload):
         transfer.FileUpload.__init__(self, **kwargs)
 
 
-class TransferToS3(master.MasterShellCommand):
+class TransferToS3(master.MasterShellCommandNewStyle):
     name = "transfer-to-s3"
     description = ["transferring to s3"]
     descriptionDone = ["transferred to s3"]
@@ -1213,22 +1327,21 @@ class TransferToS3(master.MasterShellCommand):
         kwargs['command'] = self.command
         kwargs['logEnviron'] = False
         self.terminate_build = terminate_build
-        master.MasterShellCommand.__init__(self, **kwargs)
+        super().__init__(**kwargs)
 
-    def start(self):
-        return master.MasterShellCommand.start(self)
+    @defer.inlineCallbacks
+    def run(self):
+        rc = yield super().run()
 
-    def finished(self, result):
-        rc = master.MasterShellCommand.finished(self, result)
         if self.terminate_build and self.getProperty('user_provided_git_hash'):
             self.build.buildFinished([f"Uploaded archive with hash {self.getProperty('user_provided_git_hash', '')[:8]}"], SUCCESS)
-        return rc
+        defer.returnValue(rc)
 
     def doStepIf(self, step):
         return CURRENT_HOSTNAME == BUILD_WEBKIT_HOSTNAME
 
 
-class ExtractTestResults(master.MasterShellCommand):
+class ExtractTestResults(master.MasterShellCommandNewStyle):
     name = 'extract-test-results'
     descriptionDone = ['Extracted test results']
     renderables = ['resultDirectory', 'zipFile']
@@ -1239,7 +1352,7 @@ class ExtractTestResults(master.MasterShellCommand):
         self.zipFile = Interpolate('public_html/results/%(prop:buildername)s/%(prop:archive_revision)s (%(prop:buildnumber)s).zip')
         self.resultDirectory = Interpolate('public_html/results/%(prop:buildername)s/%(prop:archive_revision)s (%(prop:buildnumber)s)')
         kwargs['command'] = ['unzip', '-q', '-o', self.zipFile, '-d', self.resultDirectory]
-        master.MasterShellCommand.__init__(self, **kwargs)
+        super().__init__(**kwargs)
 
     def resultDirectoryURL(self):
         self.setProperty('result_directory', self.resultDirectory)
@@ -1249,9 +1362,11 @@ class ExtractTestResults(master.MasterShellCommand):
         self.addURL("view layout test results", self.resultDirectoryURL() + "results.html")
         self.addURL("view dashboard test results", self.resultDirectoryURL() + "dashboard-layout-test-results/results.html")
 
-    def finished(self, result):
+    @defer.inlineCallbacks
+    def run(self):
+        rc = yield super().run()
         self.addCustomURLs()
-        return master.MasterShellCommand.finished(self, result)
+        defer.returnValue(rc)
 
 
 class PrintConfiguration(steps.ShellSequence):
@@ -1322,35 +1437,33 @@ class PrintConfiguration(steps.ShellSequence):
         return {'step': configuration}
 
 
-
-class SetPermissions(master.MasterShellCommand):
+class SetPermissions(master.MasterShellCommandNewStyle):
     name = 'set-permissions'
 
     def __init__(self, **kwargs):
         resultDirectory = Interpolate('%(prop:result_directory)s')
         kwargs['command'] = ['chmod', 'a+rx', resultDirectory]
         kwargs['logEnviron'] = False
-        master.MasterShellCommand.__init__(self, **kwargs)
+        super().__init__(**kwargs)
 
 
-class ShowIdentifier(shell.ShellCommand):
+class ShowIdentifier(shell.ShellCommandNewStyle):
     name = 'show-identifier'
     identifier_re = '^Identifier: (.*)$'
     flunkOnFailure = False
     haltOnFailure = False
 
     def __init__(self, **kwargs):
-        shell.ShellCommand.__init__(self, timeout=10 * 60, logEnviron=False, **kwargs)
+        super().__init__(timeout=10 * 60, logEnviron=False, **kwargs)
 
-    def start(self):
+    @defer.inlineCallbacks
+    def run(self):
         self.log_observer = logobserver.BufferLogObserver()
         self.addLogObserver('stdio', self.log_observer)
         revision = self.getProperty('user_provided_git_hash', None) or self.getProperty('got_revision')
-        self.setCommand(['python3', 'Tools/Scripts/git-webkit', 'find', revision])
-        return shell.ShellCommand.start(self)
+        self.command = ['python3', 'Tools/Scripts/git-webkit', 'find', revision]
 
-    def evaluateCommand(self, cmd):
-        rc = shell.ShellCommand.evaluateCommand(self, cmd)
+        rc = yield super().run()
         if rc != SUCCESS:
             return rc
 
@@ -1389,7 +1502,77 @@ class ShowIdentifier(shell.ShellCommand):
     def getResultSummary(self):
         if self.results != SUCCESS:
             return {u'step': u'Failed to find identifier'}
-        return shell.ShellCommand.getResultSummary(self)
+        return super().getResultSummary()
 
     def hideStepIf(self, results, step):
         return results == SUCCESS
+
+
+class CheckIfNeededUpdateDeployedCrossTargetImage(shell.ShellCommandNewStyle, CustomFlagsMixin):
+    command = ["python3", "Tools/Scripts/cross-toolchain-helper", "--check-if-image-is-updated", "deployed"]
+    name = "check-if-deployed-cross-target-image-is-updated"
+    description = ["checking if deployed cross target image is updated"]
+    descriptionDone = ["deployed cross target image is updated"]
+    haltOnFailure = False
+    flunkOnFailure = False
+    warnOnFailure = False
+
+    @defer.inlineCallbacks
+    def run(self):
+        self.appendCrossTargetFlags(self.getProperty('additionalArguments'))
+        rc = yield super().run()
+        if rc != SUCCESS:
+            self.build.addStepsAfterCurrentStep([BuildAndDeployCrossTargetImage()])
+        defer.returnValue(rc)
+
+
+class CheckIfNeededUpdateRunningCrossTargetImage(shell.ShellCommandNewStyle):
+    command = ["python3", "Tools/Scripts/cross-toolchain-helper", "--check-if-image-is-updated", "running"]
+    name = "check-if-running-cross-target-image-is-updated"
+    description = ["checking if running cross target image is updated"]
+    descriptionDone = ["running cross target image is updated"]
+    haltOnFailure = False
+    flunkOnFailure = False
+    warnOnFailure = False
+
+    @defer.inlineCallbacks
+    def run(self):
+        rc = yield super().run()
+        if rc != SUCCESS:
+            self.build.addStepsAfterCurrentStep([RebootWithUpdatedCrossTargetImage()])
+        defer.returnValue(rc)
+
+
+class BuildAndDeployCrossTargetImage(shell.ShellCommandNewStyle, CustomFlagsMixin):
+    command = ["python3", "Tools/Scripts/cross-toolchain-helper", "--build-image",
+               "--deploy-image-with-script", "../../cross-toolchain-helper-deploy.sh"]
+    name = "build-and-deploy-cross-target-image"
+    description = ["building and deploying cross target image"]
+    descriptionDone = ["cross target image built and deployed"]
+    haltOnFailure = True
+
+    def run(self):
+        self.appendCrossTargetFlags(self.getProperty('additionalArguments'))
+        return super().run()
+
+
+class RebootWithUpdatedCrossTargetImage(shell.ShellCommandNewStyle):
+    # Either use env var SUDO_ASKPASS or configure /etc/sudoers for passwordless reboot
+    command = ["sudo", "-A", "reboot"]
+    name = "reboot-with-updated-cross-target-image"
+    description = ["rebooting with updated cross target image"]
+    descriptionDone = ["rebooted with updated cross target image"]
+    haltOnFailure = True
+
+    # This step can never succeed.. either it timeouts (bot has rebooted) or it fails.
+    # Ideally buildbot should have built-in reboot support so it waits for the bot to
+    # do a reboot, but it doesn't. See: https://github.com/buildbot/buildbot/issues/4578
+    @defer.inlineCallbacks
+    def run(self):
+        rc = yield super().run()
+        # The command reboot return success when it instructs the machine to reboot,
+        # but the machine can still take a while to stop services and actually reboot.
+        # Retry the build if reboot end sucesfully before the connection is lost.
+        if rc == SUCCESS:
+            self.build.buildFinished(['Rebooting with updated image, retrying build'], RETRY)
+        defer.returnValue(rc)

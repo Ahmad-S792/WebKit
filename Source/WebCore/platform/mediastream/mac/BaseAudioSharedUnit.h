@@ -28,6 +28,8 @@
 #if ENABLE(MEDIA_STREAM)
 
 #include "RealtimeMediaSourceCapabilities.h"
+#include "RealtimeMediaSourceCenter.h"
+#include <wtf/CheckedPtr.h>
 #include <wtf/Function.h>
 #include <wtf/HashSet.h>
 #include <wtf/Lock.h>
@@ -42,10 +44,10 @@ class CaptureDevice;
 class CoreAudioCaptureSource;
 class PlatformAudioData;
 
-class BaseAudioSharedUnit : public CanMakeWeakPtr<BaseAudioSharedUnit, WeakPtrFactoryInitialization::Eager> {
+class BaseAudioSharedUnit : public RealtimeMediaSourceCenter::Observer {
 public:
     BaseAudioSharedUnit();
-    virtual ~BaseAudioSharedUnit() = default;
+    virtual ~BaseAudioSharedUnit();
 
     void startProducingData();
     void stopProducingData();
@@ -76,10 +78,9 @@ public:
     virtual bool hasAudioUnit() const = 0;
     void setCaptureDevice(String&&, uint32_t);
 
-    virtual CapabilityValueOrRange sampleRateCapacities() const = 0;
+    virtual CapabilityRange sampleRateCapacities() const = 0;
     virtual int actualSampleRate() const { return sampleRate(); }
 
-    void devicesChanged(const Vector<CaptureDevice>&);
     void whenAudioCaptureUnitIsNotRunning(Function<void()>&&);
     bool isRenderingAudio() const { return m_isRenderingAudio; }
     bool hasClients() const { return !m_clients.isEmpty(); }
@@ -115,9 +116,14 @@ protected:
 
     virtual void isProducingMicrophoneSamplesChanged() { }
     virtual void validateOutputDevice(uint32_t /* currentOutputDeviceID */) { }
+    virtual bool migrateToNewDefaultDevice(const CaptureDevice&) { return false; }
 
 private:
     OSStatus startUnit();
+
+    // RealtimeMediaSourceCenter::Observer
+    void devicesChanged() final;
+    void deviceWillBeRemoved(const String&) final { }
 
     bool m_enableEchoCancellation { true };
     double m_volume { 1 };
@@ -131,10 +137,11 @@ private:
     uint32_t m_outputDeviceID { 0 };
     std::optional<std::pair<String, uint32_t>> m_capturingDevice;
 
-    HashSet<CoreAudioCaptureSource*> m_clients;
-    Vector<CoreAudioCaptureSource*> m_audioThreadClients WTF_GUARDED_BY_LOCK(m_audioThreadClientsLock);
+    HashSet<CheckedPtr<CoreAudioCaptureSource>> m_clients;
+    Vector<CheckedPtr<CoreAudioCaptureSource>> m_audioThreadClients WTF_GUARDED_BY_LOCK(m_audioThreadClientsLock);
     Lock m_audioThreadClientsLock;
 
+    bool m_isCapturingWithDefaultMicrophone { false };
     bool m_isProducingMicrophoneSamples { true };
     Vector<Function<void()>> m_whenNotRunningCallbacks;
 };

@@ -23,8 +23,7 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifndef AVCaptureDeviceManager_h
-#define AVCaptureDeviceManager_h
+#pragma once
 
 #if ENABLE(MEDIA_STREAM) && USE(AVFOUNDATION)
 
@@ -50,7 +49,7 @@ class AVCaptureDeviceManager final : public CaptureDeviceManager {
 public:
     static AVCaptureDeviceManager& singleton();
 
-    void refreshCaptureDevices(CompletionHandler<void()>&& = [] { });
+    void refreshCaptureDevices() { refreshCaptureDevicesInternal([] { }, ShouldSetUserPreferredCamera::No); };
 
 private:
     static bool isAvailable();
@@ -66,6 +65,10 @@ private:
     Vector<CaptureDevice> retrieveCaptureDevices();
     RetainPtr<NSArray> currentCameras();
 
+    enum class ShouldSetUserPreferredCamera : bool { No, Yes };
+    void refreshCaptureDevicesInternal(CompletionHandler<void()>&&, ShouldSetUserPreferredCamera);
+    void setUserPreferredCamera();
+
     RetainPtr<WebCoreAVCaptureDeviceManagerObserver> m_objcObserver;
     Vector<CaptureDevice> m_devices;
     RetainPtr<NSMutableArray> m_avCaptureDevices;
@@ -77,6 +80,4 @@ private:
 
 } // namespace WebCore
 
-#endif // ENABLE(MEDIA_STREAM)
-
-#endif // AVCaptureDeviceManager_h
+#endif // ENABLE(MEDIA_STREAM) && USE(AVFOUNDATION)

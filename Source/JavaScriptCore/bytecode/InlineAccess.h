@@ -33,6 +33,7 @@
 namespace JSC {
 
 class CodeBlock;
+class InlineCacheHandler;
 class JSArray;
 class Structure;
 class StructureStubInfo;
@@ -81,11 +82,8 @@ public:
 #endif
     }
 
-    // FIXME: Make this constexpr when GCC is able to compile std::max() inside a constexpr function.
-    // https://bugs.webkit.org/show_bug.cgi?id=159436
-    //
     // This is the maximum between array length, string length, and regular self access sizes.
-    ALWAYS_INLINE static size_t sizeForLengthAccess()
+    ALWAYS_INLINE static constexpr size_t sizeForLengthAccess()
     {
 #if CPU(X86_64)
         size_t size = 43;
@@ -114,9 +112,7 @@ public:
     static bool generateSelfInAccess(CodeBlock*, StructureStubInfo&, Structure*);
     static bool generateStringLength(CodeBlock*, StructureStubInfo&);
 
-    static void rewireStubAsJumpInAccessNotUsingInlineAccess(CodeBlock*, StructureStubInfo&, CodeLocationLabel<JITStubRoutinePtrTag>);
-    static void rewireStubAsJumpInAccess(CodeBlock*, StructureStubInfo&, CodeLocationLabel<JITStubRoutinePtrTag>);
-    static void resetStubAsJumpInAccessNotUsingInlineAccess(CodeBlock*, StructureStubInfo&);
+    static void rewireStubAsJumpInAccess(CodeBlock*, StructureStubInfo&, InlineCacheHandler&);
     static void resetStubAsJumpInAccess(CodeBlock*, StructureStubInfo&);
 
     // This is helpful when determining the size of an IC on

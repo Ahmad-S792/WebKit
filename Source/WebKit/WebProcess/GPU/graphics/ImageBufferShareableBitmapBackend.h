@@ -27,8 +27,13 @@
 
 #include "ImageBufferBackendHandleSharing.h"
 #include <WebCore/ImageBuffer.h>
-#include <WebCore/PlatformImageBufferBackend.h>
 #include <wtf/IsoMalloc.h>
+
+#if USE(CG)
+#include <WebCore/ImageBufferCGBackend.h>
+#elif USE(CAIRO)
+#include <WebCore/ImageBufferCairoBackend.h>
+#endif
 
 namespace WebCore {
 class ProcessIdentity;
@@ -38,12 +43,17 @@ namespace WebKit {
 
 class ShareableBitmap;
 
-class ImageBufferShareableBitmapBackend final : public WebCore::PlatformImageBufferBackend, public ImageBufferBackendHandleSharing {
+#if USE(CG)
+using ImageBufferShareableBitmapBackendBase = WebCore::ImageBufferCGBackend;
+#elif USE(CAIRO)
+using ImageBufferShareableBitmapBackendBase = WebCore::ImageBufferCairoBackend;
+#endif
+
+class ImageBufferShareableBitmapBackend final : public ImageBufferShareableBitmapBackendBase, public ImageBufferBackendHandleSharing {
     WTF_MAKE_ISO_ALLOCATED(ImageBufferShareableBitmapBackend);
     WTF_MAKE_NONCOPYABLE(ImageBufferShareableBitmapBackend);
 
 public:
-    static ShareableBitmapConfiguration configuration(const Parameters&);
     static WebCore::IntSize calculateSafeBackendSize(const Parameters&);
     static unsigned calculateBytesPerRow(const Parameters&, const WebCore::IntSize& backendSize);
     static size_t calculateMemoryCost(const Parameters&);
@@ -53,24 +63,23 @@ public:
 
     ImageBufferShareableBitmapBackend(const Parameters&, Ref<ShareableBitmap>&&, std::unique_ptr<WebCore::GraphicsContext>&&);
 
-    WebCore::GraphicsContext& context() const final { return *m_context; }
-    WebCore::IntSize backendSize() const final;
+    WebCore::GraphicsContext& context() final { return *m_context; }
 
-    ImageBufferBackendHandle createBackendHandle(SharedMemory::Protection = SharedMemory::Protection::ReadWrite) const final;
+    std::optional<ImageBufferBackendHandle> createBackendHandle(SharedMemory::Protection = SharedMemory::Protection::ReadWrite) const final;
     RefPtr<ShareableBitmap> bitmap() const final { return m_bitmap.ptr(); }
 #if USE(CAIRO)
     RefPtr<cairo_surface_t> createCairoSurface() final;
 #endif
 
-    RefPtr<WebCore::NativeImage> copyNativeImage(WebCore::BackingStoreCopy = WebCore::CopyBackingStore) const final;
+    RefPtr<WebCore::NativeImage> copyNativeImage() final;
+    RefPtr<WebCore::NativeImage> createNativeImageReference() final;
 
-    RefPtr<WebCore::PixelBuffer> getPixelBuffer(const WebCore::PixelBufferFormat& outputFormat, const WebCore::IntRect&, const WebCore::ImageBufferAllocator&) const final;
+    void getPixelBuffer(const WebCore::IntRect&, WebCore::PixelBuffer&) final;
     void putPixelBuffer(const WebCore::PixelBuffer&, const WebCore::IntRect& srcRect, const WebCore::IntPoint& destPoint, WebCore::AlphaPremultiplication destFormat) final;
-
-    void setOwnershipIdentity(const WebCore::ProcessIdentity&) { }
 
 private:
     unsigned bytesPerRow() const final;
+    String debugDescription() const final;
 
     ImageBufferBackendSharing* toBackendSharing() final { return this; }
     void releaseGraphicsContext() final { /* Do nothing. This is only relevant for IOSurface backends */ }

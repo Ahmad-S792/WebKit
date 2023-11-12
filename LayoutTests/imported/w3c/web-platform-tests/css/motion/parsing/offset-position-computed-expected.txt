@@ -1,5 +1,6 @@
 
 PASS Property offset-position value 'auto'
+PASS Property offset-position value 'normal'
 PASS Property offset-position value 'left bottom'
 PASS Property offset-position value 'center center'
 PASS Property offset-position value 'right center'

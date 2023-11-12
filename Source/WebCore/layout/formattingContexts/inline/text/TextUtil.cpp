@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2018 Apple Inc. All rights reserved.
+ * Copyright (C) 2018-2023 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -28,13 +28,15 @@
 
 #include "BreakLines.h"
 #include "FontCascade.h"
+#include "InlineLineTypes.h"
 #include "InlineTextItem.h"
 #include "Latin1TextIterator.h"
 #include "LayoutInlineTextBox.h"
 #include "RenderBox.h"
-#include "RenderStyle.h"
+#include "RenderStyleInlines.h"
 #include "SurrogatePairAwareTextIterator.h"
 #include "TextRun.h"
+#include "WidthIterator.h"
 #include <unicode/ubidi.h>
 #include <wtf/text/TextBreakIterator.h>
 
@@ -89,7 +91,7 @@ InlineLayoutUnit TextUtil::width(const InlineTextItem& inlineTextItem, const Fon
     return TextUtil::width(inlineTextItem, fontCascade, inlineTextItem.start(), inlineTextItem.end(), contentLogicalLeft);
 }
 
-InlineLayoutUnit TextUtil::width(const InlineTextItem& inlineTextItem, const FontCascade& fontCascade, unsigned from, unsigned to, InlineLayoutUnit contentLogicalLeft)
+InlineLayoutUnit TextUtil::width(const InlineTextItem& inlineTextItem, const FontCascade& fontCascade, unsigned from, unsigned to, InlineLayoutUnit contentLogicalLeft, UseTrailingWhitespaceMeasuringOptimization useTrailingWhitespaceMeasuringOptimization)
 {
     RELEASE_ASSERT(from >= inlineTextItem.start());
     RELEASE_ASSERT(to <= inlineTextItem.end());
@@ -105,7 +107,7 @@ InlineLayoutUnit TextUtil::width(const InlineTextItem& inlineTextItem, const Fon
             return std::isnan(width) ? 0.0f : std::isinf(width) ? maxInlineLayoutUnit() : width;
         }
     }
-    return width(inlineTextItem.inlineTextBox(), fontCascade, from, to, contentLogicalLeft);
+    return width(inlineTextItem.inlineTextBox(), fontCascade, from, to, contentLogicalLeft, useTrailingWhitespaceMeasuringOptimization);
 }
 
 InlineLayoutUnit TextUtil::trailingWhitespaceWidth(const InlineTextBox& inlineTextBox, const FontCascade& fontCascade, size_t startPosition, size_t endPosition)
@@ -118,7 +120,7 @@ InlineLayoutUnit TextUtil::trailingWhitespaceWidth(const InlineTextBox& inlineTe
 }
 
 template <typename TextIterator>
-static void fallbackFontsForRunWithIterator(HashSet<const Font*>& fallbackFonts, const FontCascade& fontCascade, const TextRun& run, TextIterator& textIterator)
+static void fallbackFontsForRunWithIterator(WeakHashSet<const Font>& fallbackFonts, const FontCascade& fontCascade, const TextRun& run, TextIterator& textIterator)
 {
     auto isRTL = run.rtl();
     auto isSmallCaps = fontCascade.isSmallCaps();
@@ -135,9 +137,15 @@ static void fallbackFontsForRunWithIterator(HashSet<const Font*>& fallbackFonts,
             auto glyphData = fontCascade.glyphDataForCharacter(character, isRTL);
             if (glyphData.glyph && glyphData.font && glyphData.font != &primaryFont) {
                 auto isNonSpacingMark = U_MASK(u_charType(character)) & U_GC_MN_MASK;
+
+                // https://drafts.csswg.org/css-text-3/#white-space-processing
+                // "Unsupported Default_ignorable characters must be ignored for text rendering."
+                auto isIgnored = isDefaultIgnorableCodePoint(character);
+
                 // If we include the synthetic bold expansion, then even zero-width glyphs will have their fonts added.
                 if (isNonSpacingMark || glyphData.font->widthForGlyph(glyphData.glyph, Font::SyntheticBoldInclusion::Exclude))
-                    fallbackFonts.add(glyphData.font);
+                    if (!isIgnored)
+                        fallbackFonts.add(*glyphData.font);
             }
         };
         addFallbackFontForCharacterIfApplicable(currentCharacter);
@@ -237,7 +245,7 @@ TextUtil::WordBreakLeft TextUtil::breakWord(const InlineTextBox& inlineTextBox, 
             auto nextUserPerceivedCharacterIndex = [&] (auto index) -> size_t {
                 if (text.is8Bit())
                     return index + 1;
-                U16_FWD_1(text, index, length);
+                U16_FWD_1(text, index, startPosition + length);
                 return index;
             };
 
@@ -305,64 +313,115 @@ TextUtil::WordBreakLeft TextUtil::breakWord(const InlineTextBox& inlineTextBox, 
     return leftSide;
 }
 
-unsigned TextUtil::findNextBreakablePosition(LazyLineBreakIterator& lineBreakIterator, unsigned startPosition, const RenderStyle& style)
+bool TextUtil::mayBreakInBetween(const InlineTextItem& previousInlineItem, const InlineTextItem& nextInlineItem)
+{
+    // Check if these 2 adjacent non-whitespace inline items are connected at a breakable position.
+    ASSERT(!previousInlineItem.isWhitespace() && !nextInlineItem.isWhitespace());
+
+    auto previousContent = previousInlineItem.inlineTextBox().content();
+    auto nextContent = nextInlineItem.inlineTextBox().content();
+    // Now we need to collect at least 3 adjacent characters to be able to make a decision whether the previous text item ends with breaking opportunity.
+    // [ex-][ample] <- second to last[x] last[-] current[a]
+    // We need at least 1 character in the current inline text item and 2 more from previous inline items.
+    if (!previousContent.is8Bit()) {
+        // FIXME: Remove this workaround when we move over to a better way of handling prior-context with Unicode.
+        // See the templated CharacterType in nextBreakablePosition for last and lastlast characters.
+        nextContent.convertTo16Bit();
+    }
+    auto& previousContentStyle = previousInlineItem.style();
+    auto& nextContentStyle = nextInlineItem.style();
+    auto lineBreakIteratorFactory = CachedLineBreakIteratorFactory { nextContent, nextContentStyle.computedLocale(), TextUtil::lineBreakIteratorMode(nextContentStyle.lineBreak()), TextUtil::contentAnalysis(nextContentStyle.wordBreak()) };
+    auto previousContentLength = previousContent.length();
+    // FIXME: We should look into the entire uncommitted content for more text context.
+    UChar lastCharacter = previousContentLength ? previousContent[previousContentLength - 1] : 0;
+    if (lastCharacter == softHyphen && previousContentStyle.hyphens() == Hyphens::None)
+        return false;
+    UChar secondToLastCharacter = previousContentLength > 1 ? previousContent[previousContentLength - 2] : 0;
+    lineBreakIteratorFactory.priorContext().set({ secondToLastCharacter, lastCharacter });
+    // Now check if we can break right at the inline item boundary.
+    // With the [ex-ample], findNextBreakablePosition should return the startPosition (0).
+    // FIXME: Check if there's a more correct way of finding breaking opportunities.
+    return !findNextBreakablePosition(lineBreakIteratorFactory, 0, nextContentStyle);
+}
+
+unsigned TextUtil::findNextBreakablePosition(CachedLineBreakIteratorFactory& lineBreakIteratorFactory, unsigned startPosition, const RenderStyle& style)
 {
     auto keepAllWordsForCJK = style.wordBreak() == WordBreak::KeepAll;
     auto breakNBSP = style.autoWrap() && style.nbspMode() == NBSPMode::Space;
 
     if (keepAllWordsForCJK) {
         if (breakNBSP)
-            return nextBreakablePositionKeepingAllWords(lineBreakIterator, startPosition);
-        return nextBreakablePositionKeepingAllWordsIgnoringNBSP(lineBreakIterator, startPosition);
+            return nextBreakablePositionKeepingAllWords(lineBreakIteratorFactory, startPosition);
+        return nextBreakablePositionKeepingAllWordsIgnoringNBSP(lineBreakIteratorFactory, startPosition);
     }
 
-    if (lineBreakIterator.mode() == LineBreakIteratorMode::Default) {
+    if (lineBreakIteratorFactory.mode() == TextBreakIterator::LineMode::Behavior::Default) {
         if (breakNBSP)
-            return WebCore::nextBreakablePosition(lineBreakIterator, startPosition);
-        return nextBreakablePositionIgnoringNBSP(lineBreakIterator, startPosition);
+            return WebCore::nextBreakablePosition(lineBreakIteratorFactory, startPosition);
+        return nextBreakablePositionIgnoringNBSP(lineBreakIteratorFactory, startPosition);
     }
 
     if (breakNBSP)
-        return nextBreakablePositionWithoutShortcut(lineBreakIterator, startPosition);
-    return nextBreakablePositionIgnoringNBSPWithoutShortcut(lineBreakIterator, startPosition);
+        return nextBreakablePositionWithoutShortcut(lineBreakIteratorFactory, startPosition);
+    return nextBreakablePositionIgnoringNBSPWithoutShortcut(lineBreakIteratorFactory, startPosition);
 }
 
 bool TextUtil::shouldPreserveSpacesAndTabs(const Box& layoutBox)
 {
-    // https://www.w3.org/TR/css-text-3/#white-space-property
-    auto whitespace = layoutBox.style().whiteSpace();
-    return whitespace == WhiteSpace::Pre || whitespace == WhiteSpace::PreWrap || whitespace == WhiteSpace::BreakSpaces;
+    // https://www.w3.org/TR/css-text-4/#white-space-collapsing
+    auto whitespaceCollapse = layoutBox.style().whiteSpaceCollapse();
+    return whitespaceCollapse == WhiteSpaceCollapse::Preserve || whitespaceCollapse == WhiteSpaceCollapse::BreakSpaces;
 }
 
 bool TextUtil::shouldPreserveNewline(const Box& layoutBox)
 {
-    auto whitespace = layoutBox.style().whiteSpace();
-    // https://www.w3.org/TR/css-text-3/#white-space-property
-    return whitespace == WhiteSpace::Pre || whitespace == WhiteSpace::PreWrap || whitespace == WhiteSpace::BreakSpaces || whitespace == WhiteSpace::PreLine; 
+    // https://www.w3.org/TR/css-text-4/#white-space-collapsing
+    auto whitespaceCollapse = layoutBox.style().whiteSpaceCollapse();
+    return whitespaceCollapse == WhiteSpaceCollapse::Preserve || whitespaceCollapse == WhiteSpaceCollapse::PreserveBreaks || whitespaceCollapse == WhiteSpaceCollapse::BreakSpaces;
 }
 
 bool TextUtil::isWrappingAllowed(const RenderStyle& style)
 {
-    // Do not try to wrap overflown 'pre' and 'no-wrap' content to next line.
-    return style.whiteSpace() != WhiteSpace::Pre && style.whiteSpace() != WhiteSpace::NoWrap;
+    // https://www.w3.org/TR/css-text-4/#text-wrap
+    return style.textWrapMode() != TextWrapMode::NoWrap;
 }
 
-LineBreakIteratorMode TextUtil::lineBreakIteratorMode(LineBreak lineBreak)
+bool TextUtil::shouldTrailingWhitespaceHang(const RenderStyle& style)
+{
+    // https://www.w3.org/TR/css-text-4/#white-space-phase-2
+    return style.whiteSpaceCollapse() == WhiteSpaceCollapse::Preserve && style.textWrapMode() != TextWrapMode::NoWrap;
+}
+
+TextBreakIterator::LineMode::Behavior TextUtil::lineBreakIteratorMode(LineBreak lineBreak)
 {
     switch (lineBreak) {
     case LineBreak::Auto:
     case LineBreak::AfterWhiteSpace:
     case LineBreak::Anywhere:
-        return LineBreakIteratorMode::Default;
+        return TextBreakIterator::LineMode::Behavior::Default;
     case LineBreak::Loose:
-        return LineBreakIteratorMode::Loose;
+        return TextBreakIterator::LineMode::Behavior::Loose;
     case LineBreak::Normal:
-        return LineBreakIteratorMode::Normal;
+        return TextBreakIterator::LineMode::Behavior::Normal;
     case LineBreak::Strict:
-        return LineBreakIteratorMode::Strict;
+        return TextBreakIterator::LineMode::Behavior::Strict;
     }
     ASSERT_NOT_REACHED();
-    return LineBreakIteratorMode::Default;
+    return TextBreakIterator::LineMode::Behavior::Default;
+}
+
+TextBreakIterator::ContentAnalysis TextUtil::contentAnalysis(WordBreak wordBreak)
+{
+    switch (wordBreak) {
+    case WordBreak::Normal:
+    case WordBreak::BreakAll:
+    case WordBreak::KeepAll:
+    case WordBreak::BreakWord:
+        return TextBreakIterator::ContentAnalysis::Mechanical;
+    case WordBreak::AutoPhrase:
+        return TextBreakIterator::ContentAnalysis::Linguistic;
+    }
+    return TextBreakIterator::ContentAnalysis::Mechanical;
 }
 
 bool TextUtil::containsStrongDirectionalityText(StringView text)
@@ -413,7 +472,8 @@ size_t TextUtil::firstUserPerceivedCharacterLength(const InlineTextBox& inlineTe
 
 size_t TextUtil::firstUserPerceivedCharacterLength(const InlineTextItem& inlineTextItem)
 {
-    return firstUserPerceivedCharacterLength(inlineTextItem.inlineTextBox(), inlineTextItem.start(), inlineTextItem.length());
+    auto length = firstUserPerceivedCharacterLength(inlineTextItem.inlineTextBox(), inlineTextItem.start(), inlineTextItem.length());
+    return std::min<size_t>(inlineTextItem.length(), length);
 }
 
 TextDirection TextUtil::directionForTextContent(StringView content)
@@ -490,6 +550,118 @@ float TextUtil::hangableStopOrCommaEndWidth(const InlineTextItem& inlineTextItem
     ASSERT(inlineTextItem.length());
     auto trailingPosition = inlineTextItem.end() - 1;
     return width(inlineTextItem, style.fontCascade(), trailingPosition, trailingPosition + 1, { });
+}
+
+template<typename CharacterType>
+static bool canUseSimplifiedTextMeasuringForCharacters(std::span<const CharacterType> characters, const FontCascade& fontCascade, const Font& primaryFont, bool whitespaceIsCollapsed)
+{
+    auto* rawCharacters = characters.data();
+    for (unsigned i = 0; i < characters.size(); ++i) {
+        auto character = rawCharacters[i]; // Not using characters[i] to bypass the bounds check.
+        if (!WidthIterator::characterCanUseSimplifiedTextMeasuring(character, whitespaceIsCollapsed))
+            return false;
+        auto glyphData = fontCascade.glyphDataForCharacter(character, false);
+        if (!glyphData.isValid() || glyphData.font != &primaryFont)
+            return false;
+    }
+    return true;
+}
+
+bool TextUtil::canUseSimplifiedTextMeasuring(StringView textContent, const RenderStyle& style, const RenderStyle* firstLineStyle)
+{
+    ASSERT(textContent.is8Bit() || FontCascade::characterRangeCodePath(textContent.characters16(), textContent.length()) == FontCascade::CodePath::Simple);
+    // FIXME: All these checks should be more fine-grained at the inline item level.
+    auto& fontCascade = style.fontCascade();
+    if (fontCascade.wordSpacing() || fontCascade.letterSpacing())
+        return false;
+
+    // Additional check on the font codepath.
+    auto run = TextRun { textContent };
+    run.setCharacterScanForCodePath(false);
+    if (fontCascade.codePath(run) != FontCascade::CodePath::Simple)
+        return false;
+
+    if (firstLineStyle && fontCascade != firstLineStyle->fontCascade())
+        return false;
+
+    auto& primaryFont = fontCascade.primaryFont();
+    if (primaryFont.syntheticBoldOffset())
+        return false;
+
+    auto whitespaceIsCollapsed = style.collapseWhiteSpace();
+    if (textContent.is8Bit())
+        return canUseSimplifiedTextMeasuringForCharacters(textContent.span8(), fontCascade, primaryFont, whitespaceIsCollapsed);
+    return canUseSimplifiedTextMeasuringForCharacters(textContent.span16(), fontCascade, primaryFont, whitespaceIsCollapsed);
+}
+
+void TextUtil::computedExpansions(const Line::RunList& runs, WTF::Range<size_t> runRange, size_t hangingTrailingWhitespaceLength, ExpansionInfo& expansionInfo)
+{
+    // Collect and distribute the expansion opportunities.
+    expansionInfo.opportunityCount = 0;
+    auto rangeSize = runRange.end() - runRange.begin();
+    if (rangeSize > runs.size()) {
+        ASSERT_NOT_REACHED();
+        return;
+    }
+    expansionInfo.opportunityList.resizeToFit(rangeSize);
+    expansionInfo.behaviorList.resizeToFit(rangeSize);
+    auto lastExpansionIndexWithContent = std::optional<size_t> { };
+
+    // Line start behaves as if we had an expansion here (i.e. fist runs should not start with allowing left expansion).
+    auto runIsAfterExpansion = true;
+    auto lastTextRunIndexForTrimming = [&]() -> std::optional<size_t> {
+        if (!hangingTrailingWhitespaceLength)
+            return { };
+        for (auto index = runs.size(); index--;) {
+            if (runs[index].isText())
+                return index;
+        }
+        return { };
+    }();
+    for (size_t index = 0; index < rangeSize; ++index) {
+        auto runIndex = runRange.begin() + index;
+        auto& run = runs[runIndex];
+        auto expansionBehavior = ExpansionBehavior::defaultBehavior();
+        size_t expansionOpportunitiesInRun = 0;
+
+        // According to the CSS3 spec, a UA can determine whether or not
+        // it wishes to apply text-align: justify to text with collapsible spaces (and this behavior matches Blink).
+        auto mayAlterSpacingWithinText = !TextUtil::shouldPreserveSpacesAndTabs(run.layoutBox()) || hangingTrailingWhitespaceLength;
+        if (run.isText() && mayAlterSpacingWithinText) {
+            if (run.hasTextCombine())
+                expansionBehavior = ExpansionBehavior::forbidAll();
+            else {
+                expansionBehavior.left = runIsAfterExpansion ? ExpansionBehavior::Behavior::Forbid : ExpansionBehavior::Behavior::Allow;
+                expansionBehavior.right = ExpansionBehavior::Behavior::Allow;
+                auto& textContent = *run.textContent();
+                auto length = textContent.length;
+                if (lastTextRunIndexForTrimming && runIndex == *lastTextRunIndexForTrimming) {
+                    // Trailing hanging whitespace sequence is ignored when computing the expansion opportunities.
+                    length -= hangingTrailingWhitespaceLength;
+                }
+                std::tie(expansionOpportunitiesInRun, runIsAfterExpansion) = FontCascade::expansionOpportunityCount(StringView(downcast<InlineTextBox>(run.layoutBox()).content()).substring(textContent.start, length), run.inlineDirection(), expansionBehavior);
+            }
+        } else if (run.isBox())
+            runIsAfterExpansion = false;
+
+        expansionInfo.behaviorList[index] = expansionBehavior;
+        expansionInfo.opportunityList[index] = expansionOpportunitiesInRun;
+        expansionInfo.opportunityCount += expansionOpportunitiesInRun;
+
+        if (run.isText() || run.isBox())
+            lastExpansionIndexWithContent = index;
+    }
+    // Forbid right expansion in the last run to prevent trailing expansion at the end of the line.
+    if (lastExpansionIndexWithContent && expansionInfo.opportunityList[*lastExpansionIndexWithContent]) {
+        expansionInfo.behaviorList[*lastExpansionIndexWithContent].right = ExpansionBehavior::Behavior::Forbid;
+        if (runIsAfterExpansion) {
+            // When the last run has an after expansion (e.g. CJK ideograph) we need to remove this trailing expansion opportunity.
+            // Note that this is not about trailing collapsible whitespace as at this point we trimmed them all.
+            ASSERT(expansionInfo.opportunityCount && expansionInfo.opportunityList[*lastExpansionIndexWithContent]);
+            --expansionInfo.opportunityCount;
+            --expansionInfo.opportunityList[*lastExpansionIndexWithContent];
+        }
+    }
 }
 
 }

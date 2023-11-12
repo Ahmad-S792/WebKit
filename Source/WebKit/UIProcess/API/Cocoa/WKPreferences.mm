@@ -180,6 +180,31 @@ ALLOW_DEPRECATED_DECLARATIONS_END
     _preferences->setFullScreenEnabled(elementFullscreenEnabled);
 }
 
+- (void)setInactiveSchedulingPolicy:(WKInactiveSchedulingPolicy)policy
+{
+    switch (policy) {
+    case WKInactiveSchedulingPolicySuspend:
+        _preferences->setShouldTakeNearSuspendedAssertions(false);
+        _preferences->setBackgroundWebContentRunningBoardThrottlingEnabled(true);
+        break;
+    case WKInactiveSchedulingPolicyThrottle:
+        _preferences->setShouldTakeNearSuspendedAssertions(true);
+        _preferences->setBackgroundWebContentRunningBoardThrottlingEnabled(true);
+        break;
+    case WKInactiveSchedulingPolicyNone:
+        _preferences->setShouldTakeNearSuspendedAssertions(true);
+        _preferences->setBackgroundWebContentRunningBoardThrottlingEnabled(false);
+        break;
+    default:
+        ASSERT_NOT_REACHED();
+    }
+}
+
+- (WKInactiveSchedulingPolicy)inactiveSchedulingPolicy
+{
+    return _preferences->backgroundWebContentRunningBoardThrottlingEnabled() ? (_preferences->shouldTakeNearSuspendedAssertions() ? WKInactiveSchedulingPolicyThrottle : WKInactiveSchedulingPolicySuspend) : WKInactiveSchedulingPolicyNone;
+}
+
 #pragma mark OS X-specific methods
 
 #if PLATFORM(MAC)
@@ -367,16 +392,6 @@ static _WKStorageBlockingPolicy toAPI(WebCore::StorageBlockingPolicy policy)
     _preferences->setAcceleratedDrawingEnabled(acceleratedDrawingEnabled);
 }
 
-- (BOOL)_displayListDrawingEnabled
-{
-    return _preferences->displayListDrawingEnabled();
-}
-
-- (void)_setDisplayListDrawingEnabled:(BOOL)displayListDrawingEnabled
-{
-    _preferences->setDisplayListDrawingEnabled(displayListDrawingEnabled);
-}
-
 - (BOOL)_largeImageAsyncDecodingEnabled
 {
     return _preferences->largeImageAsyncDecodingEnabled();
@@ -540,13 +555,13 @@ static _WKStorageBlockingPolicy toAPI(WebCore::StorageBlockingPolicy policy)
 + (NSArray<_WKFeature *> *)_features
 {
     auto features = WebKit::WebPreferences::features();
-    return wrapper(API::Array::create(WTFMove(features)));
+    return wrapper(API::Array::create(WTFMove(features))).autorelease();
 }
 
 + (NSArray<_WKFeature *> *)_internalDebugFeatures
 {
     auto features = WebKit::WebPreferences::internalDebugFeatures();
-    return wrapper(API::Array::create(WTFMove(features)));
+    return wrapper(API::Array::create(WTFMove(features))).autorelease();
 }
 
 - (BOOL)_isEnabledForInternalDebugFeature:(_WKFeature *)feature
@@ -562,7 +577,7 @@ static _WKStorageBlockingPolicy toAPI(WebCore::StorageBlockingPolicy policy)
 + (NSArray<_WKExperimentalFeature *> *)_experimentalFeatures
 {
     auto features = WebKit::WebPreferences::experimentalFeatures();
-    return wrapper(API::Array::create(WTFMove(features)));
+    return wrapper(API::Array::create(WTFMove(features))).autorelease();
 }
 
 - (BOOL)_isEnabledForFeature:(_WKFeature *)feature
@@ -731,15 +746,6 @@ static _WKStorageBlockingPolicy toAPI(WebCore::StorageBlockingPolicy policy)
     _preferences->setICECandidateFilteringEnabled(enabled);
 }
 
-- (BOOL)_webRTCLegacyAPIEnabled
-{
-    return NO;
-}
-
-- (void)_setWebRTCLegacyAPIEnabled:(BOOL)enabled
-{
-}
-
 - (void)_setJavaScriptCanAccessClipboard:(BOOL)javaScriptCanAccessClipboard
 {
     _preferences->setJavaScriptCanAccessClipboard(javaScriptCanAccessClipboard);
@@ -892,6 +898,36 @@ static WebCore::EditableLinkBehavior toEditableLinkBehavior(_WKEditableLinkBehav
 - (BOOL)_mediaSourceEnabled
 {
     return _preferences->mediaSourceEnabled();
+}
+
+- (void)_setManagedMediaSourceEnabled:(BOOL)enabled
+{
+    _preferences->setManagedMediaSourceEnabled(enabled);
+}
+
+- (BOOL)_managedMediaSourceEnabled
+{
+    return _preferences->managedMediaSourceEnabled();
+}
+
+- (void)_setManagedMediaSourceLowThreshold:(double)threshold
+{
+    _preferences->setManagedMediaSourceLowThreshold(threshold);
+}
+
+- (double)_managedMediaSourceLowThreshold
+{
+    return _preferences->managedMediaSourceLowThreshold();
+}
+
+- (void)_setManagedMediaSourceHighThreshold:(double)threshold
+{
+    _preferences->setManagedMediaSourceHighThreshold(threshold);
+}
+
+- (double)_managedMediaSourceHighThreshold
+{
+    return _preferences->managedMediaSourceHighThreshold();
 }
 
 - (BOOL)_secureContextChecksEnabled
@@ -1551,6 +1587,16 @@ static WebCore::EditableLinkBehavior toEditableLinkBehavior(_WKEditableLinkBehav
     return _preferences->notificationsEnabled();
 }
 
+- (void)_setNotificationEventEnabled:(BOOL)enabled
+{
+    _preferences->setNotificationEventEnabled(enabled);
+}
+
+- (BOOL)_notificationEventEnabled
+{
+    return _preferences->notificationEventEnabled();
+}
+
 - (BOOL)_pushAPIEnabled
 {
     return _preferences->pushAPIEnabled();
@@ -1629,6 +1675,16 @@ static WebCore::EditableLinkBehavior toEditableLinkBehavior(_WKEditableLinkBehav
 - (BOOL)_clientBadgeEnabled
 {
     return _preferences->clientBadgeEnabled();
+}
+
+- (void)_setVerifyWindowOpenUserGestureFromUIProcess:(BOOL)enabled
+{
+    _preferences->setVerifyWindowOpenUserGestureFromUIProcess(enabled);
+}
+
+- (BOOL)_verifyWindowOpenUserGestureFromUIProcess
+{
+    return _preferences->verifyWindowOpenUserGestureFromUIProcess();
 }
 
 @end
@@ -1714,5 +1770,14 @@ static WebCore::EditableLinkBehavior toEditableLinkBehavior(_WKEditableLinkBehav
     return NO;
 }
 #endif
+
+- (BOOL)_displayListDrawingEnabled
+{
+    return NO;
+}
+
+- (void)_setDisplayListDrawingEnabled:(BOOL)displayListDrawingEnabled
+{
+}
 
 @end

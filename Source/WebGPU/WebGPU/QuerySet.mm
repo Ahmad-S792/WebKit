@@ -34,11 +34,13 @@ namespace WebGPU {
 
 Ref<QuerySet> Device::createQuerySet(const WGPUQuerySetDescriptor& descriptor)
 {
-    if (descriptor.nextInChain)
-        return QuerySet::createInvalid(*this);
-
-
     auto count = descriptor.count;
+    constexpr auto maxCountAllowed = 4096;
+    if (descriptor.nextInChain || count > maxCountAllowed || !isValid()) {
+        generateAValidationError("GPUQuerySetDescriptor.count must be <= 4096"_s);
+        return QuerySet::createInvalid(*this);
+    }
+
     const char* label = descriptor.label;
     auto type = descriptor.type;
 
@@ -162,6 +164,11 @@ void QuerySet::encodeResolveCommands(id<MTLBlitCommandEncoder> commandEncoder, u
 } // namespace WebGPU
 
 #pragma mark WGPU Stubs
+
+void wgpuQuerySetReference(WGPUQuerySet querySet)
+{
+    WebGPU::fromAPI(querySet).ref();
+}
 
 void wgpuQuerySetRelease(WGPUQuerySet querySet)
 {

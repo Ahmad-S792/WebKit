@@ -4,7 +4,7 @@
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
  * License as published by the Free Software Foundation; either
- * version 2,1 of the License, or (at your option) any later version.
+ * version 2.1 of the License, or (at your option) any later version.
  *
  * This library is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -20,8 +20,16 @@
 #include "config.h"
 #include "WebKitWebPage.h"
 
+#include "APIInjectedBundleEditorClient.h"
+#include "APIInjectedBundleFormClient.h"
+#include "APIInjectedBundlePageContextMenuClient.h"
+#include "APIInjectedBundlePageLoaderClient.h"
+#include "APIInjectedBundlePageResourceLoadClient.h"
+#include "APIInjectedBundlePageUIClient.h"
 #include "APIString.h"
 #include "InjectedBundle.h"
+#include "InjectedBundlePageContextMenuClient.h"
+#include "MessageSenderInlines.h"
 #include "WebContextMenuItem.h"
 #include "WebKitContextMenuPrivate.h"
 #include "WebKitFramePrivate.h"
@@ -40,11 +48,11 @@
 #include <WebCore/ContextMenuContext.h>
 #include <WebCore/Document.h>
 #include <WebCore/DocumentLoader.h>
-#include <WebCore/Frame.h>
 #include <WebCore/FrameDestructionObserver.h>
 #include <WebCore/FrameLoader.h>
-#include <WebCore/FrameView.h>
 #include <WebCore/HTMLFormElement.h>
+#include <WebCore/LocalFrame.h>
+#include <WebCore/LocalFrameView.h>
 #include <glib/gi18n-lib.h>
 #include <wtf/HashMap.h>
 #include <wtf/NeverDestroyed.h>
@@ -101,7 +109,7 @@ struct _WebKitWebPagePrivate {
 
 static guint signals[LAST_SIGNAL] = { 0, };
 
-WEBKIT_DEFINE_TYPE(WebKitWebPage, webkit_web_page, G_TYPE_OBJECT)
+WEBKIT_DEFINE_FINAL_TYPE(WebKitWebPage, webkit_web_page, G_TYPE_OBJECT, GObject)
 
 static void webFrameDestroyed(WebFrame*);
 
@@ -109,7 +117,7 @@ class WebKitFrameWrapper final: public FrameDestructionObserver {
     WTF_MAKE_FAST_ALLOCATED;
 public:
     WebKitFrameWrapper(WebFrame& webFrame)
-        : FrameDestructionObserver(webFrame.coreFrame())
+        : FrameDestructionObserver(webFrame.coreLocalFrame())
         , m_webkitFrame(adoptGRef(webkitFrameCreate(&webFrame)))
     {
     }
@@ -192,7 +200,7 @@ private:
         if (!webKitFrame && !frame.isMainFrame())
             return;
 
-        const auto uri = getDocumentLoaderURL(frame.coreFrame()->loader().provisionalDocumentLoader());
+        const auto uri = getDocumentLoaderURL(frame.coreLocalFrame()->loader().provisionalDocumentLoader());
 
         if (webKitFrame)
             webkitFrameSetURI(webKitFrame, uri);
@@ -207,7 +215,7 @@ private:
         if (!webKitFrame && !frame.isMainFrame())
             return;
 
-        const auto uri = getDocumentLoaderURL(frame.coreFrame()->loader().provisionalDocumentLoader());
+        const auto uri = getDocumentLoaderURL(frame.coreLocalFrame()->loader().provisionalDocumentLoader());
 
         if (webKitFrame)
             webkitFrameSetURI(webKitFrame, uri);
@@ -222,7 +230,7 @@ private:
         if (!webKitFrame && !frame.isMainFrame())
             return;
 
-        const auto uri = frame.coreFrame()->document()->url().string().utf8();
+        const auto uri = frame.coreLocalFrame()->document()->url().string().utf8();
 
         if (webKitFrame)
             webkitFrameSetURI(webKitFrame, uri);
@@ -237,7 +245,7 @@ private:
         if (!webKitFrame && !frame.isMainFrame())
             return;
 
-        const auto uri = getDocumentLoaderURL(frame.coreFrame()->loader().documentLoader());
+        const auto uri = getDocumentLoaderURL(frame.coreLocalFrame()->loader().documentLoader());
 
         if (webKitFrame)
             webkitFrameSetURI(webKitFrame, uri);
@@ -349,6 +357,7 @@ private:
 };
 #endif
 
+#if ENABLE(CONTEXT_MENUS)
 class PageContextMenuClient final : public API::InjectedBundle::PageContextMenuClient {
 public:
     explicit PageContextMenuClient(WebKitWebPage* webPage)
@@ -380,6 +389,7 @@ private:
 
     WebKitWebPage* m_webPage;
 };
+#endif // ENABLE(CONTEXT_MENUS)
 
 class PageFormClient final : public API::InjectedBundle::FormClient {
 public:
@@ -593,7 +603,11 @@ static void webkit_web_page_class_init(WebKitWebPageClass* klass)
         g_signal_accumulator_true_handled, nullptr,
         g_cclosure_marshal_generic,
         G_TYPE_BOOLEAN, 2,
+#if ENABLE(CONTEXT_MENUS)
         WEBKIT_TYPE_CONTEXT_MENU,
+#else
+        G_TYPE_OBJECT,
+#endif // ENABLE(CONTEXT_MENUS)
         WEBKIT_TYPE_WEB_HIT_TEST_RESULT);
 
 #if !ENABLE(2022_GLIB_API)
@@ -789,7 +803,9 @@ WebKitWebPage* webkitWebPageCreate(WebPage* webPage)
 
     webPage->setInjectedBundleResourceLoadClient(makeUnique<PageResourceLoadClient>(page));
     webPage->setInjectedBundlePageLoaderClient(makeUnique<PageLoaderClient>(page));
+#if ENABLE(CONTEXT_MENUS)
     webPage->setInjectedBundleContextMenuClient(makeUnique<PageContextMenuClient>(page));
+#endif // ENABLE(CONTEXT_MENUS)
     webPage->setInjectedBundleFormClient(makeUnique<PageFormClient>(page));
 #if !ENABLE(2022_GLIB_API)
     webPage->setInjectedBundleUIClient(makeUnique<PageUIClient>(page));
@@ -822,7 +838,7 @@ WebKitDOMDocument* webkit_web_page_get_dom_document(WebKitWebPage* webPage)
 {
     g_return_val_if_fail(WEBKIT_IS_WEB_PAGE(webPage), nullptr);
 
-    if (auto* coreFrame = webPage->priv->webPage->mainFrame())
+    if (auto* coreFrame = dynamicDowncast<WebCore::LocalFrame>(webPage->priv->webPage->mainFrame()))
         return kit(coreFrame->document());
 
     return nullptr;
@@ -905,8 +921,8 @@ WebKitWebEditor* webkit_web_page_get_editor(WebKitWebPage* webPage)
  * @web_page: a #WebKitWebPage
  * @message: a #WebKitUserMessage
  * @cancellable: (nullable): a #GCancellable or %NULL to ignore
- * @callback: (scope async): (nullable): A #GAsyncReadyCallback to call when the request is satisfied or %NULL
- * @user_data: (closure): the data to pass to callback function
+ * @callback: (scope async) (nullable): A #GAsyncReadyCallback to call when the request is satisfied or %NULL
+ * @user_data: the data to pass to callback function
  *
  * Send @message to the #WebKitWebView corresponding to @web_page. If @message is floating, it's consumed.
  *

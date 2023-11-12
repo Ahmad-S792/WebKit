@@ -40,6 +40,7 @@
 #include <WebCore/HTTPParsers.h>
 #include <WebCore/MIMETypeRegistry.h>
 #include <WebCore/NetworkStorageSession.h>
+#include <WebCore/OriginAccessPatterns.h>
 #include <WebCore/PublicSuffix.h>
 #include <WebCore/SharedBuffer.h>
 #include <WebCore/ShouldRelaxThirdPartyCookieBlocking.h>
@@ -64,8 +65,6 @@ NetworkDataTaskSoup::NetworkDataTaskSoup(NetworkSession& session, NetworkDataTas
     , m_sourceOrigin(parameters.sourceOrigin)
     , m_timeoutSource(RunLoop::main(), this, &NetworkDataTaskSoup::timeoutFired)
 {
-    m_session->registerNetworkDataTask(*this);
-
     auto request = parameters.request;
     if (request.url().protocolIsInHTTPFamily()) {
 #if USE(SOUP2)
@@ -81,7 +80,7 @@ NetworkDataTaskSoup::NetworkDataTaskSoup(NetworkSession& session, NetworkDataTas
             if (m_user.isEmpty() && m_password.isEmpty())
                 m_initialCredential = m_session->networkStorageSession()->credentialStorage().get(m_partition, request.url());
             else
-                m_session->networkStorageSession()->credentialStorage().set(m_partition, Credential(m_user, m_password, CredentialPersistenceNone), request.url());
+                m_session->networkStorageSession()->credentialStorage().set(m_partition, Credential(m_user, m_password, CredentialPersistence::None), request.url());
         }
         applyAuthenticationToRequest(request);
     }
@@ -141,13 +140,12 @@ void NetworkDataTaskSoup::setPendingDownloadLocation(const String& filename, San
 void NetworkDataTaskSoup::createRequest(ResourceRequest&& request, WasBlockingCookies wasBlockingCookies)
 {
     m_currentRequest = WTFMove(request);
-    if (m_currentRequest.url().isLocalFile()) {
+    if (m_currentRequest.url().protocolIsFile()) {
         m_file = adoptGRef(g_file_new_for_path(m_currentRequest.url().fileSystemPath().utf8().data()));
         return;
     }
 
-    if (m_currentRequest.url().protocolIsData())
-        return;
+    ASSERT(!m_currentRequest.url().protocolIsData());
 
     if (!m_currentRequest.url().protocolIsInHTTPFamily()) {
         scheduleFailure(FailureType::InvalidURL);
@@ -255,7 +253,6 @@ void NetworkDataTaskSoup::clearRequest()
 
     stopTimeout();
     m_pendingResult = nullptr;
-    m_pendingDataURLResult = std::nullopt;
     m_file = nullptr;
     m_inputStream = nullptr;
     m_multipartInputStream = nullptr;
@@ -337,25 +334,6 @@ void NetworkDataTaskSoup::resume()
         return;
     }
 
-    if (m_currentRequest.url().protocolIsData() && !m_cancellable) {
-        m_networkLoadMetrics.fetchStart = MonotonicTime::now();
-        m_cancellable = adoptGRef(g_cancellable_new());
-        DataURLDecoder::decode(m_currentRequest.url(), { }, DataURLDecoder::Mode::Legacy, [this, protectedThis = WTFMove(protectedThis)](auto decodeResult) mutable {
-            if (m_state == State::Canceling || m_state == State::Completed || !m_client) {
-                clearRequest();
-                return;
-            }
-
-            if (m_state == State::Suspended) {
-                m_pendingDataURLResult = WTFMove(decodeResult);
-                return;
-            }
-
-            didReadDataURL(WTFMove(decodeResult));
-        });
-        return;
-    }
-
     if (m_pendingResult) {
         GRefPtr<GAsyncResult> pendingResult = WTFMove(m_pendingResult);
         if (m_inputStream)
@@ -372,8 +350,7 @@ void NetworkDataTaskSoup::resume()
                 readFileCallback(m_file.get(), pendingResult.get(), protectedThis.leakRef());
         } else
             ASSERT_NOT_REACHED();
-    } else if (m_currentRequest.url().protocolIsData())
-        didReadDataURL(WTFMove(m_pendingDataURLResult));
+    }
 }
 
 void NetworkDataTaskSoup::cancel()
@@ -524,7 +501,7 @@ void NetworkDataTaskSoup::dispatchDidReceiveResponse()
         case PolicyAction::Download:
             download();
             break;
-        case PolicyAction::StopAllLoads:
+        case PolicyAction::LoadWillContinueInAnotherProcess:
             ASSERT_NOT_REACHED();
             break;
         }
@@ -765,7 +742,7 @@ void NetworkDataTaskSoup::authenticate(AuthenticationChallenge&& challenge)
         if (!challenge.previousFailureCount()) {
             auto credential = m_session->networkStorageSession()->credentialStorage().get(m_partition, challenge.protectionSpace());
             if (!credential.isEmpty() && credential != m_initialCredential) {
-                ASSERT(credential.persistence() == CredentialPersistenceNone);
+                ASSERT(credential.persistence() == CredentialPersistence::None);
 
                 if (isAuthenticationFailureStatusCode(challenge.failureResponse().httpStatusCode())) {
                     // Store the credential back, possibly adding it as a default for this directory.
@@ -824,10 +801,10 @@ void NetworkDataTaskSoup::continueAuthenticate(AuthenticationChallenge&& challen
                 // because once we authenticate via libsoup, there is no way to ignore it for a particular request. Right now,
                 // we place the credentials in the store even though libsoup will never fire the authenticate signal again for
                 // this protection space.
-                if (credential.persistence() == CredentialPersistenceForSession || credential.persistence() == CredentialPersistencePermanent)
+                if (credential.persistence() == CredentialPersistence::ForSession || credential.persistence() == CredentialPersistence::Permanent)
                     m_session->networkStorageSession()->credentialStorage().set(m_partition, credential, challenge.protectionSpace(), challenge.failureResponse().url());
 
-                if (credential.persistence() == CredentialPersistencePermanent && persistentCredentialStorageEnabled()) {
+                if (credential.persistence() == CredentialPersistence::Permanent && persistentCredentialStorageEnabled()) {
                     m_protectionSpaceForPersistentStorage = challenge.protectionSpace();
                     m_credentialForPersistentStorage = credential;
                 }
@@ -943,7 +920,18 @@ void NetworkDataTaskSoup::continueHTTPRedirection()
         redirectedURL.setFragmentIdentifier(request.url().fragmentIdentifier());
     request.setURL(redirectedURL);
 
-    m_networkLoadMetrics.hasCrossOriginRedirect = m_networkLoadMetrics.hasCrossOriginRedirect || !SecurityOrigin::create(m_currentRequest.url())->canRequest(request.url());
+    m_networkLoadMetrics.hasCrossOriginRedirect = m_networkLoadMetrics.hasCrossOriginRedirect || !SecurityOrigin::create(m_currentRequest.url())->canRequest(request.url(), WebCore::EmptyOriginAccessPatterns::singleton());
+
+    if (m_response.httpStatusCode() == 307 || m_response.httpStatusCode() == 308) {
+        ASSERT(m_lastHTTPMethod == request.httpMethod());
+        auto body = m_firstRequest.httpBody();
+        if (body && !body->isEmpty() && !equalLettersIgnoringASCIICase(m_lastHTTPMethod, "get"_s))
+            request.setHTTPBody(WTFMove(body));
+
+        String originalContentType = m_firstRequest.httpContentType();
+        if (!originalContentType.isEmpty())
+            request.setHTTPHeaderField(WebCore::HTTPHeaderName::ContentType, originalContentType);
+    }
 
     // Clear the user agent to ensure a new one is computed.
     auto userAgent = request.httpUserAgent();
@@ -1609,8 +1597,14 @@ bool NetworkDataTaskSoup::shouldAllowHSTSProtocolUpgrade() const
 
 void NetworkDataTaskSoup::protocolUpgradedViaHSTS(SoupMessage* soupMessage)
 {
-    m_response = ResourceResponse::syntheticRedirectResponse(m_currentRequest.url(), soupURIToURL(soup_message_get_uri(soupMessage)));
-    continueHTTPRedirection();
+    if (!m_response.isNull() && !m_response.httpHeaderField(HTTPHeaderName::Location).isEmpty()) {
+        // We handle HSTS upgrades as a redirection to let Web and UI processes know about the URL change, but in
+        // case of redirection, the new request is originated in the network process, so we can just update the URL.
+        m_currentRequest.setURL(soupURIToURL(soup_message_get_uri(m_soupMessage.get())));
+    } else {
+        m_response = ResourceResponse::syntheticRedirectResponse(m_currentRequest.url(), soupURIToURL(soup_message_get_uri(soupMessage)));
+        continueHTTPRedirection();
+    }
 }
 
 #if USE(SOUP2)
@@ -1772,24 +1766,6 @@ void NetworkDataTaskSoup::enumerateFileChildrenCallback(GFile* file, GAsyncResul
 void NetworkDataTaskSoup::didReadFile(GRefPtr<GInputStream>&& inputStream)
 {
     m_inputStream = WTFMove(inputStream);
-    dispatchDidReceiveResponse();
-}
-
-void NetworkDataTaskSoup::didReadDataURL(std::optional<DataURLDecoder::Result>&& result)
-{
-    if (g_cancellable_is_cancelled(m_cancellable.get())) {
-        didFail(cancelledError(m_currentRequest));
-        return;
-    }
-
-    if (!result) {
-        didFail(internalError(m_currentRequest.url()));
-        return;
-    }
-
-    m_response = ResourceResponse::dataURLResponse(m_currentRequest.url(), result.value());
-    auto bytes = SharedBuffer::create(WTFMove(result->data))->createGBytes();
-    m_inputStream = adoptGRef(g_memory_input_stream_new_from_bytes(bytes.get()));
     dispatchDidReceiveResponse();
 }
 

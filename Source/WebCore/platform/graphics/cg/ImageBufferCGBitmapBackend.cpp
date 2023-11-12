@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2020-2021 Apple Inc.  All rights reserved.
+ * Copyright (C) 2020-2023 Apple Inc.  All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -41,7 +41,7 @@ WTF_MAKE_ISO_ALLOCATED_IMPL(ImageBufferCGBitmapBackend);
 
 IntSize ImageBufferCGBitmapBackend::calculateSafeBackendSize(const Parameters& parameters)
 {
-    IntSize backendSize = calculateBackendSize(parameters);
+    IntSize backendSize = parameters.backendSize;
     if (backendSize.isEmpty())
         return backendSize;
     
@@ -58,8 +58,7 @@ IntSize ImageBufferCGBitmapBackend::calculateSafeBackendSize(const Parameters& p
 
 size_t ImageBufferCGBitmapBackend::calculateMemoryCost(const Parameters& parameters)
 {
-    IntSize backendSize = calculateBackendSize(parameters);
-    return ImageBufferBackend::calculateMemoryCost(backendSize, calculateBytesPerRow(backendSize));
+    return ImageBufferBackend::calculateMemoryCost(parameters.backendSize, calculateBytesPerRow(parameters.backendSize));
 }
 
 std::unique_ptr<ImageBufferCGBitmapBackend> ImageBufferCGBitmapBackend::create(const Parameters& parameters, const ImageBufferCreationContext&)
@@ -94,70 +93,47 @@ std::unique_ptr<ImageBufferCGBitmapBackend> ImageBufferCGBitmapBackend::create(c
     return std::unique_ptr<ImageBufferCGBitmapBackend>(new ImageBufferCGBitmapBackend(parameters, data, WTFMove(dataProvider), WTFMove(context)));
 }
 
-std::unique_ptr<ImageBufferCGBitmapBackend> ImageBufferCGBitmapBackend::create(const Parameters& parameters, const GraphicsContext& context)
-{
-    if (auto cgColorSpace = context.hasPlatformContext() ? contextColorSpace(context) : nullptr) {
-        auto overrideParameters = parameters;
-        overrideParameters.colorSpace = DestinationColorSpace { cgColorSpace };
-
-        return ImageBufferCGBitmapBackend::create(overrideParameters, nullptr);
-    }
-
-    return ImageBufferCGBitmapBackend::create(parameters, nullptr);
-}
-
-ImageBufferCGBitmapBackend::ImageBufferCGBitmapBackend(const Parameters& parameters, void* data, RetainPtr<CGDataProviderRef>&& dataProvider, std::unique_ptr<GraphicsContext>&& context)
+ImageBufferCGBitmapBackend::ImageBufferCGBitmapBackend(const Parameters& parameters, void* data, RetainPtr<CGDataProviderRef>&& dataProvider, std::unique_ptr<GraphicsContextCG>&& context)
     : ImageBufferCGBackend(parameters)
     , m_data(data)
     , m_dataProvider(WTFMove(dataProvider))
-    , m_context(WTFMove(context))
 {
     ASSERT(m_data);
     ASSERT(m_dataProvider);
+    m_context = WTFMove(context);
     ASSERT(m_context);
-    applyBaseTransformToContext();
+    applyBaseTransform(*m_context);
 }
 
 ImageBufferCGBitmapBackend::~ImageBufferCGBitmapBackend() = default;
 
-GraphicsContext& ImageBufferCGBitmapBackend::context() const
+GraphicsContext& ImageBufferCGBitmapBackend::context()
 {
     return *m_context;
 }
 
-IntSize ImageBufferCGBitmapBackend::backendSize() const
-{
-    CGContextRef cgContext = context().platformContext();
-    return { static_cast<int>(CGBitmapContextGetWidth(cgContext)), static_cast<int>(CGBitmapContextGetHeight(cgContext)) };
-}
-
 unsigned ImageBufferCGBitmapBackend::bytesPerRow() const
 {
-    IntSize backendSize = calculateBackendSize(m_parameters);
-    return calculateBytesPerRow(backendSize);
+    return calculateBytesPerRow(m_parameters.backendSize);
 }
 
-RefPtr<NativeImage> ImageBufferCGBitmapBackend::copyNativeImage(BackingStoreCopy copyBehavior) const
+RefPtr<NativeImage> ImageBufferCGBitmapBackend::copyNativeImage()
 {
-    switch (copyBehavior) {
-    case CopyBackingStore:
-        return NativeImage::create(adoptCF(CGBitmapContextCreateImage(context().platformContext())));
-
-    case DontCopyBackingStore:
-        auto backendSize = this->backendSize();
-        return NativeImage::create(adoptCF(CGImageCreate(
-            backendSize.width(), backendSize.height(), 8, 32, bytesPerRow(),
-            colorSpace().platformColorSpace(), static_cast<uint32_t>(kCGImageAlphaPremultipliedFirst) | static_cast<uint32_t>(kCGBitmapByteOrder32Host), m_dataProvider.get(),
-            0, true, kCGRenderingIntentDefault)));
-    }
-
-    ASSERT_NOT_REACHED();
-    return nullptr;
+    return NativeImage::create(adoptCF(CGBitmapContextCreateImage(context().platformContext())));
 }
 
-RefPtr<PixelBuffer> ImageBufferCGBitmapBackend::getPixelBuffer(const PixelBufferFormat& outputFormat, const IntRect& srcRect, const ImageBufferAllocator& allocator) const
+RefPtr<NativeImage> ImageBufferCGBitmapBackend::createNativeImageReference()
 {
-    return ImageBufferBackend::getPixelBuffer(outputFormat, srcRect, m_data, allocator);
+    auto backendSize = size();
+    return NativeImage::create(adoptCF(CGImageCreate(
+        backendSize.width(), backendSize.height(), 8, 32, bytesPerRow(),
+        colorSpace().platformColorSpace(), static_cast<uint32_t>(kCGImageAlphaPremultipliedFirst) | static_cast<uint32_t>(kCGBitmapByteOrder32Host), m_dataProvider.get(),
+        0, true, kCGRenderingIntentDefault)));
+}
+
+void ImageBufferCGBitmapBackend::getPixelBuffer(const IntRect& srcRect, PixelBuffer& destination)
+{
+    ImageBufferBackend::getPixelBuffer(srcRect, m_data, destination);
 }
 
 void ImageBufferCGBitmapBackend::putPixelBuffer(const PixelBuffer& pixelBuffer, const IntRect& srcRect, const IntPoint& destPoint, AlphaPremultiplication destFormat)

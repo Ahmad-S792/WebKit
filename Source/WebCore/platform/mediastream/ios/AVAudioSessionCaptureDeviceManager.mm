@@ -56,6 +56,7 @@ SOFT_LINK_CONSTANT(MediaExperience, AVSystemController_PickableRouteType_Default
 
 SOFT_LINK_PRIVATE_FRAMEWORK(AudioSession)
 SOFT_LINK_CONSTANT(AudioSession, AVAudioSessionPortBuiltInMic, NSString *)
+SOFT_LINK_CONSTANT(AudioSession, AVAudioSessionPortHeadsetMic, NSString *)
 
 @interface WebAVAudioSessionAvailableInputsListener : NSObject {
     WebCore::AVAudioSessionCaptureDeviceManager* _callback;
@@ -124,6 +125,11 @@ void AVAudioSessionCaptureDeviceManager::createAudioSession()
     auto options = AVAudioSessionCategoryOptionAllowBluetooth | AVAudioSessionCategoryOptionMixWithOthers;
     [m_audioSession setCategory:AVAudioSessionCategoryPlayAndRecord mode:AVAudioSessionModeDefault options:options error:&error];
     RELEASE_LOG_ERROR_IF(error, WebRTC, "Failed to set audio session category with error: %@.", error.localizedDescription);
+
+    if (!error) {
+        [m_listener invalidate];
+        m_listener = adoptNS([[WebAVAudioSessionAvailableInputsListener alloc] initWithCallback:this audioSession:m_audioSession.get()]);
+    }
 }
 
 AVAudioSessionCaptureDeviceManager::~AVAudioSessionCaptureDeviceManager()
@@ -206,14 +212,6 @@ void AVAudioSessionCaptureDeviceManager::scheduleUpdateCaptureDevices()
 
 void AVAudioSessionCaptureDeviceManager::refreshAudioCaptureDevices()
 {
-    if (m_audioSessionState == AudioSessionState::Inactive) {
-        m_audioSessionState = AudioSessionState::Active;
-
-        m_dispatchQueue->dispatchSync([this] {
-            activateAudioSession();
-        });
-    }
-
     Vector<AVAudioSessionCaptureDevice> newAudioDevices;
     m_dispatchQueue->dispatchSync([&] {
         newAudioDevices = retrieveAudioSessionCaptureDevices();
@@ -223,14 +221,6 @@ void AVAudioSessionCaptureDeviceManager::refreshAudioCaptureDevices()
 
 void AVAudioSessionCaptureDeviceManager::computeCaptureDevices(CompletionHandler<void()>&& completion)
 {
-    if (m_audioSessionState == AudioSessionState::Inactive) {
-        m_audioSessionState = AudioSessionState::Active;
-
-        m_dispatchQueue->dispatch([this] {
-            activateAudioSession();
-        });
-    }
-
     m_dispatchQueue->dispatch([this, completion = WTFMove(completion)] () mutable {
         auto newAudioDevices = retrieveAudioSessionCaptureDevices();
         callOnWebThreadOrDispatchAsyncOnMainThread(makeBlockPtr([this, completion = WTFMove(completion), newAudioDevices = crossThreadCopy(WTFMove(newAudioDevices))] () mutable {
@@ -238,17 +228,6 @@ void AVAudioSessionCaptureDeviceManager::computeCaptureDevices(CompletionHandler
             completion();
         }).get());
     });
-}
-
-void AVAudioSessionCaptureDeviceManager::activateAudioSession()
-{
-    if (!m_listener)
-        m_listener = adoptNS([[WebAVAudioSessionAvailableInputsListener alloc] initWithCallback:this audioSession:m_audioSession.get()]);
-
-    NSError *error = nil;
-    [m_audioSession setActive:YES withOptions:0 error:&error];
-    if (error)
-        RELEASE_LOG_ERROR(WebRTC, "Failed to activate audio session with error: %@.", error.localizedDescription);
 }
 
 struct DefaultMicrophoneInformation {
@@ -291,13 +270,24 @@ Vector<AVAudioSessionCaptureDevice> AVAudioSessionCaptureDeviceManager::retrieve
 
     auto availableInputs = [m_audioSession availableInputs];
 
+    NSString* builtinMicrophoneDefaultPortType = getAVAudioSessionPortBuiltInMic();
+    if (defaultMicrophoneInformation && defaultMicrophoneInformation->isBuiltInMicrophoneDefault) {
+        for (AVAudioSessionPortDescription *portDescription in availableInputs) {
+            if (portDescription.portType == getAVAudioSessionPortHeadsetMic()) {
+                RELEASE_LOG_INFO(WebRTC, "AVAudioSessionCaptureDeviceManager using headset microphone as builtin default");
+                builtinMicrophoneDefaultPortType = getAVAudioSessionPortHeadsetMic();
+                break;
+            }
+        }
+    }
+
     Vector<AVAudioSessionCaptureDevice> newAudioDevices;
     newAudioDevices.reserveInitialCapacity(availableInputs.count);
     for (AVAudioSessionPortDescription *portDescription in availableInputs) {
         auto device = AVAudioSessionCaptureDevice::create(portDescription, currentInput);
         if (defaultMicrophoneInformation)
-            device.setIsDefault((defaultMicrophoneInformation->isBuiltInMicrophoneDefault && portDescription.portType == getAVAudioSessionPortBuiltInMic()) || [portDescription.UID isEqualToString: defaultMicrophoneInformation->routeUID]);
-        newAudioDevices.uncheckedAppend(WTFMove(device));
+            device.setIsDefault((defaultMicrophoneInformation->isBuiltInMicrophoneDefault && portDescription.portType == builtinMicrophoneDefaultPortType) || [portDescription.UID isEqualToString: defaultMicrophoneInformation->routeUID]);
+        newAudioDevices.append(WTFMove(device));
     }
 
     return newAudioDevices;
@@ -345,34 +335,6 @@ void AVAudioSessionCaptureDeviceManager::setAudioCaptureDevices(Vector<AVAudioSe
 
     if (deviceListChanged && !firstTime)
         deviceChanged();
-}
-
-void AVAudioSessionCaptureDeviceManager::enableAllDevicesQuery()
-{
-    if (m_audioSessionState != AudioSessionState::NotNeeded)
-        return;
-
-    m_audioSessionState = AudioSessionState::Inactive;
-    refreshAudioCaptureDevices();
-}
-
-void AVAudioSessionCaptureDeviceManager::disableAllDevicesQuery()
-{
-    if (m_audioSessionState == AudioSessionState::NotNeeded)
-        return;
-
-    if (m_audioSessionState == AudioSessionState::Active) {
-        m_dispatchQueue->dispatch([this] {
-            if (m_audioSessionState != AudioSessionState::NotNeeded)
-                return;
-            NSError *error = nil;
-            [m_audioSession setActive:NO withOptions:0 error:&error];
-            if (error)
-                RELEASE_LOG_ERROR(WebRTC, "Failed to disactivate audio session with error: %@.", error.localizedDescription);
-        });
-    }
-
-    m_audioSessionState = AudioSessionState::NotNeeded;
 }
 
 } // namespace WebCore

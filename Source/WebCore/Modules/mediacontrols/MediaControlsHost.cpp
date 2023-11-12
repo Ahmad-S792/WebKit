@@ -68,10 +68,6 @@
 #include <wtf/Scope.h>
 #include <wtf/UUID.h>
 
-#if USE(APPLE_INTERNAL_SDK)
-#include <WebKitAdditions/MediaControlsHostAdditions.h>
-#endif
-
 namespace WebCore {
 
 const AtomString& MediaControlsHost::automaticKeyword()
@@ -118,21 +114,19 @@ MediaControlsHost::~MediaControlsHost()
 
 String MediaControlsHost::layoutTraitsClassName() const
 {
-#if defined(MEDIA_CONTROLS_HOST_LAYOUT_TRAITS_CLASS_NAME_OVERRIDE)
-    return MEDIA_CONTROLS_HOST_LAYOUT_TRAITS_CLASS_NAME_OVERRIDE""_s;
-#else
 #if PLATFORM(MAC) || PLATFORM(MACCATALYST)
     return "MacOSLayoutTraits"_s;
-#elif PLATFORM(IOS)
+#elif PLATFORM(IOS) || PLATFORM(APPLETV)
     return "IOSLayoutTraits"_s;
+#elif PLATFORM(VISION)
+    return "VisionLayoutTraits"_s;
 #elif PLATFORM(WATCHOS)
     return "WatchOSLayoutTraits"_s;
-#elif PLATFORM(GTK) || PLATFORM(WPE) || PLATFORM(WIN_CAIRO)
+#elif USE(THEME_ADWAITA)
     return "AdwaitaLayoutTraits"_s;
 #else
     ASSERT_NOT_REACHED();
     return nullString();
-#endif
 #endif
 }
 
@@ -433,21 +427,16 @@ public:
         return adoptRef(*new MediaControlsContextMenuEventListener(WTFMove(contextMenuProvider)));
     }
 
-    bool operator==(const EventListener& other) const override
-    {
-        return this == &other;
-    }
-
     void handleEvent(ScriptExecutionContext&, Event& event) override
     {
         ASSERT(event.type() == eventNames().contextmenuEvent);
 
-        auto* target = event.target();
-        if (!is<Node>(target))
+        RefPtr target = event.target();
+        if (!is<Node>(target.get()))
             return;
-        auto& node = downcast<Node>(*target);
+        Ref node = downcast<Node>(target.releaseNonNull());
 
-        auto* page = node.document().page();
+        auto* page = node->document().page();
         if (!page)
             return;
 
@@ -568,9 +557,9 @@ bool MediaControlsHost::showMediaControlsContextMenu(HTMLElement& target, String
 #endif // ENABLE(VIDEO_PRESENTATION_MODE)
 
     if (optionsJSONObject->getBoolean("includeLanguages"_s).value_or(false)) {
-        if (auto* audioTracks = mediaElement.audioTracks(); audioTracks && audioTracks->length() > 1) {
+        if (RefPtr audioTracks = mediaElement.audioTracks(); audioTracks && audioTracks->length() > 1) {
             auto& captionPreferences = page->group().ensureCaptionPreferences();
-            auto languageMenuItems = captionPreferences.sortedTrackListForMenu(audioTracks).map([&](auto& audioTrack) {
+            auto languageMenuItems = captionPreferences.sortedTrackListForMenu(audioTracks.get()).map([&](auto& audioTrack) {
                 return createMenuItem(audioTrack, captionPreferences.displayNameForTrack(audioTrack.get()), audioTrack->enabled());
             });
 
@@ -580,9 +569,9 @@ bool MediaControlsHost::showMediaControlsContextMenu(HTMLElement& target, String
     }
 
     if (optionsJSONObject->getBoolean("includeSubtitles"_s).value_or(false)) {
-        if (auto* textTracks = mediaElement.textTracks(); textTracks && textTracks->length()) {
+        if (RefPtr textTracks = mediaElement.textTracks(); textTracks && textTracks->length()) {
             auto& captionPreferences = page->group().ensureCaptionPreferences();
-            auto sortedTextTracks = captionPreferences.sortedTrackListForMenu(textTracks, { TextTrack::Kind::Subtitles, TextTrack::Kind::Captions, TextTrack::Kind::Descriptions });
+            auto sortedTextTracks = captionPreferences.sortedTrackListForMenu(textTracks.get(), { TextTrack::Kind::Subtitles, TextTrack::Kind::Captions, TextTrack::Kind::Descriptions });
             bool allTracksDisabled = notFound == sortedTextTracks.findIf([] (const auto& textTrack) {
                 return textTrack->mode() == TextTrack::Mode::Showing;
             });
@@ -604,16 +593,16 @@ bool MediaControlsHost::showMediaControlsContextMenu(HTMLElement& target, String
     }
 
     if (optionsJSONObject->getBoolean("includeChapters"_s).value_or(false)) {
-        if (auto* textTracks = mediaElement.textTracks(); textTracks && textTracks->length()) {
+        if (RefPtr textTracks = mediaElement.textTracks(); textTracks && textTracks->length()) {
             auto& captionPreferences = page->group().ensureCaptionPreferences();
 
-            for (auto& textTrack : captionPreferences.sortedTrackListForMenu(textTracks, { TextTrack::Kind::Chapters })) {
+            for (auto& textTrack : captionPreferences.sortedTrackListForMenu(textTracks.get(), { TextTrack::Kind::Chapters })) {
                 Vector<MenuItem> chapterMenuItems;
 
-                if (auto* cues = textTrack->cues()) {
+                if (RefPtr cues = textTrack->cues()) {
                     for (unsigned i = 0; i < cues->length(); ++i) {
-                        auto* cue = cues->item(i);
-                        if (!is<VTTCue>(cue))
+                        RefPtr cue = cues->item(i);
+                        if (!is<VTTCue>(cue.get()))
                             continue;
 
                         auto& vttCue = downcast<VTTCue>(*cue);
@@ -691,7 +680,7 @@ bool MediaControlsHost::showMediaControlsContextMenu(HTMLElement& target, String
             return;
         auto& mediaElement = *strongThis->m_mediaElement;
 
-        UserGestureIndicator gestureIndicator(ProcessingUserGesture, &mediaElement.document());
+        UserGestureIndicator gestureIndicator(IsProcessingUserGesture::Yes, &mediaElement.document());
 
         auto selectedItem = idMap.get(selectedItemID);
         WTF::switchOn(selectedItem,
@@ -769,6 +758,36 @@ bool MediaControlsHost::showMediaControlsContextMenu(HTMLElement& target, String
 }
 
 #endif // ENABLE(MEDIA_CONTROLS_CONTEXT_MENUS)
+
+auto MediaControlsHost::sourceType() const -> std::optional<SourceType>
+{
+    if (!m_mediaElement)
+        return std::nullopt;
+
+    if (m_mediaElement->hasMediaStreamSource())
+        return SourceType::MediaStream;
+
+#if ENABLE(MANAGED_MEDIA_SOURCE)
+    if (m_mediaElement->hasManagedMediaSource())
+        return SourceType::ManagedMediaSource;
+#endif
+
+#if ENABLE(MEDIA_SOURCE)
+    if (m_mediaElement->hasMediaSource())
+        return SourceType::MediaSource;
+#endif
+
+    switch (m_mediaElement->movieLoadType()) {
+    case HTMLMediaElement::MovieLoadType::Unknown: return std::nullopt;
+    case HTMLMediaElement::MovieLoadType::Download: return SourceType::File;
+    case HTMLMediaElement::MovieLoadType::StoredStream: return SourceType::LiveStream;
+    case HTMLMediaElement::MovieLoadType::LiveStream: return SourceType::StoredStream;
+    case HTMLMediaElement::MovieLoadType::HttpLiveStream: return SourceType::HLS;
+    }
+
+    ASSERT_NOT_REACHED();
+    return std::nullopt;
+}
 
 #endif // ENABLE(MODERN_MEDIA_CONTROLS)
 

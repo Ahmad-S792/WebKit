@@ -22,14 +22,17 @@
 #include "config.h"
 #include "CounterNode.h"
 
+#include "LayoutIntegrationLineLayout.h"
 #include "RenderCounter.h"
 #include "RenderElement.h"
+#include "RenderView.h"
 #include <stdio.h>
+#include <wtf/CheckedArithmetic.h>
 
 namespace WebCore {
 
-CounterNode::CounterNode(RenderElement& owner, bool hasResetType, int value)
-    : m_hasResetType(hasResetType)
+CounterNode::CounterNode(RenderElement& owner, OptionSet<CounterNode::Type> type, int value)
+    : m_type(type)
     , m_value(value)
     , m_owner(owner)
 {
@@ -83,9 +86,9 @@ CounterNode::~CounterNode()
     resetRenderers();
 }
 
-Ref<CounterNode> CounterNode::create(RenderElement& owner, bool hasResetType, int value)
+Ref<CounterNode> CounterNode::create(RenderElement& owner, OptionSet<CounterNode::Type> type, int value)
 {
-    return adoptRef(*new CounterNode(owner, hasResetType, value));
+    return adoptRef(*new CounterNode(owner, type, value));
 }
 
 CounterNode* CounterNode::nextInPreOrderAfterChildren(const CounterNode* stayWithin) const
@@ -137,11 +140,17 @@ CounterNode* CounterNode::previousInPreOrder() const
 
 int CounterNode::computeCountInParent() const
 {
+    if (hasSetType())
+        return m_value;
+
     int increment = actsAsReset() ? 0 : m_value;
+    // In case the sum overflows we need to ignore the operation instead
+    // of just clamping the result, as per spec resolution.
+    // See https://github.com/w3c/csswg-drafts/issues/9029
     if (m_previousSibling)
-        return m_previousSibling->m_countInParent + increment;
+        return WTF::sumIfNoOverflowOrFirstValue(m_previousSibling->m_countInParent, increment);
     ASSERT(m_parent->m_firstChild == this);
-    return m_parent->m_value + increment;
+    return WTF::sumIfNoOverflowOrFirstValue(m_parent->m_value, increment);
 }
 
 void CounterNode::addRenderer(RenderCounter& renderer)
@@ -176,14 +185,12 @@ void CounterNode::resetRenderers()
 {
     if (!m_rootRenderer)
         return;
-    bool skipLayoutAndPerfWidthsRecalc = m_rootRenderer->renderTreeBeingDestroyed();
     auto* current = m_rootRenderer;
     while (current) {
-        if (!skipLayoutAndPerfWidthsRecalc)
-            current->setNeedsLayoutAndPrefWidthsRecalc();
         auto* next = current->m_nextForSameCounter;
         current->m_nextForSameCounter = nullptr;
         current->m_counterNode = nullptr;
+        current->view().addCounterNeedingUpdate(*current);
         current = next;
     }
     m_rootRenderer = nullptr;
@@ -220,7 +227,7 @@ void CounterNode::insertAfter(CounterNode& newChild, CounterNode* beforeChild, c
     if (beforeChild && beforeChild->m_parent != this)
         return;
 
-    if (newChild.m_hasResetType) {
+    if (newChild.hasResetType()) {
         while (m_lastChild != beforeChild)
             RenderCounter::destroyCounterNode(m_lastChild->owner(), identifier);
     }
@@ -247,7 +254,7 @@ void CounterNode::insertAfter(CounterNode& newChild, CounterNode* beforeChild, c
         m_lastChild = &newChild;
     }
 
-    if (!newChild.m_firstChild || newChild.m_hasResetType) {
+    if (!newChild.m_firstChild || newChild.hasResetType()) {
         newChild.m_countInParent = newChild.computeCountInParent();
         newChild.resetThisAndDescendantsRenderers();
         if (next)

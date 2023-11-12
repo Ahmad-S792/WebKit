@@ -26,15 +26,16 @@
 #include "config.h"
 #include "PerformanceMark.h"
 
-#include "DOMWindow.h"
 #include "DOMWrapperWorld.h"
 #include "Document.h"
+#include "LocalDOMWindow.h"
 #include "MessagePort.h"
 #include "Performance.h"
 #include "PerformanceMarkOptions.h"
 #include "PerformanceUserTiming.h"
 #include "SerializedScriptValue.h"
 #include "WorkerGlobalScope.h"
+#include <JavaScriptCore/JSCJSValueInlines.h>
 
 namespace WebCore {
 
@@ -58,14 +59,14 @@ static double performanceNow(ScriptExecutionContext& scriptExecutionContext)
 ExceptionOr<Ref<PerformanceMark>> PerformanceMark::create(JSC::JSGlobalObject& globalObject, ScriptExecutionContext& scriptExecutionContext, const String& name, std::optional<PerformanceMarkOptions>&& markOptions)
 {
     if (is<Document>(scriptExecutionContext) && PerformanceUserTiming::isRestrictedMarkName(name))
-        return Exception { SyntaxError };
+        return Exception { ExceptionCode::SyntaxError };
 
     double startTime;
     JSC::JSValue detail;
     if (markOptions) {
         if (markOptions->startTime) {
             if (*markOptions->startTime < 0)
-                return Exception { TypeError };
+                return Exception { ExceptionCode::TypeError };
             startTime = *markOptions->startTime;
         } else
             startTime = performanceNow(scriptExecutionContext);

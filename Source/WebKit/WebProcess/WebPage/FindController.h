@@ -41,7 +41,7 @@
 #endif
 
 namespace WebCore {
-class Frame;
+class LocalFrame;
 class Range;
 enum class DidWrap : bool;
 }
@@ -91,7 +91,7 @@ private:
     void drawRect(WebCore::PageOverlay&, WebCore::GraphicsContext&, const WebCore::IntRect& dirtyRect) override;
 
     Vector<WebCore::FloatRect> rectsForTextMatchesInRect(WebCore::IntRect clipRect);
-    bool updateFindIndicator(WebCore::Frame& selectedFrame, bool isShowingOverlay, bool shouldAnimate = true);
+    bool updateFindIndicator(WebCore::LocalFrame& selectedFrame, bool isShowingOverlay, bool shouldAnimate = true);
 
     enum class FindUIOriginator : uint8_t { FindString, FindStringMatches };
     void updateFindUIAfterPageScroll(bool found, const String&, OptionSet<FindOptions>, unsigned maxMatchCount, WebCore::DidWrap, FindUIOriginator);
@@ -105,11 +105,11 @@ private:
     bool shouldHideFindIndicatorOnScroll() const;
     void didScrollAffectingFindIndicatorPosition();
 
-#if ENABLE(PDFKIT_PLUGIN)
+#if ENABLE(PDF_PLUGIN)
     PluginView* mainFramePlugIn();
 #endif
 
-    WebPage* m_webPage;
+    WeakPtr<WebPage> m_webPage;
     WebCore::PageOverlay* m_findPageOverlay { nullptr };
 
     // Whether the UI process is showing the find indicator. Note that this can be true even if

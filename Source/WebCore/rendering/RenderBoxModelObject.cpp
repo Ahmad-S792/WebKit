@@ -33,8 +33,6 @@
 #include "ColorBlending.h"
 #include "Document.h"
 #include "FloatRoundedRect.h"
-#include "Frame.h"
-#include "FrameView.h"
 #include "GeometryUtilities.h"
 #include "GraphicsContext.h"
 #include "HTMLImageElement.h"
@@ -42,8 +40,13 @@
 #include "ImageBuffer.h"
 #include "ImageQualityController.h"
 #include "InlineIteratorInlineBox.h"
+#include "LocalFrame.h"
+#include "LocalFrameView.h"
 #include "Path.h"
 #include "RenderBlock.h"
+#include "RenderBoxInlines.h"
+#include "RenderBoxModelObjectInlines.h"
+#include "RenderElementInlines.h"
 #include "RenderFlexibleBox.h"
 #include "RenderFragmentContainer.h"
 #include "RenderInline.h"
@@ -164,14 +167,16 @@ bool RenderBoxModelObject::hasAcceleratedCompositing() const
     return view().compositor().hasAcceleratedCompositing();
 }
 
-RenderBoxModelObject::RenderBoxModelObject(Element& element, RenderStyle&& style, BaseTypeFlags baseTypeFlags)
-    : RenderLayerModelObject(element, WTFMove(style), baseTypeFlags | RenderBoxModelObjectFlag)
+RenderBoxModelObject::RenderBoxModelObject(Type type, Element& element, RenderStyle&& style, BaseTypeFlags baseTypeFlags)
+    : RenderLayerModelObject(type, element, WTFMove(style), baseTypeFlags | RenderBoxModelObjectFlag)
 {
+    ASSERT(isRenderBoxModelObject());
 }
 
-RenderBoxModelObject::RenderBoxModelObject(Document& document, RenderStyle&& style, BaseTypeFlags baseTypeFlags)
-    : RenderLayerModelObject(document, WTFMove(style), baseTypeFlags | RenderBoxModelObjectFlag)
+RenderBoxModelObject::RenderBoxModelObject(Type type, Document& document, RenderStyle&& style, BaseTypeFlags baseTypeFlags)
+    : RenderLayerModelObject(type, document, WTFMove(style), baseTypeFlags | RenderBoxModelObjectFlag)
 {
+    ASSERT(isRenderBoxModelObject());
 }
 
 RenderBoxModelObject::~RenderBoxModelObject()
@@ -254,7 +259,7 @@ RenderBlock* RenderBoxModelObject::containingBlockForAutoHeightDetection(Length 
     // ignoring table cell's attribute value, where it says that table cells
     // violate what the CSS spec says to do with heights. Basically we don't care
     // if the cell specified a height or not.
-    if (cb->isTableCell())
+    if (cb->isRenderTableCell())
         return nullptr;
     
     // Match RenderBox::availableLogicalHeightUsing by special casing the layout
@@ -270,11 +275,11 @@ RenderBlock* RenderBoxModelObject::containingBlockForAutoHeightDetection(Length 
     
 bool RenderBoxModelObject::hasAutoHeightOrContainingBlockWithAutoHeight() const
 {
-    const auto* thisBox = isBox() ? downcast<RenderBox>(this) : nullptr;
+    const auto* thisBox = isRenderBox() ? downcast<RenderBox>(this) : nullptr;
     Length logicalHeightLength = style().logicalHeight();
     auto* cb = containingBlockForAutoHeightDetection(logicalHeightLength);
     
-    if (logicalHeightLength.isPercentOrCalculated() && cb && isBox())
+    if (logicalHeightLength.isPercentOrCalculated() && cb && isRenderBox())
         cb->addPercentHeightDescendant(*const_cast<RenderBox*>(downcast<RenderBox>(this)));
 
     if (thisBox && thisBox->isFlexItem() && downcast<RenderFlexibleBox>(*parent()).useChildOverridingLogicalHeightForPercentageResolution(*thisBox))
@@ -299,7 +304,7 @@ DecodingMode RenderBoxModelObject::decodingModeForImageDraw(const Image& image, 
 {
     if (!is<BitmapImage>(image))
         return DecodingMode::Synchronous;
-    
+
     const BitmapImage& bitmapImage = downcast<BitmapImage>(image);
     if (bitmapImage.canAnimate()) {
         // The DecodingMode for the current frame has to be Synchronous. The DecodingMode
@@ -307,32 +312,60 @@ DecodingMode RenderBoxModelObject::decodingModeForImageDraw(const Image& image, 
         return DecodingMode::Synchronous;
     }
 
-    // Large image case.
+    // Some document types force synchronous decoding.
 #if PLATFORM(IOS_FAMILY)
     if (IOSApplication::isIBooksStorytime())
         return DecodingMode::Synchronous;
 #endif
-    if (is<HTMLImageElement>(element())) {
-        auto decodingMode = downcast<HTMLImageElement>(*element()).decodingMode();
-        if (decodingMode != DecodingMode::Auto)
-            return decodingMode;
-    }
-    if (bitmapImage.isLargeImageAsyncDecodingEnabledForTesting())
-        return DecodingMode::Asynchronous;
     if (document().isImageDocument())
         return DecodingMode::Synchronous;
+
+    // A PaintBehavior may force synchronous decoding.
     if (paintInfo.paintBehavior.contains(PaintBehavior::Snapshotting))
         return DecodingMode::Synchronous;
-    if (!settings().largeImageAsyncDecodingEnabled())
-        return DecodingMode::Synchronous;
-    if (!bitmapImage.canUseAsyncDecodingForLargeImages())
-        return DecodingMode::Synchronous;
-    if (paintInfo.paintBehavior.contains(PaintBehavior::TileFirstPaint))
+
+    auto defaultDecodingMode = [&]() -> DecodingMode {
+        if (paintInfo.paintBehavior.contains(PaintBehavior::ForceSynchronousImageDecode))
+            return DecodingMode::Synchronous;
+
+        // First tile paint.
+        if (paintInfo.paintBehavior.contains(PaintBehavior::DefaultAsynchronousImageDecode)) {
+            // And the images has not been painted in this element yet.
+            if (element() && !element()->hasEverPaintedImages())
+                return DecodingMode::Asynchronous;
+        }
+
+        // FIXME: Calling isVisibleInViewport() is not cheap. Find a way to make this faster.
+        return isVisibleInViewport() ? DecodingMode::Synchronous : DecodingMode::Asynchronous;
+    };
+
+    if (is<HTMLImageElement>(element())) {
+        // <img decoding="sync"> forces synchronous decoding.
+        if (downcast<HTMLImageElement>(*element()).decodingMode() == DecodingMode::Synchronous)
+            return DecodingMode::Synchronous;
+
+        // <img decoding="async"> forces asynchronous decoding but make sure this
+        // will not cause flickering.
+        if (downcast<HTMLImageElement>(*element()).decodingMode() == DecodingMode::Asynchronous) {
+            // isAsyncDecodingEnabledForTesting() forces async image decoding regardless whether it is in the viewport or not.
+            if (bitmapImage.isAsyncDecodingEnabledForTesting())
+                return DecodingMode::Asynchronous;
+
+            // Choose a decodingMode such that the image does not flicker.
+            return defaultDecodingMode();
+        }
+    }
+
+    // isAsyncDecodingEnabledForTesting() forces async image decoding regardless of the size.
+    if (bitmapImage.isAsyncDecodingEnabledForTesting())
         return DecodingMode::Asynchronous;
-    // FIXME: isVisibleInViewport() is not cheap. Find a way to make this condition faster.
-    if (!isVisibleInViewport())
-        return DecodingMode::Asynchronous;
-    return DecodingMode::Synchronous;
+
+    // Large image case.
+    if (!(bitmapImage.canUseAsyncDecodingForLargeImages() && settings().largeImageAsyncDecodingEnabled()))
+        return DecodingMode::Synchronous;
+
+    // Choose a decodingMode such that the image does not flicker.
+    return defaultDecodingMode();
 }
 
 LayoutSize RenderBoxModelObject::relativePositionOffset() const
@@ -518,7 +551,7 @@ void RenderBoxModelObject::computeStickyPositionConstraints(StickyPositionViewpo
     // have already done a similar call to move from the containing block to the scrolling
     // ancestor above, but localToContainerQuad takes care of a lot of complex situations
     // involving inlines, tables, and transformations.
-    if (parent()->isBox())
+    if (parent()->isRenderBox())
         downcast<RenderBox>(parent())->flipForWritingMode(stickyBoxRect);
     auto stickyBoxRelativeToScrollingAncestor = parent()->localToContainerQuad(FloatRect(stickyBoxRect), &enclosingClippingBox, { } /* ignore transforms */).boundingBox();
 
@@ -573,7 +606,7 @@ FloatRect RenderBoxModelObject::constrainingRectForStickyPosition() const
 
         float scrollbarOffset = 0;
         if (enclosingClippingBox.hasLayer() && enclosingClippingBox.shouldPlaceVerticalScrollbarOnLeft() && scrollableArea)
-            scrollbarOffset = scrollableArea->verticalScrollbarWidth(IgnoreOverlayScrollbarSize);
+            scrollbarOffset = scrollableArea->verticalScrollbarWidth(IgnoreOverlayScrollbarSize, isHorizontalWritingMode());
 
         constrainingRect.setLocation(FloatPoint(scrollOffset.x() + scrollbarOffset, scrollOffset.y()));
         return constrainingRect;
@@ -933,6 +966,11 @@ void RenderBoxModelObject::applyTransform(TransformationMatrix&, const RenderSty
     // applyTransform() is only used through RenderLayer*, which only invokes this for RenderBox derived renderers, thus not for
     // RenderInline/RenderLineBreak - the other two renderers that inherit from RenderBoxModelObject.
     ASSERT_NOT_REACHED();
+}
+
+bool RenderBoxModelObject::requiresLayer() const
+{
+    return isDocumentElementRenderer() || isPositioned() || createsGroup() || hasTransformRelatedProperty() || hasHiddenBackface() || hasReflection();
 }
 
 } // namespace WebCore

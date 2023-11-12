@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2014-2019 Apple Inc. All rights reserved.
+ * Copyright (C) 2014-2023 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -26,22 +26,23 @@
 
 #pragma once
 
-#if PLATFORM(IOS_FAMILY) && ENABLE(VIDEO_PRESENTATION_MODE)
+#if PLATFORM(IOS_FAMILY) && HAVE(AVKIT)
 
 #include "EventListener.h"
 #include "HTMLMediaElementEnums.h"
 #include "MediaPlayerIdentifier.h"
+#include "PlatformImage.h"
 #include "PlatformLayer.h"
 #include "PlaybackSessionInterfaceAVKit.h"
-#include "VideoFullscreenModel.h"
+#include "VideoFullscreenCaptions.h"
+#include "VideoPresentationModel.h"
 #include <objc/objc.h>
 #include <wtf/Forward.h>
 #include <wtf/Function.h>
 #include <wtf/OptionSet.h>
 #include <wtf/RetainPtr.h>
 #include <wtf/RunLoop.h>
-#include <wtf/ThreadSafeRefCounted.h>
-#include <wtf/WeakPtr.h>
+#include <wtf/ThreadSafeWeakPtr.h>
 
 OBJC_CLASS AVPlayerViewController;
 OBJC_CLASS UIViewController;
@@ -56,28 +57,25 @@ OBJC_CLASS WebAVPlayerViewControllerDelegate;
 OBJC_CLASS NSError;
 
 namespace WebCore {
+
 class FloatRect;
 class FloatSize;
-class VideoFullscreenModel;
-class VideoFullscreenChangeObserver;
 
 class VideoFullscreenInterfaceAVKit final
-    : public VideoFullscreenModelClient
+    : public VideoPresentationModelClient
     , public PlaybackSessionModelClient
-    , public ThreadSafeRefCounted<VideoFullscreenInterfaceAVKit, WTF::DestructionThread::MainRunLoop>
-    , public CanMakeWeakPtr<VideoFullscreenInterfaceAVKit> {
+    , public VideoFullscreenCaptions
+    , public ThreadSafeRefCountedAndCanMakeThreadSafeWeakPtr<VideoFullscreenInterfaceAVKit, WTF::DestructionThread::MainRunLoop> {
 public:
     WEBCORE_EXPORT static Ref<VideoFullscreenInterfaceAVKit> create(PlaybackSessionInterfaceAVKit&);
     virtual ~VideoFullscreenInterfaceAVKit();
-    WEBCORE_EXPORT void setVideoFullscreenModel(VideoFullscreenModel*);
-    WEBCORE_EXPORT void setVideoFullscreenChangeObserver(VideoFullscreenChangeObserver*);
+    WEBCORE_EXPORT void setVideoPresentationModel(VideoPresentationModel*);
     PlaybackSessionInterfaceAVKit& playbackSessionInterface() const { return m_playbackSessionInterface.get(); }
     PlaybackSessionModel* playbackSessionModel() const { return m_playbackSessionInterface->playbackSessionModel(); }
 
-    // VideoFullscreenModelClient
+    // VideoPresentationModelClient
     WEBCORE_EXPORT void hasVideoChanged(bool) final;
     WEBCORE_EXPORT void videoDimensionsChanged(const FloatSize&) final;
-    WEBCORE_EXPORT void modelDestroyed() final;
     WEBCORE_EXPORT void setPlayerIdentifier(std::optional<MediaPlayerIdentifier>) final;
 
     // PlaybackSessionModelClient
@@ -86,6 +84,7 @@ public:
     WEBCORE_EXPORT void setupFullscreen(UIView& videoView, const FloatRect& initialRect, const FloatSize& videoDimensions, UIView* parentView, HTMLMediaElementEnums::VideoFullscreenMode, bool allowsPictureInPicturePlayback, bool standby, bool blocksReturnToFullscreenFromPictureInPicture);
     WEBCORE_EXPORT void enterFullscreen();
     WEBCORE_EXPORT bool exitFullscreen(const FloatRect& finalRect);
+    WEBCORE_EXPORT void exitFullscreenWithoutAnimationToMode(HTMLMediaElementEnums::VideoFullscreenMode);
     WEBCORE_EXPORT void cleanupFullscreen();
     WEBCORE_EXPORT void invalidate();
     WEBCORE_EXPORT void requestHideAndExitFullscreen();
@@ -131,7 +130,7 @@ public:
         bool hasVideo() const { return m_mode & (HTMLMediaElementEnums::VideoFullscreenModeStandard | HTMLMediaElementEnums::VideoFullscreenModePictureInPicture); }
     };
 
-    VideoFullscreenModel* videoFullscreenModel() const { return m_videoFullscreenModel; }
+    RefPtr<VideoPresentationModel> videoPresentationModel() const { return m_videoPresentationModel.get(); }
     bool shouldExitFullscreenWithReason(ExitFullScreenReason);
     HTMLMediaElementEnums::VideoFullscreenMode mode() const { return m_currentMode.mode(); }
     bool allowsPictureInPicturePlayback() const { return m_allowsPictureInPicturePlayback; }
@@ -153,16 +152,23 @@ public:
     void clearMode(HTMLMediaElementEnums::VideoFullscreenMode, bool shouldNotifyModel);
     bool hasMode(HTMLMediaElementEnums::VideoFullscreenMode mode) const { return m_currentMode.hasMode(mode); }
 
-#if PLATFORM(WATCHOS)
+#if PLATFORM(WATCHOS) || PLATFORM(APPLETV)
     UIViewController *presentingViewController();
     UIViewController *fullscreenViewController() const { return m_viewController.get(); }
 #endif
-    WebAVPlayerLayerView* playerLayerView() const { return m_playerLayerView.get(); }
+    WebAVPlayerLayerView *playerLayerView() const { return m_playerLayerView.get(); }
     WEBCORE_EXPORT bool pictureInPictureWasStartedWhenEnteringBackground() const;
 
     std::optional<MediaPlayerIdentifier> playerIdentifier() const { return m_playerIdentifier; }
     WEBCORE_EXPORT AVPlayerViewController *avPlayerViewController() const;
     WebAVPlayerController *playerController() const;
+
+#if !RELEASE_LOG_DISABLED
+    const void* logIdentifier() const;
+    const Logger* loggerPtr() const;
+    const char* logClassName() const { return "VideoFullscreenInterfaceAVKit"; };
+    WTFLogChannel& logChannel() const;
+#endif
 
 private:
     WEBCORE_EXPORT VideoFullscreenInterfaceAVKit(PlaybackSessionInterfaceAVKit&);
@@ -190,8 +196,7 @@ private:
     std::optional<MediaPlayerIdentifier> m_playerIdentifier;
     RetainPtr<WebAVPlayerViewControllerDelegate> m_playerViewControllerDelegate;
     RetainPtr<WebAVPlayerViewController> m_playerViewController;
-    VideoFullscreenModel* m_videoFullscreenModel { nullptr };
-    VideoFullscreenChangeObserver* m_fullscreenChangeObserver { nullptr };
+    ThreadSafeWeakPtr<VideoPresentationModel> m_videoPresentationModel;
 
     // These are only used when fullscreen is presented in a separate window.
     RetainPtr<UIWindow> m_window;
@@ -240,7 +245,6 @@ private:
     bool m_exitingPictureInPicture { false };
 };
 
-}
+} // namespace WebCore
 
-#endif // PLATFORM(IOS_FAMILY) && ENABLE(VIDEO_PRESENTATION_MODE)
-
+#endif // PLATFORM(IOS_FAMILY) && HAVE(AVKIT)

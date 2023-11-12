@@ -66,12 +66,16 @@ bool MockCDMFactory::supportsKeySystem(const String& keySystem)
 
 bool MockCDMFactory::hasSessionWithID(const String& id)
 {
+    if (id.isEmpty())
+        return false;
+
     return m_sessions.contains(id);
 }
 
 void MockCDMFactory::removeSessionWithID(const String& id)
 {
-    m_sessions.remove(id);
+    if (!id.isEmpty())
+        m_sessions.remove(id);
 }
 
 void MockCDMFactory::addKeysToSessionWithID(const String& id, Vector<Ref<SharedBuffer>>&& keys)
@@ -304,7 +308,7 @@ MockCDMInstanceSession::MockCDMInstanceSession(WeakPtr<MockCDMInstance>&& instan
 {
 }
 
-void MockCDMInstanceSession::requestLicense(LicenseType licenseType, const AtomString& initDataType, Ref<SharedBuffer>&& initData, LicenseCallback&& callback)
+void MockCDMInstanceSession::requestLicense(LicenseType licenseType, KeyGroupingStrategy, const AtomString& initDataType, Ref<SharedBuffer>&& initData, LicenseCallback&& callback)
 {
     MockCDMFactory* factory = m_instance ? m_instance->factory() : nullptr;
     if (!factory) {
@@ -398,7 +402,7 @@ void MockCDMInstanceSession::removeSessionData(const String& id, LicenseType, Re
     }
 
     auto keys = factory->removeKeysFromSessionWithID(id);
-    auto keyStatusVector = WTF::map(WTFMove(keys), [](auto&& key) {
+    auto keyStatusVector = WTF::map(WTFMove(keys), [](Ref<SharedBuffer>&& key) {
         return std::pair { WTFMove(key), KeyStatus::Released };
     });
 

@@ -32,7 +32,6 @@
 #import "ANGLEUtilities.h"
 #import "ANGLEUtilitiesCocoa.h"
 #import "CVUtilities.h"
-#import "GraphicsContextGLIOSurfaceSwapChain.h"
 #import "GraphicsLayerContentsDisplayDelegate.h"
 #import "IOSurfacePool.h"
 #import "Logging.h"
@@ -41,6 +40,7 @@
 #import "RuntimeApplicationChecks.h"
 #import <CoreGraphics/CGBitmapContext.h>
 #import <Metal/Metal.h>
+#import <pal/spi/cg/CoreGraphicsSPI.h>
 #import <pal/spi/cocoa/MetalSPI.h>
 #import <wtf/BlockObjCExceptions.h>
 #import <wtf/darwin/WeakLinking.h>
@@ -69,6 +69,12 @@ namespace WebCore {
 // In isCurrentContextPredictable() == false case this variable is accessed from multiple threads but always sequentially
 // and it always contains nullptr and nullptr is always written to it.
 static GraphicsContextGLANGLE* currentContext;
+
+static const char* const disabledANGLEMetalFeatures[] = {
+    "enableInMemoryMtlLibraryCache", // This would leak all program binary objects.
+    "alwaysPreferStagedTextureUploads", // This would timeout tests due to excess staging buffer allocations and fail tests on MacPro.
+    nullptr
+};
 
 static bool isCurrentContextPredictable()
 {
@@ -134,7 +140,7 @@ static EGLDisplay initializeEGLDisplay(const GraphicsContextGLAttributes& attrs)
     ASSERT(clientExtensions);
 #endif
 
-    Vector<EGLint> displayAttributes;
+    Vector<EGLAttrib> displayAttributes;
 
     // FIXME: This should come in from the GraphicsContextGLAttributes.
     bool shouldInitializeWithVolatileContextSupport = !isCurrentContextPredictable();
@@ -177,11 +183,14 @@ static EGLDisplay initializeEGLDisplay(const GraphicsContextGLAttributes& attrs)
                 displayAttributes.append(static_cast<EGLAttrib>(attrs.windowGPUID));
             }
 #endif
+            ASSERT(strstr(clientExtensions, "EGL_ANGLE_feature_control"));
+            displayAttributes.append(EGL_FEATURE_OVERRIDES_DISABLED_ANGLE);
+            displayAttributes.append(reinterpret_cast<EGLAttrib>(disabledANGLEMetalFeatures));
         }
     }
     displayAttributes.append(EGL_NONE);
 
-    EGLDisplay display = EGL_GetPlatformDisplayEXT(EGL_PLATFORM_ANGLE_ANGLE, reinterpret_cast<void*>(EGL_DEFAULT_DISPLAY), displayAttributes.data());
+    EGLDisplay display = EGL_GetPlatformDisplay(EGL_PLATFORM_ANGLE_ANGLE, reinterpret_cast<void*>(EGL_DEFAULT_DISPLAY), displayAttributes.data());
     EGLint majorVersion = 0;
     EGLint minorVersion = 0;
     if (EGL_Initialize(display, &majorVersion, &minorVersion) == EGL_FALSE) {
@@ -194,15 +203,13 @@ static EGLDisplay initializeEGLDisplay(const GraphicsContextGLAttributes& attrs)
         ASSERT(checkVolatileContextSupportIfDeviceExists(display, "EGL_ANGLE_platform_device_context_volatile_cgl", "EGL_ANGLE_device_cgl", EGL_CGL_CONTEXT_ANGLE));
     }
 
-#if ASSERT_ENABLED && USE(MTLSHAREDEVENT_FOR_XR_FRAME_COMPLETION)
+#if ASSERT_ENABLED && ENABLE(WEBXR)
     const char* displayExtensions = EGL_QueryString(display, EGL_EXTENSIONS);
     ASSERT(strstr(displayExtensions, "EGL_ANGLE_metal_shared_event_sync"));
 #endif
 
     return display;
 }
-
-static const unsigned statusCheckThreshold = 5;
 
 #if PLATFORM(MAC) || PLATFORM(MACCATALYST)
 static bool needsEAGLOnMac()
@@ -230,23 +237,29 @@ GraphicsContextGLCocoa::GraphicsContextGLCocoa(GraphicsContextGLAttributes&& cre
 {
 }
 
-GraphicsContextGLCocoa::~GraphicsContextGLCocoa() = default;
-
-IOSurface* GraphicsContextGLCocoa::displayBuffer()
+GraphicsContextGLCocoa::~GraphicsContextGLCocoa()
 {
-    return m_swapChain.displayBuffer().surface.get();
+    freeDrawingBuffers();
 }
 
-void GraphicsContextGLCocoa::markDisplayBufferInUse()
+IOSurface* GraphicsContextGLCocoa::displayBufferSurface()
 {
-    return m_swapChain.markDisplayBufferInUse();
+    return displayBuffer().surface.get();
 }
 
-// FIXME: Below is functionality that should be moved to GraphicsContextGLCocoa to simplify the base class.
-
-GraphicsContextGLANGLE::GraphicsContextGLANGLE(GraphicsContextGLAttributes attrs)
-    : GraphicsContextGL(attrs)
+std::tuple<GCGLenum, GCGLenum> GraphicsContextGLCocoa::externalImageTextureBindingPoint()
 {
+    if (m_drawingBufferTextureTarget == -1)
+        EGL_GetConfigAttrib(platformDisplay(), platformConfig(), EGL_BIND_TO_TEXTURE_TARGET_ANGLE, &m_drawingBufferTextureTarget);
+
+    switch (m_drawingBufferTextureTarget) {
+    case EGL_TEXTURE_2D:
+        return std::make_tuple(TEXTURE_2D, TEXTURE_BINDING_2D);
+    case EGL_TEXTURE_RECTANGLE_ANGLE:
+        return std::make_tuple(TEXTURE_RECTANGLE_ARB, TEXTURE_BINDING_RECTANGLE_ARB);
+    }
+    ASSERT_WITH_MESSAGE(false, "Invalid enum returned from EGL_GetConfigAttrib");
+    return std::make_tuple(0, 0);
 }
 
 bool GraphicsContextGLCocoa::platformInitializeContext()
@@ -358,102 +371,56 @@ bool GraphicsContextGLCocoa::platformInitializeContext()
         LOG(WebGL, "EGLContext Initialization failed.");
         return false;
     }
+    if (attributes.useMetal) {
+        m_finishedMetalSharedEventListener = adoptNS([[MTLSharedEventListener alloc] init]);
+        if (!m_finishedMetalSharedEventListener) {
+            ASSERT_NOT_REACHED();
+            return false;
+        }
+        m_finishedMetalSharedEvent = newSharedEvent(m_displayObj);
+        if (!m_finishedMetalSharedEvent) {
+            ASSERT_NOT_REACHED();
+            return false;
+        }
+    }
+    return true;
+}
+
+bool GraphicsContextGLCocoa::platformInitializeExtensions()
+{
+    auto attributes = contextAttributes();
+#if PLATFORM(MAC) || PLATFORM(MACCATALYST)
+    if (!needsEAGLOnMac()) {
+        // For IOSurface-backed textures.
+        if (!attributes.useMetal && !enableExtension("GL_ANGLE_texture_rectangle"_s))
+            return false;
+        // For creating the EGL surface from an IOSurface.
+        if (!enableExtension("GL_EXT_texture_format_BGRA8888"_s))
+            return false;
+    }
+#endif // PLATFORM(MAC) || PLATFORM(MACCATALYST)
+#if ENABLE(WEBXR)
+    if (attributes.xrCompatible && !enableRequiredWebXRExtensionsImpl())
+        return false;
+#endif
+
+    // GraphicsContextGLANGLE uses sync objects to throttle display on Metal implementations.
+    // OpenGL sync objects are not signaling upon completion on Catalina-era drivers, so
+    // OpenGL cannot use this method of throttling. OpenGL drivers typically implement
+    // some sort of internal throttling.
+    if (attributes.useMetal && !enableExtension("GL_ARB_sync"_s))
+        return false;
     return true;
 }
 
 bool GraphicsContextGLCocoa::platformInitialize()
 {
-    auto attributes = contextAttributes();
-    if (m_isForWebGL2)
-        GL_Enable(GraphicsContextGL::PRIMITIVE_RESTART_FIXED_INDEX);
-
-    Vector<ASCIILiteral, 4> requiredExtensions;
-    if (m_isForWebGL2) {
-        // For WebGL 2.0 occlusion queries to work.
-        requiredExtensions.append("GL_EXT_occlusion_query_boolean"_s);
-    }
-#if PLATFORM(MAC) || PLATFORM(MACCATALYST)
-    if (!needsEAGLOnMac()) {
-        // For IOSurface-backed textures.
-        if (!attributes.useMetal)
-            requiredExtensions.append("GL_ANGLE_texture_rectangle"_s);
-        // For creating the EGL surface from an IOSurface.
-        requiredExtensions.append("GL_EXT_texture_format_BGRA8888"_s);
-    }
-#endif // PLATFORM(MAC) || PLATFORM(MACCATALYST)
-#if ENABLE(WEBXR) && !PLATFORM(IOS_FAMILY_SIMULATOR)
-    if (attributes.xrCompatible)
-        requiredExtensions.append("GL_OES_EGL_image"_s);
-#endif
-    if (m_isForWebGL2)
-        requiredExtensions.append("GL_ANGLE_framebuffer_multisample"_s);
-    for (auto& extension : requiredExtensions) {
-        if (!supportsExtension(extension)) {
-            LOG(WebGL, "Missing required extension. %s", extension.characters());
-            return false;
-        }
-        ensureExtensionEnabled(extension);
-    }
-    if (attributes.useMetal) {
-        // GraphicsContextGLANGLE uses sync objects to throttle display on Metal implementations.
-        // OpenGL sync objects are not signaling upon completion on Catalina-era drivers, so
-        // OpenGL cannot use this method of throttling. OpenGL drivers typically implement
-        // some sort of internal throttling.
-        if (supportsExtension("GL_ARB_sync"_s)) {
-            m_useFenceSyncForDisplayRateLimit = true;
-            ensureExtensionEnabled("GL_ARB_sync"_s);
-        }
-    }
-    validateAttributes();
-    attributes = contextAttributes(); // They may have changed during validation.
-
-    // Create the texture that will be used for the framebuffer.
-    GLenum textureTarget = drawingBufferTextureTarget();
-
-    GL_GenTextures(1, &m_texture);
-    GL_BindTexture(textureTarget, m_texture);
-    GL_TexParameteri(textureTarget, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-    GL_TexParameteri(textureTarget, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-    GL_TexParameteri(textureTarget, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-    GL_TexParameteri(textureTarget, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-    GL_BindTexture(textureTarget, 0);
-
-    GL_GenFramebuffers(1, &m_fbo);
-    GL_BindFramebuffer(GL_FRAMEBUFFER, m_fbo);
-    m_state.boundDrawFBO = m_state.boundReadFBO = m_fbo;
-
-    if (!attributes.antialias && (attributes.stencil || attributes.depth))
-        GL_GenRenderbuffers(1, &m_depthStencilBuffer);
-
-    // If necessary, create another framebuffer for the multisample results.
-    if (attributes.antialias) {
-        GL_GenFramebuffers(1, &m_multisampleFBO);
-        GL_BindFramebuffer(GL_FRAMEBUFFER, m_multisampleFBO);
-        m_state.boundDrawFBO = m_state.boundReadFBO = m_multisampleFBO;
-        GL_GenRenderbuffers(1, &m_multisampleColorBuffer);
-        if (attributes.stencil || attributes.depth)
-            GL_GenRenderbuffers(1, &m_multisampleDepthStencilBuffer);
-    } else if (attributes.preserveDrawingBuffer) {
-        // If necessary, create another texture to handle preserveDrawingBuffer:true without
-        // antialiasing.
-        GL_GenTextures(1, &m_preserveDrawingBufferTexture);
-        GL_BindTexture(GL_TEXTURE_2D, m_preserveDrawingBufferTexture);
-        GL_TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-        GL_TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-        GL_TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-        GL_TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-        GL_BindTexture(GL_TEXTURE_2D, 0);
-        // Create an FBO with which to perform BlitFramebuffer from one texture to the other.
-        GL_GenFramebuffers(1, &m_preserveDrawingBufferFBO);
-    }
-
-    GL_ClearColor(0, 0, 0, 0);
-
 #if PLATFORM(MAC)
+    auto attributes = contextAttributes();
     if (!attributes.useMetal && attributes.effectivePowerPreference() == GraphicsContextGLPowerPreference::HighPerformance)
         m_switchesGPUOnDisplayReconfiguration = true;
 #endif
-    return GraphicsContextGLANGLE::platformInitialize();
+    return true;
 }
 
 GraphicsContextGLANGLE::~GraphicsContextGLANGLE()
@@ -475,37 +442,18 @@ GraphicsContextGLANGLE::~GraphicsContextGLANGLE()
             GL_DeleteTextures(1, &m_preserveDrawingBufferTexture);
         if (m_preserveDrawingBufferFBO)
             GL_DeleteFramebuffers(1, &m_preserveDrawingBufferFBO);
-        // If fences are not enabled, this loop will not execute.
-        for (auto& fence : m_frameCompletionFences)
-            fence.reset();
-    } else {
-        for (auto& fence : m_frameCompletionFences)
-            fence.abandon();
     }
-    if (m_displayBufferPbuffer)
-        EGL_DestroySurface(m_displayObj, m_displayBufferPbuffer);
-    auto recycledBuffer = m_swapChain.recycleBuffer();
-    if (recycledBuffer.handle)
-        EGL_DestroySurface(m_displayObj, recycledBuffer.handle);
-    auto contentsHandle = m_swapChain.detachClient();
-    if (contentsHandle)
-        EGL_DestroySurface(m_displayObj, contentsHandle);
     if (m_contextObj) {
         makeCurrent(m_displayObj, EGL_NO_CONTEXT);
         EGL_DestroyContext(m_displayObj, m_contextObj);
     }
     ASSERT(currentContext != this);
     m_drawingBufferTextureTarget = -1;
-    LOG(WebGL, "Destroyed a GraphicsContextGLANGLE (%p).", this);
 }
 
 bool GraphicsContextGLANGLE::makeContextCurrent()
 {
     if (!m_contextObj)
-        return false;
-    // If there is no drawing buffer, we failed to allocate one during preparing for display.
-    // The exception is the case when the context is used before reshaping.
-    if (!m_displayBufferBacking && !getInternalFramebufferSize().isEmpty())
         return false;
     if (currentContext == this)
         return true;
@@ -526,14 +474,6 @@ void GraphicsContextGLANGLE::checkGPUStatus()
         makeCurrent(m_displayObj, EGL_NO_CONTEXT);
         return;
     }
-
-    // Only do the check every statusCheckThreshold calls.
-    if (m_statusCheckCount)
-        return;
-
-    m_statusCheckCount = (m_statusCheckCount + 1) % statusCheckThreshold;
-
-    // FIXME: check via KHR_robustness.
 }
 
 void GraphicsContextGLCocoa::setContextVisibility(bool isVisible)
@@ -555,81 +495,109 @@ void GraphicsContextGLCocoa::updateContextOnDisplayReconfiguration()
 {
     if (m_switchesGPUOnDisplayReconfiguration)
         EGL_HandleGPUSwitchANGLE(m_displayObj);
-    dispatchContextChangedNotification();
 }
 #endif
 
-bool GraphicsContextGLCocoa::reshapeDisplayBufferBacking()
+bool GraphicsContextGLCocoa::reshapeDrawingBuffer()
 {
     ASSERT(!getInternalFramebufferSize().isEmpty());
-    // Reset the current backbuffer now before allocating a new one in order to slightly reduce memory pressure.
-    if (m_displayBufferBacking) {
-        m_displayBufferBacking.reset();
-        EGL_ReleaseTexImage(m_displayObj, m_displayBufferPbuffer, EGL_BACK_BUFFER);
-        EGL_DestroySurface(m_displayObj, m_displayBufferPbuffer);
-        m_displayBufferPbuffer = EGL_NO_SURFACE;
-    }
-    // Reset the future recycled buffer now, because it most likely will not be reusable at the time it will be reused.
-    auto recycledBuffer = m_swapChain.recycleBuffer();
-    if (recycledBuffer.handle)
-        EGL_DestroySurface(m_displayObj, recycledBuffer.handle);
-    recycledBuffer.surface.reset();
-    return allocateAndBindDisplayBufferBacking();
+    freeDrawingBuffers();
+    return bindNextDrawingBuffer();
 }
 
 void GraphicsContextGLCocoa::setDrawingBufferColorSpace(const DestinationColorSpace& colorSpace)
 {
-    if (m_drawingBufferColorSpace != colorSpace) {
-        m_drawingBufferColorSpace = colorSpace;
-
-        if (!getInternalFramebufferSize().isEmpty() && !reshapeDisplayBufferBacking()) {
-            RELEASE_LOG(WebGL, "Fatal: Unable to allocate backing store of size %d x %d", getInternalFramebufferSize().width(), getInternalFramebufferSize().height());
-            forceContextLost();
-        }
-    }
+    if (m_drawingBufferColorSpace == colorSpace)
+        return;
+    m_drawingBufferColorSpace = colorSpace;
+    if (getInternalFramebufferSize().isEmpty())
+        return;
+    if (!reshapeDrawingBuffer())
+        forceContextLost();
 }
 
-bool GraphicsContextGLCocoa::allocateAndBindDisplayBufferBacking()
+GraphicsContextGLCocoa::IOSurfacePbuffer& GraphicsContextGLCocoa::drawingBuffer()
+{
+    return surfaceBuffer(SurfaceBuffer::DrawingBuffer);
+}
+
+GraphicsContextGLCocoa::IOSurfacePbuffer& GraphicsContextGLCocoa::displayBuffer()
+{
+    return surfaceBuffer(SurfaceBuffer::DisplayBuffer);
+}
+
+GraphicsContextGLCocoa::IOSurfacePbuffer& GraphicsContextGLCocoa::surfaceBuffer(SurfaceBuffer buffer)
+{
+    if (buffer == SurfaceBuffer::DisplayBuffer)
+        return m_drawingBuffers[(m_currentDrawingBufferIndex + maxReusedDrawingBuffers - 1u) % maxReusedDrawingBuffers];
+    return m_drawingBuffers[m_currentDrawingBufferIndex % maxReusedDrawingBuffers];
+}
+
+bool GraphicsContextGLCocoa::bindNextDrawingBuffer()
 {
     ASSERT(!getInternalFramebufferSize().isEmpty());
-    auto backing = IOSurface::create(nullptr, getInternalFramebufferSize(), m_drawingBufferColorSpace);
-    if (!backing)
-        return false;
-    if (m_resourceOwner)
-        backing->setOwnershipIdentity(m_resourceOwner);
+    if (drawingBuffer())
+        EGL_ReleaseTexImage(m_displayObj, drawingBuffer().pbuffer, EGL_BACK_BUFFER);
 
-    const bool usingAlpha = contextAttributes().alpha;
-    const auto size = getInternalFramebufferSize();
-    const EGLint surfaceAttributes[] = {
-        EGL_WIDTH, size.width(),
-        EGL_HEIGHT, size.height(),
-        EGL_IOSURFACE_PLANE_ANGLE, 0,
-        EGL_TEXTURE_TARGET, EGLDrawingBufferTextureTargetForDrawingTarget(drawingBufferTextureTarget()),
-        EGL_TEXTURE_INTERNAL_FORMAT_ANGLE, usingAlpha ? GL_BGRA_EXT : GL_RGB,
-        EGL_TEXTURE_FORMAT, EGL_TEXTURE_RGBA,
-        EGL_TEXTURE_TYPE_ANGLE, GL_UNSIGNED_BYTE,
-        // Only has an effect on the iOS Simulator.
-        EGL_IOSURFACE_USAGE_HINT_ANGLE, EGL_IOSURFACE_WRITE_HINT_ANGLE,
-        EGL_NONE, EGL_NONE
-    };
-    EGLSurface pbuffer = EGL_CreatePbufferFromClientBuffer(m_displayObj, EGL_IOSURFACE_ANGLE, backing->surface(), m_configObj, surfaceAttributes);
-    if (!pbuffer)
-        return false;
-    return bindDisplayBufferBacking(WTFMove(backing), pbuffer);
-}
+    m_currentDrawingBufferIndex++;
+    auto& buffer = drawingBuffer();
 
-bool GraphicsContextGLCocoa::bindDisplayBufferBacking(std::unique_ptr<IOSurface> backing, void* pbuffer)
-{
-    GCGLenum textureTarget = drawingBufferTextureTarget();
-    ScopedRestoreTextureBinding restoreBinding(drawingBufferTextureTargetQueryForDrawingTarget(textureTarget), textureTarget, textureTarget != TEXTURE_RECTANGLE_ARB);
-    GL_BindTexture(textureTarget, m_texture);
-    if (!EGL_BindTexImage(m_displayObj, pbuffer, EGL_BACK_BUFFER)) {
-        EGL_DestroySurface(m_displayObj, pbuffer);
+    if (buffer && (buffer.surface->isInUse() || m_failNextStatusCheck)) {
+        EGL_DestroySurface(m_displayObj, buffer.pbuffer);
+        buffer = { };
+    }
+    if (m_failNextStatusCheck) {
+        m_failNextStatusCheck = false;
         return false;
     }
-    m_displayBufferPbuffer = pbuffer;
-    m_displayBufferBacking = WTFMove(backing);
+    if (!buffer) {
+        auto surface = IOSurface::create(nullptr, getInternalFramebufferSize(), m_drawingBufferColorSpace, IOSurface::Name::GraphicsContextGL);
+        if (!surface)
+            return false;
+        if (m_resourceOwner)
+            surface->setOwnershipIdentity(m_resourceOwner);
+
+        const bool usingAlpha = contextAttributes().alpha;
+        const auto size = getInternalFramebufferSize();
+        const EGLint surfaceAttributes[] = {
+            EGL_WIDTH, size.width(),
+            EGL_HEIGHT, size.height(),
+            EGL_IOSURFACE_PLANE_ANGLE, 0,
+            EGL_TEXTURE_TARGET, EGLDrawingBufferTextureTargetForDrawingTarget(drawingBufferTextureTarget()),
+            EGL_TEXTURE_INTERNAL_FORMAT_ANGLE, usingAlpha ? GL_BGRA_EXT : GL_RGB,
+            EGL_TEXTURE_FORMAT, EGL_TEXTURE_RGBA,
+            EGL_TEXTURE_TYPE_ANGLE, GL_UNSIGNED_BYTE,
+            // Only has an effect on the iOS Simulator.
+            EGL_IOSURFACE_USAGE_HINT_ANGLE, EGL_IOSURFACE_WRITE_HINT_ANGLE,
+            EGL_NONE, EGL_NONE
+        };
+        EGLSurface pbuffer = EGL_CreatePbufferFromClientBuffer(m_displayObj, EGL_IOSURFACE_ANGLE, surface->surface(), m_configObj, surfaceAttributes);
+        if (!pbuffer)
+            return false;
+        buffer = { WTFMove(surface), pbuffer };
+    }
+
+    auto [textureTarget, textureBinding] = drawingBufferTextureBindingPoint();
+    ScopedRestoreTextureBinding restoreBinding(textureBinding, textureTarget, textureTarget != TEXTURE_RECTANGLE_ARB);
+    GL_BindTexture(textureTarget, m_texture);
+    if (!EGL_BindTexImage(m_displayObj, buffer.pbuffer, EGL_BACK_BUFFER)) {
+        EGL_DestroySurface(m_displayObj, buffer.pbuffer);
+        buffer = { };
+        return false;
+    }
     return true;
+}
+
+void GraphicsContextGLCocoa::freeDrawingBuffers()
+{
+    if (drawingBuffer())
+        EGL_ReleaseTexImage(m_displayObj, drawingBuffer().pbuffer, EGL_BACK_BUFFER);
+    for (auto& buffer : m_drawingBuffers) {
+        if (buffer) {
+            EGL_DestroySurface(m_displayObj, buffer.pbuffer);
+            buffer = { };
+        }
+    }
 }
 
 bool GraphicsContextGLANGLE::makeCurrent(GCGLDisplay display, GCGLContext context)
@@ -661,64 +629,112 @@ void GraphicsContextGLCocoa::destroyPbufferAndDetachIOSurface(void* handle)
     WebCore::destroyPbufferAndDetachIOSurface(m_displayObj, handle);
 }
 
-#if !PLATFORM(IOS_FAMILY_SIMULATOR)
-GraphicsContextGLCocoa::IOSurfaceTextureAttachment GraphicsContextGLCocoa::attachIOSurfaceToSharedTexture(GCGLenum target, IOSurface* surface)
+std::optional<GraphicsContextGL::EGLImageAttachResult> GraphicsContextGLCocoa::createAndBindEGLImage(GCGLenum target, EGLImageSource source)
 {
+    EGLDeviceEXT eglDevice = EGL_NO_DEVICE_EXT;
+    if (!EGL_QueryDisplayAttribEXT(platformDisplay(), EGL_DEVICE_EXT, reinterpret_cast<EGLAttrib*>(&eglDevice)))
+        return std::nullopt;
+
+    id<MTLDevice> mtlDevice = nil;
+    if (!EGL_QueryDeviceAttribEXT(eglDevice, EGL_METAL_DEVICE_ANGLE, reinterpret_cast<EGLAttrib*>(&mtlDevice)))
+        return std::nullopt;
+
+    RetainPtr<id<MTLTexture>> texture = WTF::switchOn(WTFMove(source),
+    [&](EGLImageSourceIOSurfaceHandle&& ioSurface) -> RetainPtr<id> {
+        auto surface = IOSurface::createFromSendRight(WTFMove(ioSurface.handle));
+        if (!surface)
+            return { };
+
+        auto size = surface->size();
+        MTLTextureDescriptor *desc = [MTLTextureDescriptor texture2DDescriptorWithPixelFormat:MTLPixelFormatBGRA8Unorm_sRGB width:size.width() height:size.height() mipmapped:NO];
+        [desc setUsage:MTLTextureUsageShaderRead | MTLTextureUsageRenderTarget];
+
+        auto tex = adoptNS([mtlDevice newTextureWithDescriptor:desc iosurface:surface->surface() plane:0]);
+        return tex;
+    },
+    [&](EGLImageSourceMTLSharedTextureHandle&& sharedTexture) -> RetainPtr<id> {
+#if PLATFORM(IOS_FAMILY_SIMULATOR)
+        UNUSED_VARIABLE(sharedTexture);
+        ASSERT_NOT_REACHED();
+        return { };
+#else
+        auto handle = adoptNS([[MTLSharedTextureHandle alloc] initWithMachPort:sharedTexture.handle.sendRight()]);
+        if (!handle)
+            return { };
+
+        if (mtlDevice != [handle device]) {
+            LOG(WebGL, "MTLSharedTextureHandle does not have the same Metal device as platformDisplay.");
+            return { };
+        }
+
+        // Create a MTLTexture out of the MTLSharedTextureHandle.
+        RetainPtr<id> texture = adoptNS([mtlDevice newSharedTextureWithHandle:handle.get()]);
+        return texture;
+        // FIXME: Does the texture have the correct usage mode?
+#endif
+    });
+
+    if (!texture)
+        return std::nullopt;
+
+    // Create an EGLImage out of the MTLTexture
     constexpr EGLint emptyAttributes[] = { EGL_NONE };
-
-    // Create a MTLTexture out of the IOSurface.
-    // FIXME: We need to use the same device that ANGLE is using, which might not be the default.
-
-    RetainPtr<MTLSharedTextureHandle> handle = adoptNS([[MTLSharedTextureHandle alloc] initWithIOSurface:surface->surface() label:@"WebXR"]);
-    if (!handle) {
-        LOG(WebGL, "Unable to create a MTLSharedTextureHandle from the IOSurface in attachIOSurfaceToTexture.");
+    auto eglImage = EGL_CreateImageKHR(platformDisplay(), EGL_NO_CONTEXT, EGL_METAL_TEXTURE_ANGLE, reinterpret_cast<EGLClientBuffer>(texture.get()), emptyAttributes);
+    if (!eglImage)
         return std::nullopt;
-    }
 
-    if (!handle.get().device) {
-        LOG(WebGL, "MTLSharedTextureHandle does not have a Metal device in attachIOSurfaceToTexture.");
-        return std::nullopt;
-    }
-
-    auto texture = adoptNS([handle.get().device newSharedTextureWithHandle:handle.get()]);
-    if (!texture) {
-        LOG(WebGL, "Unable to create a MTLSharedTexture from the texture handle in attachIOSurfaceToTexture.");
-        return std::nullopt;
-    }
+    // Tell the currently bound texture to use the EGLImage.
+    if (target == RENDERBUFFER)
+        GL_EGLImageTargetRenderbufferStorageOES(RENDERBUFFER, eglImage);
+    else
+        GL_EGLImageTargetTexture2DOES(target, eglImage);
 
     GCGLuint textureWidth = [texture width];
     GCGLuint textureHeight = [texture height];
 
-    // FIXME: Does the texture have the correct usage mode?
-
-    // Create an EGLImage out of the MTLTexture
-    auto display = platformDisplay();
-    auto eglImage = EGL_CreateImageKHR(display, EGL_NO_CONTEXT, EGL_METAL_TEXTURE_ANGLE, reinterpret_cast<EGLClientBuffer>(texture.get()), emptyAttributes);
-    if (!eglImage) {
-        LOG(WebGL, "Unable to create an EGLImage from the Metal handle in attachIOSurfaceToTexture.");
-        return std::nullopt;
-    }
-
-    // Tell the currently bound texture to use the EGLImage.
-    GL_EGLImageTargetTexture2DOES(target, eglImage);
-
-    return std::make_tuple(eglImage, textureWidth, textureHeight);
+    return std::make_tuple(eglImage, IntSize(textureWidth, textureHeight));
 }
 
-void GraphicsContextGLCocoa::detachIOSurfaceFromSharedTexture(void* handle)
-{
-    auto display = platformDisplay();
-    EGL_DestroyImageKHR(display, handle);
-}
-#endif
-
-#if USE(MTLSHAREDEVENT_FOR_XR_FRAME_COMPLETION)
 RetainPtr<id> GraphicsContextGLCocoa::newSharedEventWithMachPort(mach_port_t sharedEventSendRight)
 {
     return WebCore::newSharedEventWithMachPort(m_displayObj, sharedEventSendRight);
 }
 
-void* GraphicsContextGLCocoa::createSyncWithSharedEvent(const RetainPtr<id>& sharedEvent, uint64_t signalValue)
+GCEGLSync GraphicsContextGLCocoa::createEGLSync(ExternalEGLSyncEvent syncEvent)
+{
+    auto [syncEventHandle, signalValue] = WTFMove(syncEvent);
+    auto sharedEvent = newSharedEventWithMachPort(syncEventHandle.sendRight());
+    if (!sharedEvent) {
+        LOG(WebGL, "Unable to create a MTLSharedEvent from the syncEvent in createEGLSync.");
+        return nullptr;
+    }
+
+    return createEGLSync(sharedEvent.get(), signalValue);
+}
+
+bool GraphicsContextGLCocoa::enableRequiredWebXRExtensions()
+{
+#if ENABLE(WEBXR)
+    if (!makeContextCurrent())
+        return false;
+    if (enableRequiredWebXRExtensionsImpl())
+        return true;
+#endif
+    return false;
+}
+
+#if ENABLE(WEBXR)
+bool GraphicsContextGLCocoa::enableRequiredWebXRExtensionsImpl()
+{
+    return enableExtension("GL_ANGLE_framebuffer_multisample"_s)
+        && enableExtension("GL_ANGLE_framebuffer_blit"_s)
+        && enableExtension("GL_EXT_sRGB"_s)
+        && enableExtension("GL_OES_EGL_image"_s)
+        && enableExtension("GL_OES_rgb8_rgba8"_s);
+}
+#endif
+
+GCEGLSync GraphicsContextGLCocoa::createEGLSync(id sharedEvent, uint64_t signalValue)
 {
     COMPILE_ASSERT(sizeof(EGLAttrib) == sizeof(void*), "EGLAttrib not pointer-sized!");
     auto signalValueLo = static_cast<EGLAttrib>(signalValue);
@@ -727,7 +743,7 @@ void* GraphicsContextGLCocoa::createSyncWithSharedEvent(const RetainPtr<id>& sha
     // FIXME: How do we check for available extensions?
     auto display = platformDisplay();
     const EGLAttrib syncAttributes[] = {
-        EGL_SYNC_METAL_SHARED_EVENT_OBJECT_ANGLE, reinterpret_cast<EGLAttrib>(sharedEvent.get()),
+        EGL_SYNC_METAL_SHARED_EVENT_OBJECT_ANGLE, reinterpret_cast<EGLAttrib>(sharedEvent),
         EGL_SYNC_METAL_SHARED_EVENT_SIGNAL_VALUE_LO_ANGLE, signalValueLo,
         EGL_SYNC_METAL_SHARED_EVENT_SIGNAL_VALUE_HI_ANGLE, signalValueHi,
         EGL_NONE
@@ -735,55 +751,37 @@ void* GraphicsContextGLCocoa::createSyncWithSharedEvent(const RetainPtr<id>& sha
     return EGL_CreateSync(display, EGL_SYNC_METAL_SHARED_EVENT_ANGLE, syncAttributes);
 }
 
-bool GraphicsContextGLCocoa::destroySync(void* sync)
+void GraphicsContextGLCocoa::waitUntilWorkScheduled()
 {
-    auto display = platformDisplay();
-    return !!EGL_DestroySync(display, sync);
+    if (contextAttributes().useMetal)
+        EGL_WaitUntilWorkScheduledANGLE(platformDisplay());
+    else
+        GL_Flush();
 }
-
-void GraphicsContextGLCocoa::clientWaitSyncWithFlush(void* sync, uint64_t timeout)
-{
-    auto display = platformDisplay();
-    auto ret = EGL_ClientWaitSync(display, sync, EGL_SYNC_FLUSH_COMMANDS_BIT, timeout);
-    ASSERT_UNUSED(ret, ret == EGL_CONDITION_SATISFIED);
-}
-#endif
 
 void GraphicsContextGLCocoa::prepareForDisplay()
 {
-    if (m_layerComposited)
+    prepareForDisplayWithFinishedSignal([] { });
+}
+
+void GraphicsContextGLCocoa::prepareForDisplayWithFinishedSignal(Function<void()> finishedSignal)
+{
+    if (!makeContextCurrent()) {
+        finishedSignal();
         return;
-    if (!makeContextCurrent())
-        return;
-    prepareTexture();
-
-    // The IOSurface will be used from other graphics subsystem, so flush GL commands.
-    GL_Flush();
-
-    auto recycledBuffer = m_swapChain.recycleBuffer();
-
-    EGL_ReleaseTexImage(m_displayObj, m_displayBufferPbuffer, EGL_BACK_BUFFER);
-    m_swapChain.present({ WTFMove(m_displayBufferBacking), m_displayBufferPbuffer });
-    m_displayBufferPbuffer = EGL_NO_SURFACE;
-
-    bool hasNewBacking = false;
-    if (recycledBuffer.surface && recycledBuffer.surface->size() == getInternalFramebufferSize() && recycledBuffer.surface->colorSpace() == m_drawingBufferColorSpace) {
-        hasNewBacking = bindDisplayBufferBacking(WTFMove(recycledBuffer.surface), recycledBuffer.handle);
-        recycledBuffer.handle = nullptr;
     }
-    recycledBuffer.surface.reset();
-    if (recycledBuffer.handle)
-        EGL_DestroySurface(m_displayObj, recycledBuffer.handle);
-
-    // Error will be handled by next call to makeContextCurrent() which will notice lack of display buffer.
-    if (!hasNewBacking)
-        allocateAndBindDisplayBufferBacking();
-
-    markLayerComposited();
-
-    if (m_useFenceSyncForDisplayRateLimit) {
-        bool success = waitAndUpdateOldestFrame();
-        UNUSED_VARIABLE(success); // FIXME: implement context lost.
+    if (!drawingBuffer()) {
+        finishedSignal();
+        return;
+    }
+    prepareTexture();
+    // The fence inserted by this will be scheduled because next BindTexImage will wait until scheduled.
+    insertFinishedSignalOrInvoke(WTFMove(finishedSignal));
+    if (!bindNextDrawingBuffer()) {
+        // If the allocation failed, BindTexImage did not run. The fence must be scheduled.
+        waitUntilWorkScheduled();
+        forceContextLost();
+        return;
     }
 }
 
@@ -797,12 +795,10 @@ GraphicsContextGLCV* GraphicsContextGLCocoa::asCV()
 }
 #endif
 
-RefPtr<PixelBuffer> GraphicsContextGLANGLE::readCompositedResults()
+RefPtr<PixelBuffer> GraphicsContextGLCocoa::readCompositedResults()
 {
-    auto& displayBuffer = m_swapChain.displayBuffer();
-    if (!displayBuffer.surface || !displayBuffer.handle)
-        return nullptr;
-    if (displayBuffer.surface->size() != getInternalFramebufferSize())
+    auto& buffer = displayBuffer();
+    if (!buffer || buffer.surface->size() != getInternalFramebufferSize())
         return nullptr;
     // Note: We are using GL to read the IOSurface. At the time of writing, there are no convinient
     // functions to convert the IOSurface pixel data to ImageData. The image data ends up being
@@ -810,10 +806,10 @@ RefPtr<PixelBuffer> GraphicsContextGLANGLE::readCompositedResults()
     // out of an IOSurface in such a way that drawing the NativeImage would be guaranteed leave
     // the IOSurface be unrefenced after the draw call finishes.
     ScopedTexture texture;
-    GCGLenum textureTarget = drawingBufferTextureTarget();
-    ScopedRestoreTextureBinding restoreBinding(drawingBufferTextureTargetQueryForDrawingTarget(drawingBufferTextureTarget()), textureTarget, textureTarget != TEXTURE_RECTANGLE_ARB);
+    auto [textureTarget, textureBinding] = drawingBufferTextureBindingPoint();
+    ScopedRestoreTextureBinding restoreBinding(textureBinding, textureTarget, textureTarget != TEXTURE_RECTANGLE_ARB);
     GL_BindTexture(textureTarget, texture);
-    if (!EGL_BindTexImage(m_displayObj, displayBuffer.handle, EGL_BACK_BUFFER))
+    if (!EGL_BindTexImage(m_displayObj, buffer.pbuffer, EGL_BACK_BUFFER))
         return nullptr;
     GL_TexParameteri(textureTarget, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
     ScopedFramebuffer fbo;
@@ -823,21 +819,26 @@ RefPtr<PixelBuffer> GraphicsContextGLANGLE::readCompositedResults()
 
     auto result = readPixelsForPaintResults();
 
-    EGLBoolean releaseOk = EGL_ReleaseTexImage(m_displayObj, displayBuffer.handle, EGL_BACK_BUFFER);
+    EGLBoolean releaseOk = EGL_ReleaseTexImage(m_displayObj, buffer.pbuffer, EGL_BACK_BUFFER);
     ASSERT_UNUSED(releaseOk, releaseOk);
     return result;
 }
 
-#if ENABLE(MEDIA_STREAM)
-RefPtr<VideoFrame> GraphicsContextGLCocoa::paintCompositedResultsToVideoFrame()
+#if ENABLE(MEDIA_STREAM) || ENABLE(WEB_CODECS)
+
+RefPtr<VideoFrame> GraphicsContextGLCocoa::surfaceBufferToVideoFrame(SurfaceBuffer buffer)
 {
-    auto &displayBuffer = m_swapChain.displayBuffer();
-    if (!displayBuffer.surface || !displayBuffer.handle)
+    if (!makeContextCurrent())
         return nullptr;
-    if (displayBuffer.surface->size() != getInternalFramebufferSize())
+    if (buffer == SurfaceBuffer::DrawingBuffer) {
+        prepareTexture();
+        waitUntilWorkScheduled();
+    }
+    auto& source = surfaceBuffer(buffer);
+    if (!source || source.surface->size() != getInternalFramebufferSize())
         return nullptr;
-    // Display surface is not marked in use since we will mirror and rotate it explicitly.
-    auto pixelBuffer = createCVPixelBuffer(displayBuffer.surface->surface());
+    // We will mirror and rotate the buffer explicitly. Thus the source being used is always a new one.
+    auto pixelBuffer = createCVPixelBuffer(source.surface->surface());
     if (!pixelBuffer)
         return nullptr;
     // Mirror and rotate the pixel buffer explicitly, as WebRTC encoders cannot mirror.
@@ -877,16 +878,6 @@ bool GraphicsContextGLCocoa::copyTextureFromMedia(MediaPlayer& player, PlatformG
 }
 #endif
 
-GCGLDisplay GraphicsContextGLANGLE::platformDisplay() const
-{
-    return m_displayObj;
-}
-
-GCGLConfig GraphicsContextGLANGLE::platformConfig() const
-{
-    return m_configObj;
-}
-
 RefPtr<GraphicsLayerContentsDisplayDelegate> GraphicsContextGLCocoa::layerContentsDisplayDelegate()
 {
     return nullptr;
@@ -896,6 +887,70 @@ void GraphicsContextGLCocoa::invalidateKnownTextureContent(GCGLuint texture)
 {
     if (m_cv)
         m_cv->invalidateKnownTextureContent(texture);
+}
+
+void GraphicsContextGLCocoa::withBufferAsNativeImage(SurfaceBuffer buffer, Function<void(NativeImage&)> func)
+{
+    RetainPtr<CGContextRef> cgContext;
+    RefPtr<NativeImage> image;
+    if (contextAttributes().premultipliedAlpha) {
+        // Use the IOSurface backed image directly
+        if (!makeContextCurrent())
+            return;
+        if (buffer == SurfaceBuffer::DrawingBuffer) {
+            prepareTexture();
+            waitUntilWorkScheduled();
+        }
+        IOSurfacePbuffer& source = surfaceBuffer(buffer);
+        if (!source || source.surface->size() != getInternalFramebufferSize())
+            return;
+        cgContext = source.surface->createPlatformContext();
+        if (cgContext)
+            image = NativeImage::create(source.surface->createImage(cgContext.get()));
+    } else {
+        // Since IOSurface-backed images only support premultiplied alpha, read
+        // the image into a PixelBuffer which can be used to create a CGImage
+        // that does the conversion.
+        //
+        // FIXME: Can the IOSurface be read into a buffer to avoid the read back via GL?
+        RefPtr<PixelBuffer> pixelBuffer;
+        if (buffer == SurfaceBuffer::DrawingBuffer)
+            pixelBuffer = drawingBufferToPixelBuffer(FlipY::No);
+        else
+            pixelBuffer = readCompositedResults();
+        if (!pixelBuffer)
+            return;
+        image = createNativeImageFromPixelBuffer(contextAttributes(), pixelBuffer.releaseNonNull());
+    }
+
+    if (!image)
+        return;
+
+    CGImageSetCachingFlags(image->platformImage().get(), kCGImageCachingTransient);
+    func(*image);
+}
+
+void GraphicsContextGLCocoa::insertFinishedSignalOrInvoke(Function<void()> signal)
+{
+    if (!contextAttributes().useMetal) {
+        signal();
+        return;
+    }
+    static std::atomic<uint64_t> nextSignalValue;
+    uint64_t signalValue = ++nextSignalValue;
+    id<MTLSharedEvent> event = m_finishedMetalSharedEvent.get();
+    // The block below has to be a real compiler generated block instead of BlockPtr due to a Metal bug. rdar://108035473
+    __block Function<void()> blockSignal = WTFMove(signal);
+    [event notifyListener:m_finishedMetalSharedEventListener.get() atValue:signalValue block:^(id<MTLSharedEvent>, uint64_t) {
+        blockSignal();
+    }];
+    auto* sync = createEGLSync(event, signalValue);
+    if (UNLIKELY(!sync)) {
+        event.signaledValue = signalValue;
+        ASSERT_NOT_REACHED();
+        return;
+    }
+    destroyEGLSync(sync);
 }
 
 }

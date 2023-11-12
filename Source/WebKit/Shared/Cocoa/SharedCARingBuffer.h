@@ -50,7 +50,7 @@ public:
         SharedMemory::Handle memory;
         size_t frameCount;
         void takeOwnershipOfMemory(MemoryLedger ledger) { memory.takeOwnershipOfMemory(ledger); }
-        template <typename Encoder> void encode(Encoder&) const;
+        template <typename Encoder> void encode(Encoder&) &&;
         template <typename Decoder> static std::optional<Handle> decode(Decoder&);
     };
     // FIXME: Remove this deprecated constructor.
@@ -69,15 +69,15 @@ public:
         std::unique_ptr<ProducerSharedCARingBuffer> producer;
         ConsumerSharedCARingBuffer::Handle consumer;
     };
-    static Pair allocate(const WebCore::CAAudioStreamDescription& format, size_t frameCount);
+    static std::optional<Pair> allocate(const WebCore::CAAudioStreamDescription& format, size_t frameCount);
 protected:
     using SharedCARingBufferBase::SharedCARingBufferBase;
 };
 
 template <typename Encoder>
-void ConsumerSharedCARingBuffer::Handle::encode(Encoder& encoder) const
+void ConsumerSharedCARingBuffer::Handle::encode(Encoder& encoder) &&
 {
-    encoder << memory << frameCount;
+    encoder << WTFMove(memory) << frameCount;
 }
 
 template <typename Decoder>

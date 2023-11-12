@@ -41,6 +41,7 @@ bool clobbersExitState(Graph& graph, Node* node)
     switch (node->op()) {
     case InitializeEntrypointArguments:
     case MovHint:
+    case ZombieHint:
     case PutHint:
     case KillStack:
         return true;
@@ -59,7 +60,10 @@ bool clobbersExitState(Graph& graph, Node* node)
     case NewAsyncGenerator:
     case NewInternalFieldObject:
     case NewRegexp:
+    case NewMap:
+    case NewSet:
     case NewStringObject:
+    case NewBoundFunction:
     case PhantomNewObject:
     case MaterializeNewObject:
     case PhantomNewFunction:

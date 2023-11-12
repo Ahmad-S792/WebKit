@@ -160,19 +160,8 @@ public:
     bool operator!() const { return !isSet(); }
     explicit operator bool() const { return isSet(); }
     
-    bool operator==(Edge other) const
-    {
-#if USE(JSVALUE64)
-        return m_encodedWord == other.m_encodedWord;
-#else
-        return m_node == other.m_node && m_encodedWord == other.m_encodedWord;
-#endif
-    }
-    bool operator!=(Edge other) const
-    {
-        return !(*this == other);
-    }
-    
+    friend bool operator==(Edge, Edge) = default;
+
     void dump(PrintStream&) const;
     
     unsigned hash() const
@@ -195,7 +184,7 @@ private:
         ASSERT(sizeof(node) == 8);
         uintptr_t shiftedValue = bitwise_cast<uintptr_t>(node) << shift();
         ASSERT((shiftedValue >> shift()) == bitwise_cast<uintptr_t>(node));
-        ASSERT(useKind >= 0 && useKind < LastUseKind);
+        ASSERT(useKind < LastUseKind);
         static_assert((static_cast<uintptr_t>(LastUseKind) << 2) < (static_cast<uintptr_t>(1) << shift()), "We rely on this being true to not clobber the node pointer.");
         uintptr_t result = shiftedValue | (static_cast<uintptr_t>(useKind) << 2) | (DFG::doesKill(killStatus) << 1) | static_cast<uintptr_t>(DFG::isProved(proofStatus));
         if (ASSERT_ENABLED) {
@@ -234,14 +223,6 @@ inline bool operator==(Edge edge, Node* node)
 inline bool operator==(Node* node, Edge edge)
 {
     return edge.node() == node;
-}
-inline bool operator!=(Edge edge, Node* node)
-{
-    return edge.node() != node;
-}
-inline bool operator!=(Node* node, Edge edge)
-{
-    return edge.node() != node;
 }
 
 } } // namespace JSC::DFG

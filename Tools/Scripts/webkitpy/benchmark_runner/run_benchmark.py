@@ -19,6 +19,7 @@ benchmark_runner_subclasses = {
     WebServerBenchmarkRunner.name: WebServerBenchmarkRunner,
 }
 
+WEBKIT_PGO_DIR = '/private/tmp/WebKitPGO'
 
 def default_platform():
     if sys.platform.startswith('linux'):
@@ -38,7 +39,7 @@ def default_diagnose_dir():
 
 def config_argument_parser():
     diagnose_directory = default_diagnose_dir()
-    parser = argparse.ArgumentParser(description='Run browser based performance benchmarks. To run a single benchmark in the recommended way, use run-benchmark --plan. To see the available benchmarks, use run-benchmark --list-plans. This script passes through the __XPC variables in its environment to the Safari process.')
+    parser = argparse.ArgumentParser(description='Run browser based performance benchmarks. To run a single benchmark in the recommended way, use run-benchmark --plan. To see the available benchmarks, use run-benchmark --list-plans. This script passes through the __XPC variables in its environment to the Safari process. All other arguments are passed to the browser at launch.')
     mutual_group = parser.add_mutually_exclusive_group(required=True)
     mutual_group.add_argument('--plan', help='Run a specific benchmark plan (e.g. speedometer, jetstream).')
     mutual_group.add_argument('--list-plans', action='store_true', help='List all available benchmark plans.')
@@ -59,11 +60,14 @@ def config_argument_parser():
     parser.add_argument('--no-adjust-unit', dest='scale_unit', action='store_false', help="Don't convert to scientific notation.")
     parser.add_argument('--show-iteration-values', dest='show_iteration_values', action='store_true', help="Show the measured value for each iteration in addition to averages.")
     parser.add_argument('--generate-pgo-profiles', dest="generate_pgo_profiles", action='store_true', help="Collect LLVM profiles for PGO, and copy them to the diagnostics directory.")
-    parser.add_argument('--profile', action='store_true', help="Collect profiling traces, and copy them to the diagnostic directory.")
+    parser.add_argument('--profile', dest='trace_type', default=None, help="Collect profiling traces, and copy them to the diagnostic directory. Requires a valid TRACE_TYPE - options are `full` and `profile`.")
+    parser.add_argument('--profiling-interval', default=None, help="Specify the profiling sampling rate.")
 
     group = parser.add_mutually_exclusive_group()
     group.add_argument('--browser-path', help='Specify the path to a non-default copy of the target browser as a path to the .app.')
     group.add_argument('--build-directory', dest='build_dir', help='Path to the browser executable (e.g. WebKitBuild/Release/).')
+
+    parser.add_argument('browser_args', nargs='*', help='Additional arguments to pass to the browser process. These are positional arguments and must follow all other arguments. If the pass through arguments begin with a dash, use `--` before the argument list begins.')
 
     return parser
 
@@ -81,7 +85,7 @@ def parse_args(parser=None):
     _log.debug('\tbuild directory\t: %s' % args.build_dir)
     _log.debug('\tplan name\t: %s', args.plan)
 
-    if (args.generate_pgo_profiles or args.profile) and not args.diagnose_dir:
+    if (args.generate_pgo_profiles or args.trace_type) and not args.diagnose_dir:
         raise Exception('Collecting profiles requires a diagnostic directory (--diagnose-directory) to be set.')
 
     if args.generate_pgo_profiles and args.platform != 'osx':
@@ -96,8 +100,10 @@ def run_benchmark_plan(args, plan):
                                     args.local_copy, args.count, args.timeout, args.build_dir, args.output_file,
                                     args.platform, args.browser, args.browser_path, args.subtests, args.scale_unit,
                                     args.show_iteration_values, args.device_id, args.diagnose_dir,
-                                    args.diagnose_dir if args.generate_pgo_profiles else None,
-                                    args.diagnose_dir if args.profile else None)
+                                    WEBKIT_PGO_DIR if args.generate_pgo_profiles else None,
+                                    args.diagnose_dir if args.trace_type else None,
+                                    args.trace_type, args.profiling_interval,
+                                    args.browser_args)
     runner.execute()
 
 

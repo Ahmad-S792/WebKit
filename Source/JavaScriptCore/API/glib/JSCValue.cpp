@@ -59,7 +59,7 @@ struct _JSCValuePrivate {
     JSValueRef jsValue;
 };
 
-WEBKIT_DEFINE_TYPE(JSCValue, jsc_value, G_TYPE_OBJECT)
+WEBKIT_DEFINE_FINAL_TYPE(JSCValue, jsc_value, G_TYPE_OBJECT, GObject)
 
 static void jscValueGetProperty(GObject* object, guint propID, GValue* value, GParamSpec* paramSpec)
 {
@@ -497,7 +497,7 @@ JSCValue* jsc_value_new_array(JSCContext* context, GType firstItemType, ...)
         GUniqueOutPtr<char> error;
         G_VALUE_COLLECT_INIT(&item, itemType, args, G_VALUE_NOCOPY_CONTENTS, &error.outPtr());
         if (error) {
-            exception = toRef(JSC::createTypeError(globalObject, makeString("failed to collect array item: ", error.get())));
+            exception = toRef(JSC::createTypeError(globalObject, makeString("failed to collect array item: "_s, error.get())));
             jscContextHandleExceptionIfNeeded(context, exception);
             jsArray = nullptr;
             break;
@@ -893,7 +893,7 @@ static GRefPtr<JSCValue> jscValueCallFunction(JSCValue* value, JSObjectRef funct
         GUniqueOutPtr<char> error;
         G_VALUE_COLLECT_INIT(&parameter, parameterType, args, G_VALUE_NOCOPY_CONTENTS, &error.outPtr());
         if (error) {
-            exception = toRef(JSC::createTypeError(globalObject, makeString("failed to collect function paramater: ", error.get())));
+            exception = toRef(JSC::createTypeError(globalObject, makeString("failed to collect function paramater: "_s, error.get())));
             jscContextHandleExceptionIfNeeded(priv->context.get(), exception);
             return adoptGRef(jsc_value_new_undefined(priv->context.get()));
         }
@@ -1001,12 +1001,9 @@ JSCValue* jsc_value_object_invoke_methodv(JSCValue* value, const char* name, uns
     if (jscContextHandleExceptionIfNeeded(priv->context.get(), exception))
         return jsc_value_new_undefined(priv->context.get());
 
-    Vector<JSValueRef> arguments;
-    if (parametersCount) {
-        arguments.reserveInitialCapacity(parametersCount);
-        for (unsigned i = 0; i < parametersCount; ++i)
-            arguments.uncheckedAppend(jscValueGetJSValue(parameters[i]));
-    }
+    Vector<JSValueRef> arguments(parametersCount, [&](size_t i) {
+        return jscValueGetJSValue(parameters[i]);
+    });
 
     auto result = jsObjectCall(jsContext, function, JSC::JSCCallbackFunction::Type::Method, object, arguments, &exception);
     if (jscContextHandleExceptionIfNeeded(priv->context.get(), exception))
@@ -1125,9 +1122,9 @@ static void jscValueObjectDefinePropertyAccessor(JSCValue* value, const char* pr
  * @property_name: the name of the property to define
  * @flags: #JSCValuePropertyFlags
  * @property_type: the #GType of the property
- * @getter: (scope async) (nullable): a #GCallback to be called to get the property value
- * @setter: (scope async) (nullable): a #GCallback to be called to set the property value
- * @user_data: (closure): user data to pass to @getter and @setter
+ * @getter: (scope async) (nullable) (closure user_data): a #GCallback to be called to get the property value
+ * @setter: (scope async) (nullable) (closure user_data): a #GCallback to be called to set the property value
+ * @user_data: user data to pass to @getter and @setter
  * @destroy_notify: (nullable): destroy notifier for @user_data
  *
  * Define or modify a property with @property_name in object referenced by @value. When the
@@ -1181,7 +1178,7 @@ static GRefPtr<JSCValue> jscValueFunctionCreate(JSCContext* context, const char*
  * @context: a #JSCContext:
  * @name: (nullable): the function name or %NULL
  * @callback: (scope async): a #GCallback.
- * @user_data: (closure): user data to pass to @callback.
+ * @user_data: user data to pass to @callback.
  * @destroy_notify: (nullable): destroy notifier for @user_data
  * @return_type: the #GType of the function return value, or %G_TYPE_NONE if the function is void.
  * @n_params: the number of parameter types to follow or 0 if the function doesn't receive parameters.
@@ -1206,12 +1203,9 @@ JSCValue* jsc_value_new_function(JSCContext* context, const char* name, GCallbac
 
     va_list args;
     va_start(args, paramCount);
-    Vector<GType> parameters;
-    if (paramCount) {
-        parameters.reserveInitialCapacity(paramCount);
-        for (unsigned i = 0; i < paramCount; ++i)
-            parameters.uncheckedAppend(va_arg(args, GType));
-    }
+    Vector<GType> parameters(paramCount, [&](size_t) -> GType {
+        return va_arg(args, GType);
+    });
     va_end(args);
 
     return jscValueFunctionCreate(context, name, callback, userData, destroyNotify, returnType, WTFMove(parameters)).leakRef();
@@ -1222,7 +1216,7 @@ JSCValue* jsc_value_new_function(JSCContext* context, const char* name, GCallbac
  * @context: a #JSCContext
  * @name: (nullable): the function name or %NULL
  * @callback: (scope async): a #GCallback.
- * @user_data: (closure): user data to pass to @callback.
+ * @user_data: user data to pass to @callback.
  * @destroy_notify: (nullable): destroy notifier for @user_data
  * @return_type: the #GType of the function return value, or %G_TYPE_NONE if the function is void.
  * @n_parameters: the number of parameters
@@ -1246,12 +1240,9 @@ JSCValue* jsc_value_new_functionv(JSCContext* context, const char* name, GCallba
     g_return_val_if_fail(callback, nullptr);
     g_return_val_if_fail(!parametersCount || parameterTypes, nullptr);
 
-    Vector<GType> parameters;
-    if (parametersCount) {
-        parameters.reserveInitialCapacity(parametersCount);
-        for (unsigned i = 0; i < parametersCount; ++i)
-            parameters.uncheckedAppend(parameterTypes[i]);
-    }
+    Vector<GType> parameters(parametersCount, [&](size_t i) -> GType {
+        return parameterTypes[i];
+    });
 
     return jscValueFunctionCreate(context, name, callback, userData, destroyNotify, returnType, WTFMove(parameters)).leakRef();
 }
@@ -1261,7 +1252,7 @@ JSCValue* jsc_value_new_functionv(JSCContext* context, const char* name, GCallba
  * @context: a #JSCContext
  * @name: (nullable): the function name or %NULL
  * @callback: (scope async): a #GCallback.
- * @user_data: (closure): user data to pass to @callback.
+ * @user_data: user data to pass to @callback.
  * @destroy_notify: (nullable): destroy notifier for @user_data
  * @return_type: the #GType of the function return value, or %G_TYPE_NONE if the function is void.
  *
@@ -1363,12 +1354,9 @@ JSCValue* jsc_value_function_callv(JSCValue* value, unsigned parametersCount, JS
     if (jscContextHandleExceptionIfNeeded(priv->context.get(), exception))
         return jsc_value_new_undefined(priv->context.get());
 
-    Vector<JSValueRef> arguments;
-    if (parametersCount) {
-        arguments.reserveInitialCapacity(parametersCount);
-        for (unsigned i = 0; i < parametersCount; ++i)
-            arguments.uncheckedAppend(jscValueGetJSValue(parameters[i]));
-    }
+    Vector<JSValueRef> arguments(parametersCount, [&](size_t i) {
+        return jscValueGetJSValue(parameters[i]);
+    });
 
     auto result = jsObjectCall(jsContext, function, JSC::JSCCallbackFunction::Type::Function, nullptr, arguments, &exception);
     if (jscContextHandleExceptionIfNeeded(priv->context.get(), exception))
@@ -1449,12 +1437,9 @@ JSCValue* jsc_value_constructor_callv(JSCValue* value, unsigned parametersCount,
     if (jscContextHandleExceptionIfNeeded(priv->context.get(), exception))
         return jsc_value_new_undefined(priv->context.get());
 
-    Vector<JSValueRef> arguments;
-    if (parametersCount) {
-        arguments.reserveInitialCapacity(parametersCount);
-        for (unsigned i = 0; i < parametersCount; ++i)
-            arguments.uncheckedAppend(jscValueGetJSValue(parameters[i]));
-    }
+    Vector<JSValueRef> arguments(parametersCount, [&](size_t i) {
+        return jscValueGetJSValue(parameters[i]);
+    });
 
     auto result = jsObjectCall(jsContext, function, JSC::JSCCallbackFunction::Type::Constructor, nullptr, arguments, &exception);
     if (jscContextHandleExceptionIfNeeded(priv->context.get(), exception))
@@ -1474,8 +1459,8 @@ WEBKIT_DEFINE_ASYNC_DATA_STRUCT(ArrayBufferDeallocatorContext)
  * @context: A #JSCContext
  * @data: Pointer to a region of memory.
  * @size: Size in bytes of the memory region.
- * @destroy_notify: (nullable): destroy notifier for @user_data.
- * @user_data: (closure): user data.
+ * @destroy_notify: (nullable) (closure user_data): destroy notifier for @user_data.
+ * @user_data: user data.
  *
  * Creates a new %ArrayBuffer from existing @data in memory.
  *

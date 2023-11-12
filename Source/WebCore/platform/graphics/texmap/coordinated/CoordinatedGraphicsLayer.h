@@ -30,6 +30,7 @@
 #include "NicosiaAnimatedBackingStoreClient.h"
 #include "NicosiaAnimation.h"
 #include "NicosiaBuffer.h"
+#include "NicosiaCompositionLayer.h"
 #include "NicosiaPlatformLayer.h"
 #include "TransformationMatrix.h"
 #include <wtf/Function.h>
@@ -53,7 +54,6 @@ public:
     virtual void attachLayer(CoordinatedGraphicsLayer*) = 0;
     virtual Nicosia::PaintingEngine& paintingEngine() = 0;
     virtual RefPtr<Nicosia::ImageBackingStore> imageBackingStore(uint64_t, Function<RefPtr<Nicosia::Buffer>()>) = 0;
-    virtual void syncLayerState() = 0;
 };
 
 class WEBCORE_EXPORT CoordinatedGraphicsLayer : public GraphicsLayer {
@@ -63,7 +63,7 @@ public:
 
     // FIXME: Merge these two methods.
     Nicosia::PlatformLayer::LayerID id() const;
-    PlatformLayerID primaryLayerID() const override;
+    PlatformLayerIdentifier primaryLayerID() const override;
 
     // Reimplementations from GraphicsLayer.h.
     bool setChildren(Vector<Ref<GraphicsLayer>>&&) override;
@@ -72,7 +72,7 @@ public:
     void addChildAbove(Ref<GraphicsLayer>&&, GraphicsLayer*) override;
     void addChildBelow(Ref<GraphicsLayer>&&, GraphicsLayer*) override;
     bool replaceChild(GraphicsLayer*, Ref<GraphicsLayer>&&) override;
-    void removeFromParent() override;
+    void willModifyChildren() override;
     void setEventRegion(EventRegion&&) override;
 #if ENABLE(SCROLLING_THREAD)
     void setScrollingNodeID(ScrollingNodeID) override;
@@ -117,7 +117,7 @@ public:
     void setBackdropFiltersRect(const FloatRoundedRect&) override;
     bool addAnimation(const KeyframeValueList&, const FloatSize&, const Animation*, const String&, double) override;
     void pauseAnimation(const String&, double) override;
-    void removeAnimation(const String&) override;
+    void removeAnimation(const String&, std::optional<AnimatedProperty>) override;
     void suspendAnimations(MonotonicTime) override;
     void resumeAnimations() override;
     bool usesContentsLayer() const override;
@@ -127,7 +127,7 @@ public:
     PlatformLayer* platformLayer() const override;
 #endif
 
-    void syncPendingStateChangesIncludingSubLayers();
+    bool checkPendingStateChangesIncludingSubLayers();
     void updateContentBuffersIncludingSubLayers();
 
     FloatPoint computePositionRelativeToBase();
@@ -166,6 +166,8 @@ public:
     };
 
     void requestBackingStoreUpdate();
+
+    double backingStoreMemoryEstimate() const override;
 
 private:
     enum class FlushNotification {

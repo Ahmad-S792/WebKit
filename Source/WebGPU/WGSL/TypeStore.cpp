@@ -26,13 +26,90 @@
 #include "config.h"
 #include "TypeStore.h"
 
-#include "ASTTypeName.h"
+#include "Types.h"
 #include <wtf/EnumTraits.h>
 
 namespace WGSL {
 
+using namespace Types;
+
+struct VectorKey {
+    const Type* elementType;
+    uint8_t size;
+
+    TypeCache::EncodedKey encode() const { return std::tuple(TypeCache::Vector, size, 0, 0, bitwise_cast<uintptr_t>(elementType)); }
+};
+
+struct MatrixKey {
+    const Type* elementType;
+    uint8_t columns;
+    uint8_t rows;
+
+    TypeCache::EncodedKey encode() const { return std::tuple(TypeCache::Matrix, columns, rows, 0, bitwise_cast<uintptr_t>(elementType)); }
+};
+
+struct ArrayKey {
+    const Type* elementType;
+    std::optional<unsigned> size;
+
+    TypeCache::EncodedKey encode() const { return std::tuple(TypeCache::Array, 0, 0, size.value_or(0), bitwise_cast<uintptr_t>(elementType)); }
+};
+
+struct TextureKey {
+    const Type* elementType;
+    Texture::Kind kind;
+
+    TypeCache::EncodedKey encode() const { return std::tuple(TypeCache::Texture, WTF::enumToUnderlyingType(kind), 0, 0, bitwise_cast<uintptr_t>(elementType)); }
+};
+
+struct TextureStorageKey {
+    TextureStorage::Kind kind;
+    TexelFormat format;
+    AccessMode access;
+
+    TypeCache::EncodedKey encode() const { return std::tuple(TypeCache::TextureStorage, WTF::enumToUnderlyingType(kind), WTF::enumToUnderlyingType(format), WTF::enumToUnderlyingType(access), 0); }
+};
+
+struct ReferenceKey {
+    const Type* elementType;
+    AddressSpace addressSpace;
+    AccessMode accessMode;
+
+    TypeCache::EncodedKey encode() const { return std::tuple(TypeCache::Reference, WTF::enumToUnderlyingType(addressSpace), WTF::enumToUnderlyingType(accessMode), 0, bitwise_cast<uintptr_t>(elementType)); }
+};
+
+struct PointerKey {
+    const Type* elementType;
+    AddressSpace addressSpace;
+    AccessMode accessMode;
+
+    TypeCache::EncodedKey encode() const { return std::tuple(TypeCache::Pointer, WTF::enumToUnderlyingType(addressSpace), WTF::enumToUnderlyingType(accessMode), 0, bitwise_cast<uintptr_t>(elementType)); }
+};
+
+struct PrimitiveStructKey {
+    unsigned kind;
+    const Type* elementType;
+
+    TypeCache::EncodedKey encode() const { return std::tuple(TypeCache::PrimitiveStruct, kind, 0, 0, bitwise_cast<uintptr_t>(elementType)); }
+};
+
+template<typename Key>
+const Type* TypeCache::find(const Key& key) const
+{
+    auto it = m_storage.find(key.encode());
+    if (it != m_storage.end())
+        return it->value;
+    return nullptr;
+}
+
+template<typename Key>
+void TypeCache::insert(const Key& key, const Type* type)
+{
+    auto it = m_storage.add(key.encode(), type);
+    ASSERT_UNUSED(it, it.isNewEntry);
+}
+
 TypeStore::TypeStore()
-    : m_typeConstrutors(AST::ParameterizedTypeName::NumberOfBaseTypes)
 {
     m_bottom = allocateType<Bottom>();
     m_abstractInt = allocateType<Primitive>(Primitive::AbstractInt);
@@ -42,54 +119,141 @@ TypeStore::TypeStore()
     m_i32 = allocateType<Primitive>(Primitive::I32);
     m_u32 = allocateType<Primitive>(Primitive::U32);
     m_f32 = allocateType<Primitive>(Primitive::F32);
-
-    allocateConstructor<Vector>(AST::ParameterizedTypeName::Base::Vec2, static_cast<uint8_t>(2));
-    allocateConstructor<Vector>(AST::ParameterizedTypeName::Base::Vec3, static_cast<uint8_t>(3));
-    allocateConstructor<Vector>(AST::ParameterizedTypeName::Base::Vec4, static_cast<uint8_t>(4));
-    allocateConstructor<Matrix>(AST::ParameterizedTypeName::Base::Mat2x2, static_cast<uint8_t>(2), static_cast<uint8_t>(2));
-    allocateConstructor<Matrix>(AST::ParameterizedTypeName::Base::Mat2x3, static_cast<uint8_t>(2), static_cast<uint8_t>(3));
-    allocateConstructor<Matrix>(AST::ParameterizedTypeName::Base::Mat2x4, static_cast<uint8_t>(2), static_cast<uint8_t>(4));
-    allocateConstructor<Matrix>(AST::ParameterizedTypeName::Base::Mat3x2, static_cast<uint8_t>(3), static_cast<uint8_t>(2));
-    allocateConstructor<Matrix>(AST::ParameterizedTypeName::Base::Mat3x3, static_cast<uint8_t>(3), static_cast<uint8_t>(3));
-    allocateConstructor<Matrix>(AST::ParameterizedTypeName::Base::Mat3x4, static_cast<uint8_t>(3), static_cast<uint8_t>(4));
-    allocateConstructor<Matrix>(AST::ParameterizedTypeName::Base::Mat4x2, static_cast<uint8_t>(4), static_cast<uint8_t>(2));
-    allocateConstructor<Matrix>(AST::ParameterizedTypeName::Base::Mat4x3, static_cast<uint8_t>(4), static_cast<uint8_t>(3));
-    allocateConstructor<Matrix>(AST::ParameterizedTypeName::Base::Mat4x4, static_cast<uint8_t>(4), static_cast<uint8_t>(4));
+    m_sampler = allocateType<Primitive>(Primitive::Sampler);
+    m_samplerComparison = allocateType<Primitive>(Primitive::SamplerComparison);
+    m_textureExternal = allocateType<Primitive>(Primitive::TextureExternal);
+    m_accessMode = allocateType<Primitive>(Primitive::AccessMode);
+    m_texelFormat = allocateType<Primitive>(Primitive::TexelFormat);
+    m_addressSpace = allocateType<Primitive>(Primitive::AddressSpace);
+    m_textureDepth2d = allocateType<TextureDepth>(TextureDepth::Kind::TextureDepth2d);
+    m_textureDepthArray2d = allocateType<TextureDepth>(TextureDepth::Kind::TextureDepth2dArray);
+    m_textureDepthCube = allocateType<TextureDepth>(TextureDepth::Kind::TextureDepthCube);
+    m_textureDepthArrayCube = allocateType<TextureDepth>(TextureDepth::Kind::TextureDepthCubeArray);
+    m_textureDepthMultisampled2d = allocateType<TextureDepth>(TextureDepth::Kind::TextureDepthMultisampled2d);
+    m_atomicI32 = allocateType<Atomic>(m_i32);
+    m_atomicU32 = allocateType<Atomic>(m_u32);
 }
 
-Type* TypeStore::structType(const AST::Identifier& name)
+const Type* TypeStore::structType(AST::Structure& structure, HashMap<String, const Type*>&& fields)
 {
-    return allocateType<Struct>(name);
+    return allocateType<Struct>(structure, fields);
 }
 
-Type* TypeStore::constructType(AST::ParameterizedTypeName::Base base, Type* elementType)
+const Type* TypeStore::arrayType(const Type* elementType, std::optional<unsigned> size)
 {
-    // FIXME: these should be cached
-    auto& typeConstructor = m_typeConstrutors[WTF::enumToUnderlyingType(base)];
-    return typeConstructor.construct(elementType);
+    ArrayKey key { elementType, size };
+    const Type* type = m_cache.find(key);
+    if (type)
+        return type;
+    type = allocateType<Array>(elementType, size);
+    m_cache.insert(key, type);
+    return type;
 }
 
-Type* TypeStore::arrayType(Type* elementType, std::optional<unsigned> size)
+const Type* TypeStore::vectorType(uint8_t size, const Type* elementType)
 {
-    // FIXME: these should be cached
-    return allocateType<Array>(elementType, size);
+    VectorKey key { elementType, size };
+    const Type* type = m_cache.find(key);
+    if (type)
+        return type;
+    type = allocateType<Vector>(elementType, size);
+    m_cache.insert(key, type);
+    return type;
+}
+
+const Type* TypeStore::matrixType(uint8_t columns, uint8_t rows, const Type* elementType)
+{
+    MatrixKey key { elementType, columns, rows };
+    const Type* type = m_cache.find(key);
+    if (type)
+        return type;
+    type = allocateType<Matrix>(elementType, columns, rows);
+    m_cache.insert(key, type);
+    return type;
+}
+
+const Type* TypeStore::textureType(Texture::Kind kind, const Type* elementType)
+{
+    TextureKey key { elementType, kind };
+    const Type* type = m_cache.find(key);
+    if (type)
+        return type;
+    type = allocateType<Texture>(elementType, kind);
+    m_cache.insert(key, type);
+    return type;
+}
+
+const Type* TypeStore::textureStorageType(TextureStorage::Kind kind, TexelFormat format, AccessMode access)
+{
+    TextureStorageKey key { kind, format, access };
+    const Type* type = m_cache.find(key);
+    if (type)
+        return type;
+    type = allocateType<TextureStorage>(kind, format, access);
+    m_cache.insert(key, type);
+    return type;
+}
+
+const Type* TypeStore::functionType(WTF::Vector<const Type*>&& parameters, const Type* result)
+{
+    return allocateType<Function>(WTFMove(parameters), result);
+}
+
+const Type* TypeStore::referenceType(AddressSpace addressSpace, const Type* element, AccessMode accessMode)
+{
+    ReferenceKey key { element, addressSpace, accessMode };
+    const Type* type = m_cache.find(key);
+    if (type)
+        return type;
+    type = allocateType<Reference>(addressSpace, accessMode, element);
+    m_cache.insert(key, type);
+    return type;
+}
+
+const Type* TypeStore::pointerType(AddressSpace addressSpace, const Type* element, AccessMode accessMode)
+{
+    PointerKey key { element, addressSpace, accessMode };
+    const Type* type = m_cache.find(key);
+    if (type)
+        return type;
+    type = allocateType<Pointer>(addressSpace, accessMode, element);
+    m_cache.insert(key, type);
+    return type;
+}
+
+const Type* TypeStore::atomicType(const Type* type)
+{
+    if (type == m_i32)
+        return m_atomicI32;
+    ASSERT(type == m_u32);
+    return m_atomicU32;
+}
+
+const Type* TypeStore::typeConstructorType(ASCIILiteral name, std::function<const Type*(AST::ElaboratedTypeExpression&)>&& constructor)
+{
+    return allocateType<TypeConstructor>(name, WTFMove(constructor));
+}
+
+const Type* TypeStore::frexpResultType(const Type* fract, const Type* exp)
+{
+    PrimitiveStructKey key { PrimitiveStruct::FrexpResult::kind, fract };
+    const Type* type = m_cache.find(key);
+    if (type)
+        return type;
+
+    FixedVector<const Type*> values(2);
+    values[PrimitiveStruct::FrexpResult::fract] = fract;
+    values[PrimitiveStruct::FrexpResult::exp] = exp;
+    type = allocateType<PrimitiveStruct>("__frexp_result"_s, PrimitiveStruct::FrexpResult::kind, values);
+    m_cache.insert(key, type);
+    return type;
 }
 
 template<typename TypeKind, typename... Arguments>
-Type* TypeStore::allocateType(Arguments&&... arguments)
+const Type* TypeStore::allocateType(Arguments&&... arguments)
 {
     m_types.append(std::unique_ptr<Type>(new Type(TypeKind { std::forward<Arguments>(arguments)... })));
     return m_types.last().get();
-}
-
-template<typename TargetType, typename Base, typename... Arguments>
-void TypeStore::allocateConstructor(Base base, Arguments&&... arguments)
-{
-    m_typeConstrutors[WTF::enumToUnderlyingType(base)] =
-        TypeConstructor { [this, arguments...](Type* elementType) -> Type* {
-            // FIXME: this should be cached
-            return allocateType<TargetType>(elementType, arguments...);
-        } };
 }
 
 } // namespace WGSL

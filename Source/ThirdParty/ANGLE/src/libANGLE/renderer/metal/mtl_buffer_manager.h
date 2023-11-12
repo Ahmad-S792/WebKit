@@ -13,6 +13,7 @@
 #include "common/FixedVector.h"
 #include "libANGLE/renderer/metal/mtl_resources.h"
 
+#include <map>
 #include <vector>
 
 namespace rx
@@ -59,12 +60,15 @@ class BufferManager
     BufferManager();
 
     static constexpr size_t kMaxStagingBufferSize = 1024 * 1024;
-    static constexpr size_t kMaxSizePowerOf2      = 64;
 #if TARGET_OS_OSX || TARGET_OS_MACCATALYST
     static constexpr int kNumCachedStorageModes = 2;
 #else
     static constexpr int kNumCachedStorageModes = 1;
 #endif
+    static constexpr size_t kContextSwitchesBetweenGC      = 120;
+    static constexpr size_t kCommandBufferCommitsBetweenGC = 5000;
+    static constexpr size_t kMinMemBasedGC                 = 1024 * 1024;
+    static constexpr size_t kMemAllocedBetweenGC           = 64 * 1024 * 1024;
     angle::Result queueBlitCopyDataToBuffer(ContextMtl *contextMtl,
                                             const void *srcPtr,
                                             size_t sizeToCopy,
@@ -77,18 +81,37 @@ class BufferManager
                             mtl::BufferRef &bufferRef);
     void returnBuffer(ContextMtl *contextMtl, mtl::BufferRef &bufferRef);
 
+    void incrementNumContextSwitches();
+    void incrementNumCommandBufferCommits();
+
   private:
     typedef std::vector<mtl::BufferRef> BufferList;
+    typedef std::multimap<size_t, mtl::BufferRef> BufferMap;
+    enum class GCReason
+    {
+        ContextSwitches,
+        CommandBufferCommits,
+        TotalMem
+    };
 
     void freeUnusedBuffers(ContextMtl *contextMtl);
     void addBufferRefToFreeLists(mtl::BufferRef &bufferRef);
+    void collectGarbage(GCReason reason);
 
     BufferList mInUseBuffers;
 
-    angle::FixedVector<BufferList, kMaxSizePowerOf2> mFreeBuffers[kNumCachedStorageModes];
+    BufferMap mFreeBuffers[kNumCachedStorageModes];
+
+    // For garbage collecting expired buffer shadow copies
+    size_t mContextSwitches              = 0;
+    size_t mContextSwitchesAtLastGC      = 0;
+    size_t mCommandBufferCommits         = 0;
+    size_t mCommandBufferCommitsAtLastGC = 0;
+    size_t mTotalMem                     = 0;
+    size_t mTotalMemAtLastGC             = 0;
+
 #ifdef ANGLE_MTL_TRACK_BUFFER_MEM
-    angle::FixedVector<size_t, kMaxSizePowerOf2> mAllocations;
-    size_t mTotalMem = 0;
+    std::map<size_t, size_t> mAllocatedSizes;
 #endif
 };
 

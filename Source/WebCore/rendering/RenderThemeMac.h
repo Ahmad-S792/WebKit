@@ -62,8 +62,9 @@ public:
     Color platformTextSearchHighlightColor(OptionSet<StyleColorOptions>) const final;
     Color platformAnnotationHighlightColor(OptionSet<StyleColorOptions>) const final;
     Color platformDefaultButtonTextColor(OptionSet<StyleColorOptions>) const final;
+    Color platformAutocorrectionReplacementMarkerColor(OptionSet<StyleColorOptions>) const final;
 
-    ScrollbarControlSize scrollbarControlSizeForPart(StyleAppearance) final { return ScrollbarControlSize::Small; }
+    ScrollbarWidth scrollbarWidthStyleForPart(StyleAppearance) final { return ScrollbarWidth::Thin; }
 
     int minimumMenuListSize(const RenderStyle&) const final;
 
@@ -145,6 +146,8 @@ private:
     String fileListNameForWidth(const FileList*, const FontCascade&, int width, bool multipleFilesAllowed) const final;
 
     Color systemColor(CSSValueID, OptionSet<StyleColorOptions>) const final;
+
+    bool searchFieldShouldAppearAsTextField(const RenderStyle&) const final;
 
     // Get the control size based off the font. Used by some of the controls (like buttons).
     NSControlSize controlSizeForFont(const RenderStyle&) const;

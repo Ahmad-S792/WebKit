@@ -3,7 +3,7 @@
  * Copyright (C) 1999 Lars Knoll (knoll@kde.org)
  *           (C) 1999 Antti Koivisto (koivisto@kde.org)
  *           (C) 2001 Dirk Mueller (mueller@kde.org)
- * Copyright (C) 2004-2022 Apple Inc. All rights reserved.
+ * Copyright (C) 2004-2023 Apple Inc. All rights reserved.
  *           (C) 2006 Alexey Proskuryakov (ap@nypop.com)
  * Copyright (C) 2010-2022 Google Inc. All rights reserved.
  * Copyright (C) 2009 Torch Mobile Inc. All rights reserved. (http://www.torchmobile.com/)
@@ -31,21 +31,24 @@
 #include "AXObjectCache.h"
 #include "DOMFormData.h"
 #include "DocumentInlines.h"
+#include "ElementChildIteratorInlines.h"
 #include "ElementTraversal.h"
 #include "EventHandler.h"
 #include "EventNames.h"
 #include "FormController.h"
-#include "Frame.h"
 #include "GenericCachedHTMLCollection.h"
 #include "HTMLFormElement.h"
 #include "HTMLHRElement.h"
 #include "HTMLNames.h"
 #include "HTMLOptGroupElement.h"
-#include "HTMLOptionsCollection.h"
+#include "HTMLOptionsCollectionInlines.h"
 #include "HTMLParserIdioms.h"
 #include "KeyboardEvent.h"
+#include "LocalDOMWindow.h"
+#include "LocalFrame.h"
 #include "LocalizedStrings.h"
 #include "MouseEvent.h"
+#include "NodeName.h"
 #include "NodeRareData.h"
 #include "Page.h"
 #include "PlatformMouseEvent.h"
@@ -65,8 +68,8 @@ using namespace WTF::Unicode;
 
 using namespace HTMLNames;
 
-// Upper limit agreed upon with representatives of Opera and Mozilla.
-static const unsigned maxSelectItems = 10000;
+// https://html.spec.whatwg.org/#dom-htmloptionscollection-length
+static constexpr unsigned maxSelectItems = 100000;
 
 HTMLSelectElement::HTMLSelectElement(const QualifiedName& tagName, Document& document, HTMLFormElement* form)
     : HTMLFormControlElement(tagName, document, form)
@@ -88,6 +91,11 @@ Ref<HTMLSelectElement> HTMLSelectElement::create(const QualifiedName& tagName, D
 {
     ASSERT(tagName.matches(selectTag));
     return adoptRef(*new HTMLSelectElement(tagName, document, form));
+}
+
+Ref<HTMLSelectElement> HTMLSelectElement::create(Document& document)
+{
+    return adoptRef(*new HTMLSelectElement(selectTag, document, nullptr));
 }
 
 void HTMLSelectElement::didRecalcStyle(Style::Change styleChange)
@@ -233,7 +241,7 @@ ExceptionOr<void> HTMLSelectElement::add(const OptionOrOptGroupElement& element,
     );
 
 
-    return insertBefore(toInsert, beforeElement.get());
+    return insertBefore(toInsert, WTFMove(beforeElement));
 }
 
 void HTMLSelectElement::remove(int optionIndex)
@@ -284,11 +292,12 @@ bool HTMLSelectElement::hasPresentationalHintsForAttribute(const QualifiedName& 
     return HTMLFormControlElement::hasPresentationalHintsForAttribute(name);
 }
 
-void HTMLSelectElement::parseAttribute(const QualifiedName& name, const AtomString& value)
+void HTMLSelectElement::attributeChanged(const QualifiedName& name, const AtomString& oldValue, const AtomString& newValue, AttributeModificationReason attributeModificationReason)
 {
-    if (name == sizeAttr) {
+    switch (name.nodeName()) {
+    case AttributeNames::sizeAttr: {
         unsigned oldSize = m_size;
-        unsigned size = limitToOnlyHTMLNonNegative(value);
+        unsigned size = limitToOnlyHTMLNonNegative(newValue);
 
         // Ensure that we've determined selectedness of the items at least once prior to changing the size.
         if (oldSize != size)
@@ -301,10 +310,15 @@ void HTMLSelectElement::parseAttribute(const QualifiedName& name, const AtomStri
             setRecalcListItems();
             updateValidity();
         }
-    } else if (name == multipleAttr)
-        parseMultipleAttribute(value);
-    else
-        HTMLFormControlElement::parseAttribute(name, value);
+        break;
+    }
+    case AttributeNames::multipleAttr:
+        parseMultipleAttribute(newValue);
+        break;
+    default:
+        HTMLFormControlElement::attributeChanged(name, oldValue, newValue, attributeModificationReason);
+        break;
+    }
 }
 
 int HTMLSelectElement::defaultTabIndex() const
@@ -355,12 +369,12 @@ bool HTMLSelectElement::childShouldCreateRenderer(const Node& child) const
 
 Ref<HTMLCollection> HTMLSelectElement::selectedOptions()
 {
-    return ensureRareData().ensureNodeLists().addCachedCollection<GenericCachedHTMLCollection<CollectionTypeTraits<SelectedOptions>::traversalType>>(*this, SelectedOptions);
+    return ensureRareData().ensureNodeLists().addCachedCollection<GenericCachedHTMLCollection<CollectionTypeTraits<CollectionType::SelectedOptions>::traversalType>>(*this, CollectionType::SelectedOptions);
 }
 
 Ref<HTMLOptionsCollection> HTMLSelectElement::options()
 {
-    return ensureRareData().ensureNodeLists().addCachedCollection<HTMLOptionsCollection>(*this, SelectOptions);
+    return ensureRareData().ensureNodeLists().addCachedCollection<HTMLOptionsCollection>(*this, CollectionType::SelectOptions);
 }
 
 void HTMLSelectElement::updateListItemSelectedStates(AllowStyleInvalidation allowStyleInvalidation)
@@ -421,21 +435,11 @@ void HTMLSelectElement::childrenChanged(const ChildChange& change)
 
 void HTMLSelectElement::optionElementChildrenChanged()
 {
+    setOptionsChangedOnRenderer();
+    invalidateStyleForSubtree();
     updateValidity();
     if (auto* cache = document().existingAXObjectCache())
         cache->childrenChanged(this);
-}
-
-void HTMLSelectElement::setMultiple(bool multiple)
-{
-    bool oldMultiple = this->multiple();
-    int oldSelectedIndex = selectedIndex();
-    setBooleanAttribute(multipleAttr, multiple);
-
-    // Restore selectedIndex after changing the multiple flag to preserve
-    // selection as single-line and multi-line has different defaults.
-    if (oldMultiple != this->multiple())
-        setSelectedIndex(oldSelectedIndex);
 }
 
 void HTMLSelectElement::setSize(unsigned size)
@@ -453,6 +457,11 @@ HTMLOptionElement* HTMLSelectElement::item(unsigned index)
     return options()->item(index);
 }
 
+bool HTMLSelectElement::isSupportedPropertyIndex(unsigned index)
+{
+    return options()->isSupportedPropertyIndex(index);
+}
+
 ExceptionOr<void> HTMLSelectElement::setItem(unsigned index, HTMLOptionElement* option)
 {
     if (!option) {
@@ -460,8 +469,9 @@ ExceptionOr<void> HTMLSelectElement::setItem(unsigned index, HTMLOptionElement* 
         return { };
     }
 
-    if (index >= length() && index >= maxSelectItems) {
-        document().addConsoleMessage(MessageSource::Other, MessageLevel::Warning, makeString("Blocked attempt to expand the option list and set an option at index. The maximum list length is ", maxSelectItems, '.'));
+    // If we are adding options, we should check 'index > maxSelectItems' first to avoid integer overflow.
+    if (index > length() && index >= maxSelectItems) {
+        document().addConsoleMessage(MessageSource::Other, MessageLevel::Warning, makeString("Unable to expand the option list and set an option at index. The maximum list length is ", maxSelectItems, '.'));
         return { };
     }
 
@@ -492,8 +502,9 @@ ExceptionOr<void> HTMLSelectElement::setItem(unsigned index, HTMLOptionElement* 
 
 ExceptionOr<void> HTMLSelectElement::setLength(unsigned newLength)
 {
+    // If we are adding options, we should check 'index > maxSelectItems' first to avoid integer overflow.
     if (newLength > length() && newLength > maxSelectItems) {
-        document().addConsoleMessage(MessageSource::Other, MessageLevel::Warning, makeString("Blocked attempt to expand the option list to ", newLength, " items. The maximum number of items allowed is ", maxSelectItems, '.'));
+        document().addConsoleMessage(MessageSource::Other, MessageLevel::Warning, makeString("Unable to expand the option list to length ", newLength, " items. The maximum number of items allowed is ", maxSelectItems, '.'));
         return { };
     }
 
@@ -663,9 +674,9 @@ void HTMLSelectElement::updateListBoxSelection(bool deselectOtherOptions)
     ASSERT(renderer());
 
 #if !PLATFORM(IOS_FAMILY)
-    ASSERT(renderer()->isListBox() || m_multiple);
+    ASSERT(renderer()->isRenderListBox() || m_multiple);
 #else
-    ASSERT(renderer()->isMenuList() || m_multiple);
+    ASSERT(renderer()->isRenderMenuList() || m_multiple);
 #endif
 
     ASSERT(!listItems().size() || m_activeSelectionAnchorIndex >= 0);
@@ -781,7 +792,7 @@ const Vector<WeakPtr<HTMLElement, WeakPtrImplWithEventTargetData>>& HTMLSelectEl
 
 void HTMLSelectElement::invalidateSelectedItems()
 {
-    if (HTMLCollection* collection = cachedHTMLCollection(SelectedOptions))
+    if (HTMLCollection* collection = cachedHTMLCollection(CollectionType::SelectedOptions))
         collection->invalidateCache();
 }
 
@@ -793,7 +804,7 @@ void HTMLSelectElement::setRecalcListItems()
     setOptionsChangedOnRenderer();
     invalidateStyleForSubtree();
     if (!isConnected()) {
-        if (HTMLCollection* collection = cachedHTMLCollection(SelectOptions))
+        if (HTMLCollection* collection = cachedHTMLCollection(CollectionType::SelectOptions))
             collection->invalidateCache();
     }
     if (!isConnected())
@@ -991,7 +1002,7 @@ FormControlState HTMLSelectElement::saveFormControlState() const
         auto& option = downcast<HTMLOptionElement>(*element);
         if (!option.selected())
             continue;
-        state.uncheckedAppend(option.value());
+        state.append(option.value());
         if (!multiple())
             break;
     }
@@ -1051,10 +1062,18 @@ void HTMLSelectElement::restoreFormControlState(const FormControlState& state)
 void HTMLSelectElement::parseMultipleAttribute(const AtomString& value)
 {
     bool oldUsesMenuList = usesMenuList();
+    bool oldMultiple = m_multiple;
+    int oldSelectedIndex = selectedIndex();
     m_multiple = !value.isNull();
     updateValidity();
     if (oldUsesMenuList != usesMenuList())
         invalidateStyleAndRenderersForSubtree();
+    if (oldMultiple != m_multiple) {
+        if (oldSelectedIndex >= 0)
+            setSelectedIndex(oldSelectedIndex);
+        else
+            reset();
+    }
 }
 
 bool HTMLSelectElement::appendFormData(DOMFormData& formData)
@@ -1102,6 +1121,7 @@ void HTMLSelectElement::reset()
     if (!selectedOption && firstOption && !m_multiple && m_size <= 1)
         firstOption->setSelectedState(true);
 
+    setInteractedWithSinceLastFormSubmitEvent(false);
     invalidateSelectedItems();
     setOptionsChangedOnRenderer();
     invalidateStyleForSubtree();
@@ -1145,7 +1165,7 @@ bool HTMLSelectElement::platformHandleKeydownEvent(KeyboardEvent* event)
 void HTMLSelectElement::menuListDefaultEventHandler(Event& event)
 {
     ASSERT(renderer());
-    ASSERT(renderer()->isMenuList());
+    ASSERT(renderer()->isRenderMenuList());
 
     auto& eventNames = WebCore::eventNames();
     if (event.type() == eventNames.keydownEvent) {
@@ -1262,7 +1282,7 @@ void HTMLSelectElement::menuListDefaultEventHandler(Event& event)
             keyboardEvent.setDefaultHandled();
     }
 
-    if (event.type() == eventNames.mousedownEvent && is<MouseEvent>(event) && downcast<MouseEvent>(event).button() == LeftButton) {
+    if (event.type() == eventNames.mousedownEvent && is<MouseEvent>(event) && downcast<MouseEvent>(event).button() == MouseButton::Left) {
         focus();
 #if !PLATFORM(IOS_FAMILY)
         document().updateStyleIfNeeded();
@@ -1299,6 +1319,10 @@ void HTMLSelectElement::updateSelectedState(int listIndex, bool multi, bool shif
     if (listIndex < 0 || listIndex >= listSize)
         return;
 
+    auto& clickedElement = *items[listIndex];
+    if (is<HTMLOptGroupElement>(clickedElement))
+        return;
+
     // Save the selection so it can be compared to the new selection when
     // dispatching change events during mouseup, or after autoscroll finishes.
     saveLastSelection();
@@ -1308,7 +1332,6 @@ void HTMLSelectElement::updateSelectedState(int listIndex, bool multi, bool shif
     bool shiftSelect = m_multiple && shift;
     bool multiSelect = m_multiple && multi && !shift;
 
-    auto& clickedElement = *items[listIndex];
     if (is<HTMLOptionElement>(clickedElement)) {
         // Keep track of whether an active selection (like during drag
         // selection), should select or deselect.
@@ -1350,7 +1373,7 @@ void HTMLSelectElement::listBoxDefaultEventHandler(Event& event)
     auto& listItems = this->listItems();
 
     auto& eventNames = WebCore::eventNames();
-    if (event.type() == eventNames.mousedownEvent && is<MouseEvent>(event) && downcast<MouseEvent>(event).button() == LeftButton) {
+    if (event.type() == eventNames.mousedownEvent && is<MouseEvent>(event) && downcast<MouseEvent>(event).button() == MouseButton::Left) {
         focus();
         document().updateStyleIfNeeded();
 
@@ -1379,7 +1402,7 @@ void HTMLSelectElement::listBoxDefaultEventHandler(Event& event)
         }
     } else if (event.type() == eventNames.mousemoveEvent && is<MouseEvent>(event) && !downcast<RenderListBox>(*renderer()).canBeScrolledAndHasScrollableArea()) {
         MouseEvent& mouseEvent = downcast<MouseEvent>(event);
-        if (mouseEvent.button() != LeftButton || !mouseEvent.buttonDown())
+        if (mouseEvent.button() != MouseButton::Left || !mouseEvent.buttonDown())
             return;
 
         auto& renderListBox = downcast<RenderListBox>(*renderer());
@@ -1402,7 +1425,7 @@ void HTMLSelectElement::listBoxDefaultEventHandler(Event& event)
             }
             mouseEvent.setDefaultHandled();
         }
-    } else if (event.type() == eventNames.mouseupEvent && is<MouseEvent>(event) && downcast<MouseEvent>(event).button() == LeftButton && document().frame()->eventHandler().autoscrollRenderer() != renderer()) {
+    } else if (event.type() == eventNames.mouseupEvent && is<MouseEvent>(event) && downcast<MouseEvent>(event).button() == MouseButton::Left && document().frame()->eventHandler().autoscrollRenderer() != renderer()) {
         // This click or drag event was not over any of the options.
         if (m_lastOnChangeSelection.isEmpty())
             return;
@@ -1414,6 +1437,15 @@ void HTMLSelectElement::listBoxDefaultEventHandler(Event& event)
         if (!is<KeyboardEvent>(event))
             return;
 
+        CheckedPtr renderer = this->renderer();
+        bool isHorizontalWritingMode = renderer ? renderer->style().isHorizontalWritingMode() : true;
+        bool isFlippedBlocksWritingMode = renderer ? renderer->style().isFlippedBlocksWritingMode() : false;
+
+        auto nextKeyIdentifier = isHorizontalWritingMode ? "Down"_s : "Right"_s;
+        auto previousKeyIdentifier = isHorizontalWritingMode ? "Up"_s : "Left"_s;
+        if (isFlippedBlocksWritingMode)
+            std::swap(nextKeyIdentifier, previousKeyIdentifier);
+
         KeyboardEvent& keyboardEvent = downcast<KeyboardEvent>(event);
         const String& keyIdentifier = keyboardEvent.keyIdentifier();
 
@@ -1421,27 +1453,27 @@ void HTMLSelectElement::listBoxDefaultEventHandler(Event& event)
         int endIndex = 0;
         if (m_activeSelectionEndIndex < 0) {
             // Initialize the end index
-            if (keyIdentifier == "Down"_s || keyIdentifier == "PageDown"_s) {
+            if (keyIdentifier == nextKeyIdentifier || keyIdentifier == "PageDown"_s) {
                 int startIndex = lastSelectedListIndex();
                 handled = true;
-                if (keyIdentifier == "Down"_s)
+                if (keyIdentifier == nextKeyIdentifier)
                     endIndex = nextSelectableListIndex(startIndex);
                 else
                     endIndex = nextSelectableListIndexPageAway(startIndex, SkipForwards);
-            } else if (keyIdentifier == "Up"_s || keyIdentifier == "PageUp"_s) {
+            } else if (keyIdentifier == previousKeyIdentifier || keyIdentifier == "PageUp"_s) {
                 int startIndex = optionToListIndex(selectedIndex());
                 handled = true;
-                if (keyIdentifier == "Up"_s)
+                if (keyIdentifier == previousKeyIdentifier)
                     endIndex = previousSelectableListIndex(startIndex);
                 else
                     endIndex = nextSelectableListIndexPageAway(startIndex, SkipBackwards);
             }
         } else {
             // Set the end index based on the current end index.
-            if (keyIdentifier == "Down"_s) {
+            if (keyIdentifier == nextKeyIdentifier) {
                 endIndex = nextSelectableListIndex(m_activeSelectionEndIndex);
                 handled = true;
-            } else if (keyIdentifier == "Up"_s) {
+            } else if (keyIdentifier == previousKeyIdentifier) {
                 endIndex = previousSelectableListIndex(m_activeSelectionEndIndex);
                 handled = true;
             } else if (keyIdentifier == "PageDown"_s) {
@@ -1492,7 +1524,7 @@ void HTMLSelectElement::listBoxDefaultEventHandler(Event& event)
                 setActiveSelectionAnchorIndex(m_activeSelectionEndIndex);
             }
 
-            downcast<RenderListBox>(*renderer()).scrollToRevealElementAtListIndex(endIndex);
+            downcast<RenderListBox>(*renderer).scrollToRevealElementAtListIndex(endIndex);
             if (selectNewItem) {
                 updateListBoxSelection(deselectOthers);
                 listBoxOnChange();
@@ -1536,7 +1568,7 @@ void HTMLSelectElement::defaultEventHandler(Event& event)
         return;
     }
 
-    if (renderer->isMenuList())
+    if (renderer->isRenderMenuList())
         menuListDefaultEventHandler(event);
     else 
         listBoxDefaultEventHandler(event);
@@ -1596,15 +1628,6 @@ void HTMLSelectElement::typeAheadFind(KeyboardEvent& event)
         listBoxOnChange();
 }
 
-Node::InsertedIntoAncestorResult HTMLSelectElement::insertedIntoAncestor(InsertionType insertionType, ContainerNode& parentOfInsertedTree)
-{
-    // When the element is created during document parsing, it won't have any
-    // items yet - but for innerHTML and related methods, this method is called
-    // after the whole subtree is constructed.
-    recalcListItems();
-    return HTMLFormControlElement::insertedIntoAncestor(insertionType, parentOfInsertedTree);
-}
-
 void HTMLSelectElement::accessKeySetSelectedIndex(int index)
 {    
     // First bring into focus the list box.
@@ -1643,6 +1666,33 @@ unsigned HTMLSelectElement::length() const
     }
 
     return options;
+}
+
+ExceptionOr<void> HTMLSelectElement::showPicker()
+{
+    RefPtr frame = document().frame();
+    if (!frame)
+        return { };
+
+    if (!isMutable())
+        return Exception { ExceptionCode::InvalidStateError, "Select showPicker() cannot be used on immutable controls."_s };
+
+    // In cross-origin iframes it should throw a "SecurityError" DOMException. In same-origin iframes it should work fine.
+    auto* localTopFrame = dynamicDowncast<LocalFrame>(frame->tree().top());
+    if (!localTopFrame || !frame->document()->securityOrigin().isSameOriginAs(localTopFrame->document()->securityOrigin()))
+        return Exception { ExceptionCode::SecurityError, "Select showPicker() called from cross-origin iframe."_s };
+
+    auto* window = frame->window();
+    if (!window || !window->hasTransientActivation())
+        return Exception { ExceptionCode::NotAllowedError, "Select showPicker() requires a user gesture."_s };
+
+#if !PLATFORM(IOS_FAMILY)
+    auto* renderer = this->renderer();
+    if (auto* renderMenuList = dynamicDowncast<RenderMenuList>(renderer))
+        renderMenuList->showPopup();
+#endif
+
+    return { };
 }
 
 } // namespace

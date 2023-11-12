@@ -65,17 +65,13 @@ typedef struct _JSCClassPrivate {
     JSC::Weak<JSC::JSObject> prototype;
 } JSCClassPrivate;
 
-struct _JSCClass {
-    GObject parent;
-
-    JSCClassPrivate* priv;
-};
-
+#if !ENABLE(2022_GLIB_API)
 struct _JSCClassClass {
     GObjectClass parent_class;
 };
+#endif
 
-WEBKIT_DEFINE_TYPE(JSCClass, jsc_class, G_TYPE_OBJECT)
+WEBKIT_DEFINE_FINAL_TYPE(JSCClass, jsc_class, G_TYPE_OBJECT, GObject)
 
 class VTableExceptionHandler {
 public:
@@ -571,7 +567,7 @@ static GRefPtr<JSCValue> jscClassCreateConstructor(JSCClass* jscClass, const cha
  * @jsc_class: a #JSCClass
  * @name: (nullable): the constructor name or %NULL
  * @callback: (scope async): a #GCallback to be called to create an instance of @jsc_class
- * @user_data: (closure): user data to pass to @callback
+ * @user_data: user data to pass to @callback
  * @destroy_notify: (nullable): destroy notifier for @user_data
  * @return_type: the #GType of the constructor return value
  * @n_params: the number of parameter types to follow or 0 if constructor doesn't receive parameters.
@@ -603,12 +599,9 @@ JSCValue* jsc_class_add_constructor(JSCClass* jscClass, const char* name, GCallb
 
     va_list args;
     va_start(args, paramCount);
-    Vector<GType> parameters;
-    if (paramCount) {
-        parameters.reserveInitialCapacity(paramCount);
-        for (unsigned i = 0; i < paramCount; ++i)
-            parameters.uncheckedAppend(va_arg(args, GType));
-    }
+    Vector<GType> parameters(paramCount, [&](size_t) -> GType {
+        return va_arg(args, GType);
+    });
     va_end(args);
 
     return jscClassCreateConstructor(jscClass, name ? name : priv->name.data(), callback, userData, destroyNotify, returnType, WTFMove(parameters)).leakRef();
@@ -620,7 +613,7 @@ JSCValue* jsc_class_add_constructor(JSCClass* jscClass, const char* name, GCallb
  * @jsc_class: a #JSCClass
  * @name: (nullable): the constructor name or %NULL
  * @callback: (scope async): a #GCallback to be called to create an instance of @jsc_class
- * @user_data: (closure): user data to pass to @callback
+ * @user_data: user data to pass to @callback
  * @destroy_notify: (nullable): destroy notifier for @user_data
  * @return_type: the #GType of the constructor return value
  * @n_parameters: the number of parameters
@@ -651,12 +644,9 @@ JSCValue* jsc_class_add_constructorv(JSCClass* jscClass, const char* name, GCall
     if (!name)
         name = priv->name.data();
 
-    Vector<GType> parameters;
-    if (parametersCount) {
-        parameters.reserveInitialCapacity(parametersCount);
-        for (unsigned i = 0; i < parametersCount; ++i)
-            parameters.uncheckedAppend(parameterTypes[i]);
-    }
+    Vector<GType> parameters(parametersCount, [&](size_t i) -> GType {
+        return parameterTypes[i];
+    });
 
     return jscClassCreateConstructor(jscClass, name ? name : priv->name.data(), callback, userData, destroyNotify, returnType, WTFMove(parameters)).leakRef();
 }
@@ -666,7 +656,7 @@ JSCValue* jsc_class_add_constructorv(JSCClass* jscClass, const char* name, GCall
  * @jsc_class: a #JSCClass
  * @name: (nullable): the constructor name or %NULL
  * @callback: (scope async): a #GCallback to be called to create an instance of @jsc_class
- * @user_data: (closure): user data to pass to @callback
+ * @user_data: user data to pass to @callback
  * @destroy_notify: (nullable): destroy notifier for @user_data
  * @return_type: the #GType of the constructor return value
  *
@@ -718,7 +708,7 @@ static void jscClassAddMethod(JSCClass* jscClass, const char* name, GCallback ca
  * @jsc_class: a #JSCClass
  * @name: the method name
  * @callback: (scope async): a #GCallback to be called to invoke method @name of @jsc_class
- * @user_data: (closure): user data to pass to @callback
+ * @user_data: user data to pass to @callback
  * @destroy_notify: (nullable): destroy notifier for @user_data
  * @return_type: the #GType of the method return value, or %G_TYPE_NONE if the method is void.
  * @n_params: the number of parameter types to follow or 0 if the method doesn't receive parameters.
@@ -743,12 +733,9 @@ void jsc_class_add_method(JSCClass* jscClass, const char* name, GCallback callba
 
     va_list args;
     va_start(args, paramCount);
-    Vector<GType> parameters;
-    if (paramCount) {
-        parameters.reserveInitialCapacity(paramCount);
-        for (unsigned i = 0; i < paramCount; ++i)
-            parameters.uncheckedAppend(va_arg(args, GType));
-    }
+    Vector<GType> parameters(paramCount, [&](size_t) -> GType {
+            return va_arg(args, GType);
+    });
     va_end(args);
 
     jscClassAddMethod(jscClass, name, callback, userData, destroyNotify, returnType, WTFMove(parameters));
@@ -759,7 +746,7 @@ void jsc_class_add_method(JSCClass* jscClass, const char* name, GCallback callba
  * @jsc_class: a #JSCClass
  * @name: the method name
  * @callback: (scope async): a #GCallback to be called to invoke method @name of @jsc_class
- * @user_data: (closure): user data to pass to @callback
+ * @user_data: user data to pass to @callback
  * @destroy_notify: (nullable): destroy notifier for @user_data
  * @return_type: the #GType of the method return value, or %G_TYPE_NONE if the method is void.
  * @n_parameters: the number of parameter types to follow or 0 if the method doesn't receive parameters.
@@ -783,12 +770,9 @@ void jsc_class_add_methodv(JSCClass* jscClass, const char* name, GCallback callb
     g_return_if_fail(!parametersCount || parameterTypes);
     g_return_if_fail(jscClass->priv->context);
 
-    Vector<GType> parameters;
-    if (parametersCount) {
-        parameters.reserveInitialCapacity(parametersCount);
-        for (unsigned i = 0; i < parametersCount; ++i)
-            parameters.uncheckedAppend(parameterTypes[i]);
-    }
+    Vector<GType> parameters(parametersCount, [&](size_t i) -> GType {
+        return parameterTypes[i];
+    });
 
     jscClassAddMethod(jscClass, name, callback, userData, destroyNotify, returnType, WTFMove(parameters));
 }
@@ -798,7 +782,7 @@ void jsc_class_add_methodv(JSCClass* jscClass, const char* name, GCallback callb
  * @jsc_class: a #JSCClass
  * @name: the method name
  * @callback: (scope async): a #GCallback to be called to invoke method @name of @jsc_class
- * @user_data: (closure): user data to pass to @callback
+ * @user_data: user data to pass to @callback
  * @destroy_notify: (nullable): destroy notifier for @user_data
  * @return_type: the #GType of the method return value, or %G_TYPE_NONE if the method is void.
  *
@@ -829,7 +813,7 @@ void jsc_class_add_method_variadic(JSCClass* jscClass, const char* name, GCallba
  * @property_type: the #GType of the property value
  * @getter: (scope async) (nullable): a #GCallback to be called to get the property value
  * @setter: (scope async) (nullable): a #GCallback to be called to set the property value
- * @user_data: (closure): user data to pass to @getter and @setter
+ * @user_data: user data to pass to @getter and @setter
  * @destroy_notify: (nullable): destroy notifier for @user_data
  *
  * Add a property with @name to @jsc_class. When the property value needs to be getted, @getter is called

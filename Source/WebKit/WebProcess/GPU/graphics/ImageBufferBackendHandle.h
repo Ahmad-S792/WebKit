@@ -25,7 +25,7 @@
 
 #pragma once
 
-#include "CGDisplayList.h"
+#include "DynamicContentScalingDisplayList.h"
 #include "ShareableBitmap.h"
 #include <variant>
 #include <wtf/MachSendRight.h>
@@ -33,12 +33,12 @@
 namespace WebKit {
 
 using ImageBufferBackendHandle = std::variant<
-    ShareableBitmapHandle
+    ShareableBitmap::Handle
 #if PLATFORM(COCOA) // FIXME: This is really about IOSurface.
     , MachSendRight
 #endif
-#if ENABLE(CG_DISPLAY_LIST_BACKED_IMAGE_BUFFER)
-    , CGDisplayList
+#if ENABLE(RE_DYNAMIC_CONTENT_SCALING)
+    , DynamicContentScalingDisplayList
 #endif
 >;
 

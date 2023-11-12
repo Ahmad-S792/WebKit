@@ -85,16 +85,6 @@ static String processAppIdExtension(const SecurityOrigin& facetId, const String&
     return appId;
 }
 
-// The default behaviour for google.com is to always turn on the legacy AppID support.
-static bool processGoogleLegacyAppIdSupportExtension(const std::optional<AuthenticationExtensionsClientInputs>& extensions, const String& rpId)
-{
-    if (rpId != "google.com"_s)
-        return false;
-    if (!extensions)
-        return true;
-    return extensions->googleLegacyAppidSupport;
-}
-
 } // namespace AuthenticatorCoordinatorInternal
 
 AuthenticatorCoordinator::AuthenticatorCoordinator(std::unique_ptr<AuthenticatorCoordinatorClient>&& client)
@@ -112,19 +102,19 @@ void AuthenticatorCoordinator::create(const Document& document, const PublicKeyC
     using namespace AuthenticatorCoordinatorInternal;
 
     const auto& callerOrigin = document.securityOrigin();
-    auto* frame = document.frame();
+    RefPtr frame = document.frame();
     ASSERT(frame);
     // The following implements https://www.w3.org/TR/webauthn-2/#createCredential as of 28 June 2022.
     // Step 1, 3, 16 are handled by the caller.
     // Step 2.
     if (scope != WebAuthn::Scope::SameOrigin) {
-        promise.reject(Exception { NotAllowedError, "The origin of the document is not the same as its ancestors."_s });
+        promise.reject(Exception { ExceptionCode::NotAllowedError, "The origin of the document is not the same as its ancestors."_s });
         return;
     }
 
     // Step 5.
     if (options.user.id.length() < 1 || options.user.id.length() > 64) {
-        promise.reject(Exception { TypeError, "The length options.user.id must be between 1-64 bytes."_s });
+        promise.reject(Exception { ExceptionCode::TypeError, "The length options.user.id must be between 1-64 bytes."_s });
         return;
     }
 
@@ -132,7 +122,7 @@ void AuthenticatorCoordinator::create(const Document& document, const PublicKeyC
     // Step 7. The effective domain may be represented in various manners, such as a domain or an ip address.
     // Only the domain format of host is permitted in WebAuthN.
     if (URL::hostIsIPAddress(callerOrigin.domain())) {
-        promise.reject(Exception { SecurityError, "The effective domain of the document is not a valid domain."_s });
+        promise.reject(Exception { ExceptionCode::SecurityError, "The effective domain of the document is not a valid domain."_s });
         return;
     }
 
@@ -140,7 +130,7 @@ void AuthenticatorCoordinator::create(const Document& document, const PublicKeyC
     if (!options.rp.id)
         options.rp.id = callerOrigin.domain();
     else if (!callerOrigin.isMatchingRegistrableDomainSuffix(*options.rp.id)) {
-        promise.reject(Exception { SecurityError, "The provided RP ID is not a registrable domain suffix of the effective domain of the document."_s });
+        promise.reject(Exception { ExceptionCode::SecurityError, "The provided RP ID is not a registrable domain suffix of the effective domain of the document."_s });
         return;
     }
 
@@ -154,15 +144,26 @@ void AuthenticatorCoordinator::create(const Document& document, const PublicKeyC
             return pubKeyCredParam.type != PublicKeyCredentialType::PublicKey;
         })) {
             
-            promise.reject(Exception { NotSupportedError, "options.pubKeyCredParams contains unsupported PublicKeyCredentialType value."_s });
+            promise.reject(Exception { ExceptionCode::NotSupportedError, "options.pubKeyCredParams contains unsupported PublicKeyCredentialType value."_s });
             return;
         }
     }
 
     // Step 12-13.
-    // Only Google Legacy AppID Support Extension is supported.
     ASSERT(options.rp.id);
-    options.extensions = AuthenticationExtensionsClientInputs { String(), processGoogleLegacyAppIdSupportExtension(options.extensions, *options.rp.id), options.extensions && options.extensions->credProps };
+
+    AuthenticationExtensionsClientInputs extensionInputs = {
+        String(),
+        false,
+        std::nullopt
+    };
+
+    if (auto extensions = options.extensions) {
+        extensionInputs.credProps = extensions->credProps;
+        extensionInputs.largeBlob = extensions->largeBlob;
+    }
+
+    options.extensions = extensionInputs;
 
     // Step 14-16.
     auto clientDataJson = buildClientDataJson(ClientDataType::Create, options.challenge, callerOrigin, scope);
@@ -170,13 +171,13 @@ void AuthenticatorCoordinator::create(const Document& document, const PublicKeyC
 
     // Step 4, 18-22.
     if (!m_client) {
-        promise.reject(Exception { UnknownError, "Unknown internal error."_s });
+        promise.reject(Exception { ExceptionCode::UnknownError, "Unknown internal error."_s });
         return;
     }
 
     auto callback = [weakThis = WeakPtr { *this }, clientDataJson = WTFMove(clientDataJson), promise = WTFMove(promise), abortSignal = WTFMove(abortSignal)] (AuthenticatorResponseData&& data, AuthenticatorAttachment attachment, ExceptionData&& exception) mutable {
         if (abortSignal && abortSignal->aborted()) {
-            promise.reject(Exception { AbortError, "Aborted by AbortSignal."_s });
+            promise.reject(Exception { ExceptionCode::AbortError, "Aborted by AbortSignal."_s });
             return;
         }
 
@@ -199,7 +200,7 @@ void AuthenticatorCoordinator::discoverFromExternalSource(const Document& docume
     using namespace AuthenticatorCoordinatorInternal;
 
     auto& callerOrigin = document.securityOrigin();
-    auto* frame = document.frame();
+    RefPtr frame = document.frame();
     const auto& options = requestOptions.publicKey.value();
     ASSERT(frame);
     // The following implements https://www.w3.org/TR/webauthn/#createCredential as of 5 December 2017.
@@ -207,7 +208,7 @@ void AuthenticatorCoordinator::discoverFromExternalSource(const Document& docume
     // Step 2.
     // This implements https://www.w3.org/TR/webauthn-2/#sctn-permissions-policy
     if (scopeAndCrossOriginParent.first != WebAuthn::Scope::SameOrigin && !isFeaturePolicyAllowedByDocumentAndAllOwners(FeaturePolicy::Type::PublickeyCredentialsGetRule, document, LogFeaturePolicyFailure::No)) {
-        promise.reject(Exception { NotAllowedError, "The origin of the document is not the same as its ancestors."_s });
+        promise.reject(Exception { ExceptionCode::NotAllowedError, "The origin of the document is not the same as its ancestors."_s });
         return;
     }
 
@@ -215,13 +216,13 @@ void AuthenticatorCoordinator::discoverFromExternalSource(const Document& docume
     // Step 6. The effective domain may be represented in various manners, such as a domain or an ip address.
     // Only the domain format of host is permitted in WebAuthN.
     if (URL::hostIsIPAddress(callerOrigin.domain())) {
-        promise.reject(Exception { SecurityError, "The effective domain of the document is not a valid domain."_s });
+        promise.reject(Exception { ExceptionCode::SecurityError, "The effective domain of the document is not a valid domain."_s });
         return;
     }
 
     // Step 7.
     if (!options.rpId.isEmpty() && !callerOrigin.isMatchingRegistrableDomainSuffix(options.rpId)) {
-        promise.reject(Exception { SecurityError, "The provided RP ID is not a registrable domain suffix of the effective domain of the document."_s });
+        promise.reject(Exception { ExceptionCode::SecurityError, "The provided RP ID is not a registrable domain suffix of the effective domain of the document."_s });
         return;
     }
     if (options.rpId.isEmpty())
@@ -233,7 +234,7 @@ void AuthenticatorCoordinator::discoverFromExternalSource(const Document& docume
         // The following implements https://www.w3.org/TR/webauthn/#sctn-appid-extension as of 4 March 2019.
         auto appid = processAppIdExtension(callerOrigin, options.extensions->appid);
         if (!appid) {
-            promise.reject(Exception { SecurityError, "The origin of the document is not authorized for the provided App ID."_s });
+            promise.reject(Exception { ExceptionCode::SecurityError, "The origin of the document is not authorized for the provided App ID."_s });
             return;
         }
         options.extensions->appid = appid;
@@ -245,7 +246,7 @@ void AuthenticatorCoordinator::discoverFromExternalSource(const Document& docume
 
     // Step 4, 14-19.
     if (!m_client) {
-        promise.reject(Exception { UnknownError, "Unknown internal error."_s });
+        promise.reject(Exception { ExceptionCode::UnknownError, "Unknown internal error."_s });
         return;
     }
 
@@ -259,7 +260,7 @@ void AuthenticatorCoordinator::discoverFromExternalSource(const Document& docume
 
     auto callback = [weakThis = WeakPtr { *this }, clientDataJson = WTFMove(clientDataJson), promise = WTFMove(promise), abortSignal = WTFMove(requestOptions.signal)] (AuthenticatorResponseData&& data, AuthenticatorAttachment attachment, ExceptionData&& exception) mutable {
         if (abortSignal && abortSignal->aborted()) {
-            promise.reject(Exception { AbortError, "Aborted by AbortSignal."_s });
+            promise.reject(Exception { ExceptionCode::AbortError, "Aborted by AbortSignal."_s });
             return;
         }
 
@@ -282,7 +283,7 @@ void AuthenticatorCoordinator::isUserVerifyingPlatformAuthenticatorAvailable(con
     // The following implements https://www.w3.org/TR/webauthn/#isUserVerifyingPlatformAuthenticatorAvailable
     // as of 5 December 2017.
     if (!m_client)  {
-        promise.reject(Exception { UnknownError, "Unknown internal error."_s });
+        promise.reject(Exception { ExceptionCode::UnknownError, "Unknown internal error."_s });
         return;
     }
 
@@ -300,7 +301,7 @@ void AuthenticatorCoordinator::isUserVerifyingPlatformAuthenticatorAvailable(con
 void AuthenticatorCoordinator::isConditionalMediationAvailable(const Document& document, DOMPromiseDeferred<IDLBoolean>&& promise) const
 {
     if (!m_client)  {
-        promise.reject(Exception { UnknownError, "Unknown internal error."_s });
+        promise.reject(Exception { ExceptionCode::UnknownError, "Unknown internal error."_s });
         return;
     }
 

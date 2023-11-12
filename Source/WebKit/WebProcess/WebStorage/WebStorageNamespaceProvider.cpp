@@ -29,6 +29,7 @@
 #include "NetworkProcessConnection.h"
 #include "NetworkStorageManagerMessages.h"
 #include "WebPage.h"
+#include "WebPageInlines.h"
 #include "WebProcess.h"
 #include <wtf/HashMap.h>
 #include <wtf/NeverDestroyed.h>
@@ -94,15 +95,17 @@ RefPtr<WebCore::StorageNamespace> WebStorageNamespaceProvider::sessionStorageNam
 {
     ASSERT(sessionStorageQuota() != WebCore::StorageMap::noQuota);
 
-    auto& webPage = WebPage::fromCorePage(page);
+    RefPtr webPage = WebPage::fromCorePage(page);
+    if (!webPage)
+        return nullptr;
 
     // The identifier of a session storage namespace is the WebPageProxyIdentifier. It is possible we have several WebPage objects in a single process for the same
     // WebPageProxyIdentifier and these need to share the same namespace instance so we know where to route the IPC to.
-    auto namespacesIt = m_sessionStorageNamespaces.find(webPage.sessionStorageNamespaceIdentifier());
+    auto namespacesIt = m_sessionStorageNamespaces.find(webPage->sessionStorageNamespaceIdentifier());
     if (namespacesIt == m_sessionStorageNamespaces.end()) {
         if (shouldCreate == ShouldCreateNamespace::No)
             return nullptr;
-        namespacesIt = m_sessionStorageNamespaces.set(webPage.sessionStorageNamespaceIdentifier(), SessionStorageNamespaces { }).iterator;
+        namespacesIt = m_sessionStorageNamespaces.set(webPage->sessionStorageNamespaceIdentifier(), SessionStorageNamespaces { }).iterator;
     }
 
     auto& sessionStorageNamespacesMap = namespacesIt->value.map;
@@ -110,7 +113,7 @@ RefPtr<WebCore::StorageNamespace> WebStorageNamespaceProvider::sessionStorageNam
     if (it == sessionStorageNamespacesMap.end()) {
         if (shouldCreate == ShouldCreateNamespace::No)
             return nullptr;
-        auto sessionStorageNamespace = StorageNamespaceImpl::createSessionStorageNamespace(webPage.sessionStorageNamespaceIdentifier(), webPage.identifier(), topLevelOrigin, sessionStorageQuota());
+        auto sessionStorageNamespace = StorageNamespaceImpl::createSessionStorageNamespace(webPage->sessionStorageNamespaceIdentifier(), webPage->identifier(), topLevelOrigin, sessionStorageQuota());
         it = sessionStorageNamespacesMap.set(topLevelOrigin.data(), WTFMove(sessionStorageNamespace)).iterator;
     }
     return it->value;
@@ -120,10 +123,10 @@ void WebStorageNamespaceProvider::copySessionStorageNamespace(WebCore::Page& src
 {
     ASSERT(sessionStorageQuota() != WebCore::StorageMap::noQuota);
 
-    const auto& srcWebPage = WebPage::fromCorePage(srcPage);
-    const auto& dstWebPage = WebPage::fromCorePage(dstPage);
+    Ref srcWebPage = *WebPage::fromCorePage(srcPage);
+    Ref dstWebPage = *WebPage::fromCorePage(dstPage);
 
-    auto srcNamespacesIt = m_sessionStorageNamespaces.find(srcWebPage.sessionStorageNamespaceIdentifier());
+    auto srcNamespacesIt = m_sessionStorageNamespaces.find(srcWebPage->sessionStorageNamespaceIdentifier());
     if (srcNamespacesIt == m_sessionStorageNamespaces.end())
         return;
 
@@ -132,13 +135,13 @@ void WebStorageNamespaceProvider::copySessionStorageNamespace(WebCore::Page& src
     auto& srcNamespacesMap = srcNamespacesIt->value.map;
 
     auto& dstSessionStorageNamespaces = static_cast<WebStorageNamespaceProvider&>(dstPage.storageNamespaceProvider()).m_sessionStorageNamespaces;
-    auto dstNamespacesIt = dstSessionStorageNamespaces.find(dstWebPage.sessionStorageNamespaceIdentifier());
+    auto dstNamespacesIt = dstSessionStorageNamespaces.find(dstWebPage->sessionStorageNamespaceIdentifier());
     ASSERT(dstNamespacesIt != dstSessionStorageNamespaces.end());
     ASSERT(dstNamespacesIt->value.useCount == 1);
     auto& dstNamespacesMap = dstNamespacesIt->value.map;
 
     if (auto networkProcessConnection = WebProcess::singleton().existingNetworkProcessConnection())
-        networkProcessConnection->connection().send(Messages::NetworkStorageManager::CloneSessionStorageNamespace(srcWebPage.sessionStorageNamespaceIdentifier(), dstWebPage.sessionStorageNamespaceIdentifier()), 0);
+        networkProcessConnection->connection().send(Messages::NetworkStorageManager::CloneSessionStorageNamespace(srcWebPage->sessionStorageNamespaceIdentifier(), dstWebPage->sessionStorageNamespaceIdentifier()), 0);
 
     for (auto& [origin, srcNamespace] : srcNamespacesMap)
         dstNamespacesMap.set(origin, srcNamespace->copy(dstPage));

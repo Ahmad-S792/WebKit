@@ -36,6 +36,7 @@ list(APPEND WTF_SOURCES
     linux/RealTimeThreads.cpp
 
     posix/CPUTimePOSIX.cpp
+    posix/FileSystemPOSIX.cpp
     posix/OSAllocatorPOSIX.cpp
     posix/ThreadingPOSIX.cpp
 
@@ -63,3 +64,9 @@ list(APPEND WTF_SYSTEM_INCLUDE_DIRECTORIES
     ${GIO_UNIX_INCLUDE_DIRS}
     ${GLIB_INCLUDE_DIRS}
 )
+
+if (USE_LIBBACKTRACE)
+    list(APPEND WTF_LIBRARIES
+        LIBBACKTRACE::LIBBACKTRACE
+    )
+endif ()

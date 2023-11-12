@@ -89,6 +89,8 @@ def main(argv, stdout, stderr):
         options.additional_env_var.append('__XPC_JSC_maxPerThreadStackUsage=' + str(stackSizeInBytes))
         options.additional_env_var.append('JSC_useSharedArrayBuffer=1')
         options.additional_env_var.append('__XPC_JSC_useSharedArrayBuffer=1')
+        options.additional_env_var.append('JSC_useRecursiveJSONParse=0')
+        options.additional_env_var.append('__XPC_JSC_useRecursiveJSONParse=0')
         run_details = run(port, options, args, stderr)
         if run_details.exit_code != -1 and run_details.skipped_all_tests:
             return run_details.exit_code
@@ -121,6 +123,8 @@ def parse_args(args):
             help="Use accelerated drawing (OS X only)"),
         optparse.make_option("--remote-layer-tree", action="store_true", default=False,
             help="Use the remote layer tree drawing model (OS X WebKit2 only)"),
+        optparse.make_option("--no-remote-layer-tree", action="store_true", default=False,
+            help="Disable the remote layer tree drawing model (OS X WebKit2 only)"),
         optparse.make_option("--internal-feature", type="string", action="append", default=[],
             help="Enable (disable) an internal feature (--internal-feature FeatureName[=true|false])"),
         optparse.make_option("--experimental-feature", type="string", action="append", default=[],
@@ -191,6 +195,10 @@ def parse_args(args):
             default=False, help="Skip tests that are marked as failing or flaky. "
                  "Note: When using this option, you might miss new crashes "
                  "in these tests."),
+        optparse.make_option("--skip-flaky-tests", action="store_true",
+            default=False, help="Skip tests that are marked as flaky. "
+                 "Note: When using this option, you might miss new crashes "
+                 "in these tests."),
         optparse.make_option("--additional-drt-flag", action="append",
             default=[], help="Additional command line flag to pass to DumpRenderTree "
                  "Specify multiple times to add multiple flags."),
@@ -248,7 +256,7 @@ def parse_args(args):
             help="wrapper command to insert before invocations of "
                  "DumpRenderTree or WebKitTestRunner; option is split on whitespace before "
                  "running. (Example: --wrapper='valgrind --smc-check=all')"),
-        optparse.make_option("-i", "--ignore-tests", action="append", default=[],
+        optparse.make_option("-i", "--ignore-tests", "--exclude-tests", action="append", default=[],
             help="directories or test to ignore (may specify multiple times)"),
         optparse.make_option("--test-list", action="append",
             help="read list of tests to run from file", metavar="FILE"),
@@ -309,6 +317,7 @@ def parse_args(args):
         optparse.make_option('--display-server', choices=['xvfb', 'xorg', 'weston', 'wayland'], default='xvfb',
             help='"xvfb": Use a virtualized X11 server. "xorg": Use the current X11 session. '
                  '"weston": Use a virtualized Weston server. "wayland": Use the current wayland session.'),
+        optparse.make_option('--enable-core-dumps-nolimit', action='store_true', default=False, help='Enable core dumps for the test run (runs the equivalent of "ulimit -c unlimited" before starting the tests).'),
         optparse.make_option("--world-leaks", action="store_true", default=False, help="Check for world leaks (currently, only documents). Differs from --leaks in that this uses internal instrumentation, rather than external tools."),
         optparse.make_option("--accessibility-isolated-tree", action="store_true", default=False, help="Runs tests in accessibility isolated tree mode."),
         optparse.make_option("--allowed-host", type="string", action="append", default=[], help="If specified, tests are allowed to make requests to the specified hostname."),
@@ -341,6 +350,12 @@ def parse_args(args):
         optparse.make_option(
             "--use-gpu-process", action="store_true", default=False,
             help=("Enable all GPU process related features, also set additional expectations and the result report flavor.")),
+        optparse.make_option(
+            "--no-use-gpu-process", action="store_true", default=False,
+            help=("Disable GPU process for DOM rendering.")),
+        optparse.make_option(
+            "--use-async-uikit-interactions", action="store_true", default=False,
+            help=("Opt into async UIKit interactions (iOS-family WebKit2 ports only)")),
         optparse.make_option(
             "--prefer-integrated-gpu", action="store_true", default=False,
             help=("Prefer using the lower-power integrated GPU on a dual-GPU system. Note that other running applications and the tests themselves can override this request.")),
@@ -387,6 +402,10 @@ def parse_args(args):
         if options.result_report_flavor:
             raise RuntimeError('--use-gpu-process implicitly sets the result flavor, this should not be overridden')
         options.result_report_flavor = 'gpuprocess'
+    elif options.no_use_gpu_process:
+        if not options.experimental_feature:
+            options.experimental_feature = []
+        options.experimental_feature.append('UseGPUProcessForDOMRenderingEnabled=0')
 
     if options.accessibility_isolated_tree:
         host = Host()
@@ -395,6 +414,13 @@ def parse_args(args):
         if options.result_report_flavor:
             raise RuntimeError('--accessibility-isolated-tree implicitly sets the result flavor, this should not be overridden')
         options.result_report_flavor = 'accessibility-isolated-tree'
+
+    if options.use_async_uikit_interactions:
+        host = Host()
+        host.initialize_scm()
+        if not options.internal_feature:
+            options.internal_feature = []
+        options.internal_feature.append('UseAsyncUIKitInteractions')
 
     return options, args
 
@@ -490,16 +516,20 @@ def _set_up_derived_options(port, options):
     if options.platform in ["gtk", "wpe"]:
         options.webkit_test_runner = True
 
-    # Don't maintain render tree dump results for Apple Windows port.
-    if port.port_name == "win":
-        options.ignore_render_tree_dump_results = True
-
 def run(port, options, args, logging_stream):
     logger = logging.getLogger()
     logger.setLevel(logging.DEBUG if options.debug_rwt_logging else logging.INFO)
 
     try:
         printer = printing.Printer(port, options, logging_stream, logger=logger)
+
+        if options.enable_core_dumps_nolimit:
+            try:
+                import resource
+                resource.setrlimit(resource.RLIMIT_CORE, (resource.RLIM_INFINITY, resource.RLIM_INFINITY))
+                _log.debug('Enabled coredumps for test run')
+            except (ModuleNotFoundError, ValueError, OSError) as e:
+                _log.error('Failed to enable coredumps: %s' % str(e))
 
         _set_up_derived_options(port, options)
         manager = Manager(port, options, printer)

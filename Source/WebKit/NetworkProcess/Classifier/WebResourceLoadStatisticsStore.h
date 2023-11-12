@@ -69,6 +69,8 @@ enum class ShouldGrandfatherStatistics : bool;
 enum class ShouldIncludeLocalhost : bool { No, Yes };
 enum class EnableResourceLoadStatisticsDebugMode : bool { No, Yes };
 
+struct ITPThirdPartyData;
+
 using TopFrameDomain = WebCore::RegistrableDomain;
 using SubResourceDomain = WebCore::RegistrableDomain;
 
@@ -113,31 +115,6 @@ public:
 
     ~WebResourceLoadStatisticsStore();
 
-    struct ThirdPartyDataForSpecificFirstParty {
-        WebCore::RegistrableDomain firstPartyDomain;
-        bool storageAccessGranted;
-        Seconds timeLastUpdated;
-
-        String toString() const;
-        void encode(IPC::Encoder&) const;
-        static std::optional<ThirdPartyDataForSpecificFirstParty> decode(IPC::Decoder&);
-
-        // FIXME: Since this ignores differences in decodedTimeLastUpdated it probably should be a named function, not operator==.
-        bool operator==(const ThirdPartyDataForSpecificFirstParty&) const;
-    };
-
-    struct ThirdPartyData {
-        WebCore::RegistrableDomain thirdPartyDomain;
-        Vector<ThirdPartyDataForSpecificFirstParty> underFirstParties;
-
-        String toString() const;
-        void encode(IPC::Encoder&) const;
-        static std::optional<ThirdPartyData> decode(IPC::Decoder&);
-
-        // FIXME: This sorts by number of underFirstParties, so it probably should be a named function, not operator<.
-        bool operator<(const ThirdPartyData&) const;
-    };
-
     void didDestroyNetworkSession(CompletionHandler<void()>&&);
 
     static const OptionSet<WebsiteDataType>& monitoredDataTypes();
@@ -158,6 +135,8 @@ public:
     void removeDataForDomain(const RegistrableDomain, CompletionHandler<void()>&&);
     void deleteAndRestrictWebsiteDataForRegistrableDomains(OptionSet<WebsiteDataType>, RegistrableDomainsToDeleteOrRestrictWebsiteDataFor&&, bool shouldNotifyPage, CompletionHandler<void(HashSet<RegistrableDomain>&&)>&&);
     void registrableDomains(CompletionHandler<void(Vector<RegistrableDomain>&&)>&&);
+    void registrableDomainsWithLastAccessedTime(CompletionHandler<void(std::optional<HashMap<RegistrableDomain, WallTime>>)>&&);
+    void registrableDomainsExemptFromWebsiteDataDeletion(CompletionHandler<void(HashSet<RegistrableDomain>&&)>&&);
     void registrableDomainsWithWebsiteData(OptionSet<WebsiteDataType>, bool shouldNotifyPage, CompletionHandler<void(HashSet<RegistrableDomain>&&)>&&);
     StorageAccessWasGranted grantStorageAccessInStorageSession(const SubFrameDomain&, const TopFrameDomain&, std::optional<WebCore::FrameIdentifier>, WebCore::PageIdentifier, StorageAccessScope);
     void hasHadUserInteraction(RegistrableDomain&&, CompletionHandler<void(bool)>&&);
@@ -237,7 +216,7 @@ public:
 
     void resourceLoadStatisticsUpdated(Vector<WebCore::ResourceLoadStatistics>&&, CompletionHandler<void()>&&);
     void requestStorageAccessUnderOpener(DomainInNeedOfStorageAccess&&, WebCore::PageIdentifier openerID, OpenerDomain&&);
-    void aggregatedThirdPartyData(CompletionHandler<void(Vector<WebResourceLoadStatisticsStore::ThirdPartyData>&&)>&&);
+    void aggregatedThirdPartyData(CompletionHandler<void(Vector<ITPThirdPartyData>&&)>&&);
     static void suspend(CompletionHandler<void()>&&);
     static void resume();
     

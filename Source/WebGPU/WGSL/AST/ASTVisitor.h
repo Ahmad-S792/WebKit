@@ -26,6 +26,7 @@
 #pragma once
 
 #include "ASTForward.h"
+#include "ASTInterpolateAttribute.h"
 #include "CompilationMessage.h"
 
 #include <wtf/Expected.h>
@@ -50,11 +51,13 @@ public:
     virtual void visit(AST::BindingAttribute&);
     virtual void visit(AST::BuiltinAttribute&);
     virtual void visit(AST::ConstAttribute&);
+    virtual void visit(AST::DiagnosticAttribute&);
     virtual void visit(AST::GroupAttribute&);
     virtual void visit(AST::IdAttribute&);
     virtual void visit(AST::InterpolateAttribute&);
     virtual void visit(AST::InvariantAttribute&);
     virtual void visit(AST::LocationAttribute&);
+    virtual void visit(AST::MustUseAttribute&);
     virtual void visit(AST::SizeAttribute&);
     virtual void visit(AST::StageAttribute&);
     virtual void visit(AST::WorkgroupSizeAttribute&);
@@ -78,6 +81,7 @@ public:
     virtual void visit(AST::Unsigned32Literal&);
 
     virtual void visit(AST::Function&);
+    virtual void visit(AST::Parameter&);
 
     virtual void visit(AST::Identifier&);
 
@@ -85,6 +89,7 @@ public:
     virtual void visit(AST::Statement&);
     virtual void visit(AST::AssignmentStatement&);
     virtual void visit(AST::BreakStatement&);
+    virtual void visit(AST::CallStatement&);
     virtual void visit(AST::CompoundAssignmentStatement&);
     virtual void visit(AST::CompoundStatement&);
     virtual void visit(AST::ContinueStatement&);
@@ -103,26 +108,17 @@ public:
     virtual void visit(AST::Structure&);
     virtual void visit(AST::StructureMember&);
 
-    // Types
-    virtual void visit(AST::TypeName&);
-    virtual void visit(AST::ArrayTypeName&);
-    virtual void visit(AST::NamedTypeName&);
-    virtual void visit(AST::ParameterizedTypeName&);
-    virtual void visit(AST::ReferenceTypeName&);
-    virtual void visit(AST::StructTypeName&);
-
-    // Values
-    virtual void visit(AST::Value&);
-    virtual void visit(AST::ConstantValue&);
-    virtual void visit(AST::OverrideValue&);
-    virtual void visit(AST::LetValue&);
-    virtual void visit(AST::ParameterValue&);
+    virtual void visit(AST::ArrayTypeExpression&);
+    virtual void visit(AST::ElaboratedTypeExpression&);
+    virtual void visit(AST::ReferenceTypeExpression&);
 
     virtual void visit(AST::Variable&);
     virtual void visit(AST::VariableQualifier&);
 
+    virtual void visit(AST::SwitchClause&);
+
     bool hasError() const;
-    Expected<void, Error> result();
+    Result<void> result();
 
     template<typename T> void checkErrorAndVisit(T& x)
     {
@@ -144,7 +140,7 @@ protected:
     }
 
 private:
-    Expected<void, Error> m_expectedError;
+    Result<void> m_expectedError;
 };
 
 } // namespace AST

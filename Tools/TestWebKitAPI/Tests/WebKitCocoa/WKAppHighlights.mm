@@ -39,7 +39,7 @@
 #import <wtf/Vector.h>
 
 #if PLATFORM(IOS_FAMILY)
-#import "UIKitSPI.h"
+#import "UIKitSPIForTesting.h"
 #endif
 
 @interface AppHighlightDelegate : NSObject <_WKAppHighlightDelegate>
@@ -214,21 +214,6 @@ TEST(AppHighlights, AppHighlightRestoreFromStorageV1)
         return [webViewRestore stringByEvaluatingJavaScript:@"internals.numberOfAppHighlights()"].intValue == 1;
     }, 2, @"Expected Highlights to be populated.");
 }
-
-#if PLATFORM(IOS_FAMILY)
-
-TEST(AppHighlights, AvoidForcingCalloutBarInitialization)
-{
-    auto defaultConfiguration = adoptNS([[WKWebViewConfiguration alloc] init]);
-    auto webView = adoptNS([[TestWKWebView alloc] initWithFrame:CGRectMake(0, 0, 320, 500) configuration:defaultConfiguration.get() addToWindow:NO]);
-    [webView synchronouslyLoadTestPageNamed:@"simple"];
-    [webView stringByEvaluatingJavaScript:@"getSelection().setPosition(document.body, 1)"];
-    [webView waitForNextPresentationUpdate];
-
-    EXPECT_NULL(UICalloutBar.activeCalloutBar);
-}
-
-#endif // PLATFORM(IOS_FAMILY)
 
 } // namespace TestWebKitAPI
 

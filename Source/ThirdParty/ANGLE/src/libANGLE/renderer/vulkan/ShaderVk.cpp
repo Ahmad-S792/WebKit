@@ -16,14 +16,12 @@
 
 namespace rx
 {
-
 ShaderVk::ShaderVk(const gl::ShaderState &state) : ShaderImpl(state) {}
 
 ShaderVk::~ShaderVk() {}
 
-std::shared_ptr<WaitableCompileEvent> ShaderVk::compile(const gl::Context *context,
-                                                        gl::ShCompilerInstance *compilerInstance,
-                                                        ShCompileOptions *options)
+std::shared_ptr<ShaderTranslateTask> ShaderVk::compile(const gl::Context *context,
+                                                       ShCompileOptions *options)
 {
     ContextVk *contextVk = vk::GetImpl(context);
 
@@ -41,6 +39,11 @@ std::shared_ptr<WaitableCompileEvent> ShaderVk::compile(const gl::Context *conte
         {
             options->initOutputVariables = true;
         }
+    }
+
+    if (contextVk->getFeatures().retainSPIRVDebugInfo.enabled)
+    {
+        options->outputDebugInfo = true;
     }
 
     // robustBufferAccess on Vulkan doesn't support bound check on shader local variables
@@ -83,6 +86,11 @@ std::shared_ptr<WaitableCompileEvent> ShaderVk::compile(const gl::Context *conte
         options->useSpecializationConstant = true;
     }
 
+    if (contextVk->getFeatures().clampFragDepth.enabled)
+    {
+        options->clampFragDepth = true;
+    }
+
     if (!contextVk->getFeatures().supportsDepthClipControl.enabled)
     {
         options->addVulkanDepthCorrection = true;
@@ -103,9 +111,14 @@ std::shared_ptr<WaitableCompileEvent> ShaderVk::compile(const gl::Context *conte
         options->roundOutputAfterDithering = true;
     }
 
-    if (contextVk->getFeatures().precisionSafeDivision.enabled)
+    if (contextVk->getFeatures().appendAliasedMemoryDecorations.enabled)
     {
-        options->precisionSafeDivision = true;
+        options->aliasedUnlessRestrict = true;
+    }
+
+    if (contextVk->getFeatures().explicitlyCastMediumpFloatTo16Bit.enabled)
+    {
+        options->castMediumpFloatTo16Bit = true;
     }
 
     if (contextVk->getExtensions().shaderPixelLocalStorageANGLE)
@@ -113,12 +126,13 @@ std::shared_ptr<WaitableCompileEvent> ShaderVk::compile(const gl::Context *conte
         options->pls = contextVk->getNativePixelLocalStorageOptions();
     }
 
-    return compileImpl(context, compilerInstance, mState.getSource(), options);
+    // The Vulkan backend needs no post-processing of the translated shader.
+    return std::shared_ptr<ShaderTranslateTask>(new ShaderTranslateTask);
 }
 
 std::string ShaderVk::getDebugInfo() const
 {
-    return mState.getCompiledBinary().empty() ? "" : "<binary blob>";
+    return mState.getCompiledState()->compiledBinary.empty() ? "" : "<binary blob>";
 }
 
 }  // namespace rx

@@ -25,7 +25,8 @@
 
 #pragma once
 
-#include "InternalWritableStream.h"
+#include "ExceptionOr.h"
+#include "JSDOMGlobalObject.h"
 #include <JavaScriptCore/Strong.h>
 #include <wtf/RefCounted.h>
 
@@ -41,17 +42,18 @@ public:
     static ExceptionOr<Ref<WritableStream>> create(JSDOMGlobalObject&, Ref<WritableStreamSink>&&);
     static Ref<WritableStream> create(Ref<InternalWritableStream>&&);
 
-    ~WritableStream() = default;
+    ~WritableStream();
 
-    void lock() { m_internalWritableStream->lock(); }
-    bool locked() const { return m_internalWritableStream->locked(); }
+    void lock();
+    bool locked() const;
 
-    InternalWritableStream& internalWritableStream() { return m_internalWritableStream.get(); }
+    InternalWritableStream& internalWritableStream();
 
-private:
+protected:
     static ExceptionOr<Ref<WritableStream>> create(JSC::JSGlobalObject&, JSC::JSValue, JSC::JSValue);
+    static ExceptionOr<Ref<InternalWritableStream>> createInternalWritableStream(JSDOMGlobalObject&, Ref<WritableStreamSink>&&);
     explicit WritableStream(Ref<InternalWritableStream>&&);
-
+private:
     Ref<InternalWritableStream> m_internalWritableStream;
 };
 

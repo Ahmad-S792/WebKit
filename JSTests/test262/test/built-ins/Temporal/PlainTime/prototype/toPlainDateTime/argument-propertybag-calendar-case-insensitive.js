@@ -14,4 +14,4 @@ const calendar = "IsO8601";
 
 const arg = { year: 1976, monthCode: "M11", day: 18, calendar };
 const result = instance.toPlainDateTime(arg);
-TemporalHelpers.assertPlainDateTime(result, 1976, 11, "M11", 18, 12, 34, 56, 987, 654, 321, `Calendar created from string "${calendar}"`);
+TemporalHelpers.assertPlainDateTime(result, 1976, 11, "M11", 18, 12, 34, 56, 987, 654, 321, "Calendar is case-insensitive");

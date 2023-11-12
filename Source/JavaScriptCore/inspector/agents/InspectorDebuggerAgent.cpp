@@ -35,6 +35,7 @@
 #include "Debugger.h"
 #include "DebuggerScope.h"
 #include "DeferGC.h"
+#include "ExecutableBaseInlines.h"
 #include "HeapIterationScope.h"
 #include "InjectedScript.h"
 #include "InjectedScriptManager.h"
@@ -66,7 +67,7 @@ const ASCIILiteral InspectorDebuggerAgent::backtraceObjectGroup = "backtrace"_s;
 // create objects in the same group.
 static String objectGroupForBreakpointAction(JSC::BreakpointActionID id)
 {
-    return makeString("breakpoint-action-", id);
+    return makeString("breakpoint-action-"_s, id);
 }
 
 static bool isWebKitInjectedScript(const String& sourceURL)
@@ -142,7 +143,7 @@ static T parseBreakpointOptions(Protocol::ErrorString& errorString, RefPtr<JSON:
 
                 action.emulateUserGesture = actionObject->getBoolean(Protocol::Debugger::BreakpointAction::emulateUserGestureKey).value_or(false);
 
-                actions.uncheckedAppend(WTFMove(action));
+                actions.append(WTFMove(action));
             }
         }
 
@@ -184,7 +185,7 @@ InspectorDebuggerAgent::ProtocolBreakpoint::ProtocolBreakpoint(JSC::SourceID sou
 }
 
 InspectorDebuggerAgent::ProtocolBreakpoint::ProtocolBreakpoint(const String& url, bool isRegex, unsigned lineNumber, unsigned columnNumber, const String& condition, JSC::Breakpoint::ActionsVector&& actions, bool autoContinue, size_t ignoreCount)
-    : m_id(makeString(isRegex ? "/" : "", url, isRegex ? "/" : "", ':', lineNumber, ':', columnNumber))
+    : m_id(makeString(isRegex ? "/"_s : ""_s, url, isRegex ? "/"_s : ""_s, ':', lineNumber, ':', columnNumber))
     , m_url(url)
     , m_isRegex(isRegex)
     , m_lineNumber(lineNumber)
@@ -685,7 +686,7 @@ static String functionName(JSC::CodeBlock& codeBlock)
 
 static String functionName(JSC::CallFrame* callFrame)
 {
-    if (callFrame->isWasmFrame())
+    if (callFrame->isNativeCalleeFrame())
         return nullString();
 
     if (auto* codeBlock = callFrame->codeBlock())
@@ -1512,6 +1513,11 @@ void InspectorDebuggerAgent::willCallNativeExecutable(JSC::CallFrame* callFrame)
     pauseData->setString("name"_s, symbol);
 
     breakProgram(DebuggerFrontendDispatcher::Reason::FunctionCall, WTFMove(pauseData), m_symbolicBreakpoints[index].specialBreakpoint.copyRef());
+}
+
+bool InspectorDebuggerAgent::isInspectorDebuggerAgent() const
+{
+    return true;
 }
 
 JSC::JSObject* InspectorDebuggerAgent::debuggerScopeExtensionObject(JSC::Debugger& debugger, JSC::JSGlobalObject* globalObject, JSC::DebuggerCallFrame& debuggerCallFrame)

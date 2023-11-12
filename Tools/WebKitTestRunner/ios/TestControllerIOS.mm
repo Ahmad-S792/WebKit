@@ -33,7 +33,7 @@
 #import "TestInvocation.h"
 #import "TestRunnerWKWebView.h"
 #import "TextInputSPI.h"
-#import "UIKitSPI.h"
+#import "UIKitSPIForTesting.h"
 #import "UIPasteboardConsistencyEnforcer.h"
 #import <Foundation/Foundation.h>
 #import <UIKit/UIKit.h>
@@ -105,13 +105,24 @@ static void overridePresentMenuOrPopoverOrViewController()
 {
 }
 
+#if HAVE(UIKIT_RESIZABLE_WINDOWS)
+
+static BOOL overrideEnhancedWindowingEnabled()
+{
+    return YES;
+}
+
+#endif
+
 namespace WTR {
 
+static bool isDoneWaitingForKeyboardToStartDismissing = true;
 static bool isDoneWaitingForKeyboardToDismiss = true;
 static bool isDoneWaitingForMenuToDismiss = true;
 
 static void handleKeyboardWillHideNotification(CFNotificationCenterRef, void*, CFStringRef, const void*, CFDictionaryRef)
 {
+    isDoneWaitingForKeyboardToStartDismissing = true;
     isDoneWaitingForKeyboardToDismiss = false;
 }
 
@@ -132,9 +143,12 @@ static void handleMenuDidHideNotification(CFNotificationCenterRef, void*, CFStri
 
 void TestController::notifyDone()
 {
+    // FIXME: Do we still require this workaround?
+#if !HAVE(UI_TEXT_SELECTION_DISPLAY_INTERACTION)
     UIView *contentView = mainWebView()->platformView().contentView;
     UIView *selectionView = [contentView valueForKeyPath:@"interactionAssistant.selectionView"];
     [selectionView _removeAllAnimations:YES];
+#endif
 }
 
 void TestController::platformInitialize(const Options& options)
@@ -250,6 +264,21 @@ bool TestController::platformResetStateToConsistentValues(const TestOptions& opt
 {
     cocoaResetStateToConsistentValues(options);
 
+#if HAVE(UIKIT_RESIZABLE_WINDOWS)
+    bool enhancedWindowingStateChanged = false;
+    if (options.enhancedWindowingEnabled() && !m_enhancedWindowingEnabledSwizzler) {
+        m_enhancedWindowingEnabledSwizzler = WTF::makeUnique<InstanceMethodSwizzler>(UIWindowScene.class, @selector(_enhancedWindowingEnabled), reinterpret_cast<IMP>(overrideEnhancedWindowingEnabled));
+        enhancedWindowingStateChanged = true;
+    } else if (!options.enhancedWindowingEnabled() && m_enhancedWindowingEnabledSwizzler) {
+        m_enhancedWindowingEnabledSwizzler = nullptr;
+        enhancedWindowingStateChanged = true;
+    }
+    if (enhancedWindowingStateChanged) {
+        if (auto webView = mainWebView())
+            [[NSNotificationCenter defaultCenter] postNotificationName:_UIWindowSceneEnhancedWindowingModeChanged object:webView->platformView().window.windowScene userInfo:nil];
+    }
+#endif // HAVE(UIKIT_RESIZABLE_WINDOWS)
+
     [UIKeyboardImpl.activeInstance setCorrectionLearningAllowed:NO];
     [pasteboardConsistencyEnforcer() clearPasteboard];
     [[UIApplication sharedApplication] _cancelAllTouches];
@@ -323,6 +352,9 @@ bool TestController::platformResetStateToConsistentValues(const TestOptions& opt
         [webView setAllowedMenuActions:nil];
         webView._dragInteractionPolicy = dragInteractionPolicy(options);
         webView.focusStartsInputSessionPolicy = focusStartsInputSessionPolicy(options);
+        webView.suppressInputAccessoryView = options.suppressInputAccessoryView();
+        webView.scrollView.showsVerticalScrollIndicator = options.showsScrollIndicators();
+        webView.scrollView.showsHorizontalScrollIndicator = options.showsScrollIndicators();
 
 #if HAVE(UIFINDINTERACTION)
         webView.findInteractionEnabled = options.findInteractionEnabled();
@@ -333,16 +365,26 @@ bool TestController::platformResetStateToConsistentValues(const TestOptions& opt
         [scrollView setZoomScale:1 animated:NO];
         scrollView.firstResponderKeyboardAvoidanceEnabled = YES;
 
-        auto currentContentInset = scrollView.contentInset;
         auto contentInsetTop = options.contentInsetTop();
-        if (currentContentInset.top != contentInsetTop) {
-            currentContentInset.top = contentInsetTop;
-            scrollView.contentInset = currentContentInset;
-            scrollView.contentOffset = CGPointMake(-currentContentInset.left, -currentContentInset.top);
+        if (auto contentInset = scrollView.contentInset; contentInset.top != contentInsetTop) {
+            contentInset.top = contentInsetTop;
+            scrollView.contentInset = contentInset;
+            scrollView.contentOffset = CGPointMake(-contentInset.left, -contentInset.top);
         }
 
-        if (webView.interactingWithFormControl)
+        auto obscuredInsetTop = options.obscuredInsetTop();
+        if (auto obscuredInset = webView._obscuredInsets; obscuredInset.top != obscuredInsetTop) {
+            obscuredInset.top = obscuredInsetTop;
+            webView._obscuredInsets = obscuredInset;
+        }
+
+        if (webView.interactingWithFormControl) {
+            if (webView.showingKeyboard) {
+                isDoneWaitingForKeyboardToStartDismissing = false;
+                [[UIKeyboardImpl activeInstance] dismissKeyboard];
+            }
             shouldRestoreFirstResponder = [webView resignFirstResponder];
+        }
 
         [webView immediatelyDismissContextMenuIfNeeded];
 
@@ -353,6 +395,7 @@ bool TestController::platformResetStateToConsistentValues(const TestOptions& opt
 
     UIMenuController.sharedMenuController.menuVisible = NO;
 
+    runUntil(isDoneWaitingForKeyboardToStartDismissing, m_currentInvocation->shortTimeout());
     runUntil(isDoneWaitingForKeyboardToDismiss, m_currentInvocation->shortTimeout());
     runUntil(isDoneWaitingForMenuToDismiss, m_currentInvocation->shortTimeout());
 
@@ -486,9 +529,9 @@ void TestController::setKeyboardInputModeIdentifier(const String& identifier)
 
     auto controllerClass = UIKeyboardInputModeController.class;
     m_inputModeSwizzlers.reserveCapacity(3);
-    m_inputModeSwizzlers.uncheckedAppend(makeUnique<InstanceMethodSwizzler>(controllerClass, @selector(currentInputMode), reinterpret_cast<IMP>(swizzleCurrentInputMode)));
-    m_inputModeSwizzlers.uncheckedAppend(makeUnique<InstanceMethodSwizzler>(controllerClass, @selector(currentInputModeInPreference), reinterpret_cast<IMP>(swizzleCurrentInputMode)));
-    m_inputModeSwizzlers.uncheckedAppend(makeUnique<InstanceMethodSwizzler>(controllerClass, @selector(activeInputModes), reinterpret_cast<IMP>(swizzleActiveInputModes)));
+    m_inputModeSwizzlers.append(makeUnique<InstanceMethodSwizzler>(controllerClass, @selector(currentInputMode), reinterpret_cast<IMP>(swizzleCurrentInputMode)));
+    m_inputModeSwizzlers.append(makeUnique<InstanceMethodSwizzler>(controllerClass, @selector(currentInputModeInPreference), reinterpret_cast<IMP>(swizzleCurrentInputMode)));
+    m_inputModeSwizzlers.append(makeUnique<InstanceMethodSwizzler>(controllerClass, @selector(activeInputModes), reinterpret_cast<IMP>(swizzleActiveInputModes)));
     [UIKeyboardImpl.sharedInstance prepareKeyboardInputModeFromPreferences:nil];
 }
 
@@ -499,7 +542,7 @@ UIPasteboardConsistencyEnforcer *TestController::pasteboardConsistencyEnforcer()
     return m_pasteboardConsistencyEnforcer.get();
 }
 
-#if PLATFORM(IOS)
+#if PLATFORM(IOS) || PLATFORM(VISION)
 void TestController::lockScreenOrientation(WKScreenOrientationType orientation)
 {
     TestRunnerWKWebView *webView = mainWebView()->platformView();
@@ -519,10 +562,10 @@ void TestController::lockScreenOrientation(WKScreenOrientationType orientation)
         webView.supportedInterfaceOrientations = UIInterfaceOrientationMaskPortraitUpsideDown;
         break;
     case kWKScreenOrientationTypeLandscapePrimary:
-        webView.supportedInterfaceOrientations = UIInterfaceOrientationMaskLandscapeLeft;
+        webView.supportedInterfaceOrientations = UIInterfaceOrientationMaskLandscapeRight;
         break;
     case kWKScreenOrientationTypeLandscapeSecondary:
-        webView.supportedInterfaceOrientations = UIInterfaceOrientationMaskLandscapeRight;
+        webView.supportedInterfaceOrientations = UIInterfaceOrientationMaskLandscapeLeft;
         break;
     }
     [UIView performWithoutAnimation:^{

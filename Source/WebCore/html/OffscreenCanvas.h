@@ -27,6 +27,7 @@
 
 #if ENABLE(OFFSCREEN_CANVAS)
 
+#include "ActiveDOMObject.h"
 #include "AffineTransform.h"
 #include "CanvasBase.h"
 #include "ContextDestructionObserver.h"
@@ -52,6 +53,8 @@ namespace WebCore {
 
 class CanvasRenderingContext;
 class DeferredPromise;
+class GPU;
+class GPUCanvasContext;
 class HTMLCanvasElement;
 class ImageBitmap;
 class ImageBitmapRenderingContext;
@@ -66,6 +69,7 @@ using OffscreenRenderingContext = std::variant<
     RefPtr<WebGLRenderingContext>,
     RefPtr<WebGL2RenderingContext>,
 #endif
+    RefPtr<GPUCanvasContext>,
     RefPtr<ImageBitmapRenderingContext>,
     RefPtr<OffscreenCanvasRenderingContext2D>
 >;
@@ -97,7 +101,7 @@ private:
     WeakPtr<HTMLCanvasElement, WeakPtrImplWithEventTargetData> m_placeholderCanvas;
 };
 
-class OffscreenCanvas final : public RefCounted<OffscreenCanvas>, public CanvasBase, public EventTarget, private ContextDestructionObserver {
+class OffscreenCanvas final : public ActiveDOMObject, public RefCounted<OffscreenCanvas>, public CanvasBase, public EventTarget {
     WTF_MAKE_ISO_ALLOCATED(OffscreenCanvas);
 public:
 
@@ -110,7 +114,8 @@ public:
         _2d,
         Webgl,
         Webgl2,
-        Bitmaprenderer
+        Bitmaprenderer,
+        Webgpu
     };
 
     static bool enabledForContext(ScriptExecutionContext&);
@@ -133,7 +138,7 @@ public:
     ExceptionOr<RefPtr<ImageBitmap>> transferToImageBitmap();
     void convertToBlob(ImageEncodeOptions&&, Ref<DeferredPromise>&&);
 
-    void didDraw(const std::optional<FloatRect>&) final;
+    void didDraw(const std::optional<FloatRect>&, ShouldApplyPostProcessingToDirtyRect) final;
 
     Image* copiedImage() const final;
     void clearCopiedImage() const final;
@@ -147,6 +152,10 @@ public:
 
     void commitToPlaceholderCanvas();
 
+    const char* activeDOMObjectName() const final { return "OffscreenCanvas"_s; }
+
+    void queueTaskKeepingObjectAlive(TaskSource, Function<void()>&&) final;
+    void dispatchEvent(Event&) final;
     using RefCounted::ref;
     using RefCounted::deref;
 
@@ -170,6 +179,8 @@ private:
 #if ENABLE(WEBGL)
     void createContextWebGL(RenderingContextType, WebGLContextAttributes&& = { });
 #endif
+
+    GPUCanvasContext* createContextWebGPU(RenderingContextType, GPU*);
 
     void createImageBuffer() const final;
     std::unique_ptr<SerializedImageBuffer> takeImageBuffer() const;

@@ -31,6 +31,7 @@
 #include "Blob.h"
 #include "JSDOMGlobalObject.h"
 #include "TextResourceDecoder.h"
+#include <JavaScriptCore/JSCJSValueInlines.h>
 #include <JavaScriptCore/JSLock.h>
 #include <JavaScriptCore/JSONObject.h>
 #include <wtf/IsoMallocInlines.h>
@@ -43,7 +44,7 @@ ExceptionOr<RefPtr<JSC::ArrayBuffer>> PushMessageData::arrayBuffer()
 {
     auto buffer = ArrayBuffer::tryCreate(m_data.data(), m_data.size());
     if (!buffer)
-        return Exception { OutOfMemoryError };
+        return Exception { ExceptionCode::OutOfMemoryError };
     return buffer;
 }
 
@@ -58,7 +59,7 @@ ExceptionOr<JSC::JSValue> PushMessageData::json(JSDOMGlobalObject& globalObject)
 
     auto value = JSC::JSONParse(&globalObject, text());
     if (!value)
-        return Exception { SyntaxError, "JSON parsing failed"_s };
+        return Exception { ExceptionCode::SyntaxError, "JSON parsing failed"_s };
 
     return value;
 }

@@ -29,9 +29,11 @@
 #include "DataReference.h"
 #include "ImageOptions.h"
 #include "NotificationService.h"
+#include "PageLoadState.h"
 #include "ProvisionalPageProxy.h"
 #include "WebContextMenuItem.h"
 #include "WebContextMenuItemData.h"
+#include "WebFrameProxy.h"
 #include "WebKitAuthenticationRequestPrivate.h"
 #include "WebKitBackForwardListPrivate.h"
 #include "WebKitContextMenuClient.h"
@@ -46,7 +48,6 @@
 #include "WebKitHitTestResultPrivate.h"
 #include "WebKitIconLoadingClient.h"
 #include "WebKitInputMethodContextPrivate.h"
-#include "WebKitJavascriptResultPrivate.h"
 #include "WebKitNavigationClient.h"
 #include "WebKitNotificationPrivate.h"
 #include "WebKitPermissionStateQueryPrivate.h"
@@ -73,6 +74,7 @@
 #include <WebCore/CertificateInfo.h>
 #include <WebCore/JSDOMExceptionHandling.h>
 #include <WebCore/RefPtrCairo.h>
+#include <WebCore/RunJavaScriptParameters.h>
 #include <WebCore/SharedBuffer.h>
 #include <WebCore/URLSoup.h>
 #include <glib/gi18n-lib.h>
@@ -86,6 +88,7 @@
 #include <wtf/text/StringBuilder.h>
 
 #if PLATFORM(GTK)
+#include "GtkSettingsManager.h"
 #include "WebKitFaviconDatabasePrivate.h"
 #include "WebKitInputMethodContextImplGtk.h"
 #include "WebKitPointerLockPermissionRequest.h"
@@ -106,6 +109,8 @@
 
 #if ENABLE(2022_GLIB_API)
 #include "WebKitNetworkSessionPrivate.h"
+#else
+#include "WebKitJavascriptResultPrivate.h"
 #endif
 
 using namespace WebKit;
@@ -519,6 +524,18 @@ WebKitWebResourceLoadManager* WebKitWebViewClient::webResourceLoadManager()
 {
     return webkitWebViewGetWebResourceLoadManager(m_webView);
 }
+
+#if ENABLE(FULLSCREEN_API)
+void WebKitWebViewClient::enterFullScreen(WKWPE::View&)
+{
+    webkitWebViewEnterFullScreen(m_webView);
+}
+
+void WebKitWebViewClient::exitFullScreen(WKWPE::View&)
+{
+    webkitWebViewExitFullScreen(m_webView);
+}
+#endif
 #endif
 
 static gboolean webkitWebViewLoadFail(WebKitWebView* webView, WebKitLoadEvent, const char* failingURI, GError* error)
@@ -769,19 +786,19 @@ static void webkitWebViewConstructed(GObject* object)
     WebKitWebViewPrivate* priv = webView->priv;
     if (priv->relatedView) {
         if (priv->context)
-            g_critical("WebKitWebView web-context property can't be set when releated-view is set too, passed web-context value is ignored.");
+            g_critical("WebKitWebView web-context property can't be set when related-view is set too, passed web-context value is ignored.");
         priv->context = webkit_web_view_get_context(priv->relatedView);
 #if ENABLE(2022_GLIB_API)
         if (priv->networkSession)
-            g_critical("WebKitWebView network-session property can't be set when releated-view is set too, passed network-session value is ignored.");
+            g_critical("WebKitWebView network-session property can't be set when related-view is set too, passed network-session value is ignored.");
         priv->networkSession = webkit_web_view_get_network_session(priv->relatedView);
 #else
         if (priv->isEphemeral)
-            g_critical("WebKitWebView is-ephemeral property can't be set when releated-view is set too, passed is-ephemeral value is ignored.");
+            g_critical("WebKitWebView is-ephemeral property can't be set when related-view is set too, passed is-ephemeral value is ignored.");
         priv->isEphemeral = webkit_web_view_is_ephemeral(priv->relatedView);
 #endif
         if (priv->isControlledByAutomation)
-            g_critical("WebKitWebView is-controlled-by-automation can't be set when releated-view is set too, passed is-controlled-by-automation value is ignored.");
+            g_critical("WebKitWebView is-controlled-by-automation can't be set when related-view is set too, passed is-controlled-by-automation value is ignored.");
         priv->isControlledByAutomation = webkit_web_view_is_controlled_by_automation(priv->relatedView);
     } else if (!priv->context)
         priv->context = webkit_web_context_get_default();
@@ -828,7 +845,9 @@ static void webkitWebViewConstructed(GObject* object)
 
     attachNavigationClientToView(webView);
     attachUIClientToView(webView);
+#if ENABLE(CONTEXT_MENUS)
     attachContextMenuClientToView(webView);
+#endif // ENABLE(CONTEXT_MENUS)
     attachFormClientToView(webView);
 
 #if PLATFORM(GTK)
@@ -850,14 +869,23 @@ static void webkitWebViewConstructed(GObject* object)
     priv->backForwardList = adoptGRef(webkitBackForwardListCreate(&getPage(webView).backForwardList()));
     priv->windowProperties = adoptGRef(webkitWindowPropertiesCreate());
 
-    priv->textScaleFactor = WebCore::screenDPI() / 96.;
+#if PLATFORM(GTK)
+    double dpi = GtkSettingsManager::singleton().settingsState().xftDPI.value() / 1024.0;
+    priv->textScaleFactor = dpi / 96.;
     getPage(webView).setTextZoomFactor(priv->textScaleFactor);
-    WebCore::setScreenDPIObserverHandler([webView] {
+    GtkSettingsManager::singleton().addObserver([webView](const GtkSettingsState& state) {
+        if (!state.xftDPI)
+            return;
+
+        double dpi = state.xftDPI.value() / 1024.0;
         auto& page = getPage(webView);
         auto zoomFactor = page.textZoomFactor() / webView->priv->textScaleFactor;
-        webView->priv->textScaleFactor = WebCore::screenDPI() / 96.;
+        webView->priv->textScaleFactor = dpi / 96.;
         page.setTextZoomFactor(zoomFactor * webView->priv->textScaleFactor);
     }, webView);
+#else
+    priv->textScaleFactor = 1;
+#endif
 
     priv->isWebProcessResponsive = true;
 }
@@ -1071,7 +1099,9 @@ static void webkitWebViewDispose(GObject* object)
     webView->priv->view->close();
 #endif
 
-    WebCore::setScreenDPIObserverHandler(nullptr, webView);
+#if PLATFORM(GTK)
+    GtkSettingsManager::singleton().removeObserver(webView);
+#endif
 
     G_OBJECT_CLASS(webkit_web_view_parent_class)->dispose(object);
 }
@@ -2720,7 +2750,7 @@ void webkitWebViewMouseTargetChanged(WebKitWebView* webView, const WebHitTestRes
 void webkitWebViewPrintFrame(WebKitWebView* webView, WebFrameProxy* frame)
 {
     auto printOperation = adoptGRef(webkit_print_operation_new(webView));
-    webkitPrintOperationSetPrintMode(printOperation.get(), PrintInfo::PrintModeSync);
+    webkitPrintOperationSetPrintMode(printOperation.get(), PrintInfo::PrintMode::Sync);
     gboolean returnValue;
     g_signal_emit(webView, signals[PRINT], 0, printOperation.get(), &returnValue);
     if (returnValue)
@@ -2746,29 +2776,21 @@ void webkitWebViewResourceLoadStarted(WebKitWebView* webView, WebKitWebResource*
     g_signal_emit(webView, signals[RESOURCE_LOAD_STARTED], 0, resource, uriRequest.get());
 }
 
-void webkitWebViewEnterFullScreen(WebKitWebView* webView)
-{
 #if ENABLE(FULLSCREEN_API)
+bool webkitWebViewEnterFullScreen(WebKitWebView* webView)
+{
     gboolean returnValue;
     g_signal_emit(webView, signals[ENTER_FULLSCREEN], 0, &returnValue);
-#if PLATFORM(GTK)
-    if (!returnValue)
-        webkitWebViewBaseEnterFullScreen(WEBKIT_WEB_VIEW_BASE(webView));
-#endif
-#endif
+    return returnValue;
 }
 
-void webkitWebViewExitFullScreen(WebKitWebView* webView)
+bool webkitWebViewExitFullScreen(WebKitWebView* webView)
 {
-#if ENABLE(FULLSCREEN_API)
     gboolean returnValue;
     g_signal_emit(webView, signals[LEAVE_FULLSCREEN], 0, &returnValue);
-#if PLATFORM(GTK)
-    if (!returnValue)
-        webkitWebViewBaseExitFullScreen(WEBKIT_WEB_VIEW_BASE(webView));
-#endif
-#endif
+    return returnValue;
 }
+#endif
 
 void webkitWebViewRunFileChooserRequest(WebKitWebView* webView, WebKitFileChooserRequest* request)
 {
@@ -2776,6 +2798,7 @@ void webkitWebViewRunFileChooserRequest(WebKitWebView* webView, WebKitFileChoose
     g_signal_emit(webView, signals[RUN_FILE_CHOOSER], 0, request, &returnValue);
 }
 
+#if ENABLE(CONTEXT_MENUS)
 #if PLATFORM(GTK)
 void webkitWebViewPopulateContextMenu(WebKitWebView* webView, const Vector<WebContextMenuItemData>& proposedMenu, const WebHitTestResultData& hitTestResultData, GVariant* userData)
 {
@@ -2824,6 +2847,7 @@ void webkitWebViewPopulateContextMenu(WebKitWebView* webView, const Vector<WebCo
         hitTestResult.get(), &returnValue);
 }
 #endif
+#endif // ENABLE(CONTEXT_MENUS)
 
 void webkitWebViewSubmitFormRequest(WebKitWebView* webView, WebKitFormSubmissionRequest* request)
 {
@@ -3829,7 +3853,7 @@ gdouble webkit_web_view_get_zoom_level(WebKitWebView* webView)
  * @command: the command to check
  * @cancellable: (allow-none): a #GCancellable or %NULL to ignore
  * @callback: (scope async): a #GAsyncReadyCallback to call when the request is satisfied
- * @user_data: (closure): the data to pass to callback function
+ * @user_data: the data to pass to callback function
  *
  * Asynchronously check if it is possible to execute the given editing command.
  *
@@ -3938,7 +3962,7 @@ WebKitFindController* webkit_web_view_get_find_controller(WebKitWebView* webView
  * Get the global JavaScript context used by @web_view to deserialize the
  * result values of scripts executed with webkit_web_view_run_javascript().
  *
- * Returns: the <function>JSGlobalContextRef</function> used by @web_view to deserialize
+ * Returns: the JSGlobalContextRef used by @web_view to deserialize
  *    the result values of scripts.
  *
  * Deprecated: 2.22: Use jsc_value_get_context() instead.
@@ -3955,10 +3979,17 @@ JSGlobalContextRef webkit_web_view_get_javascript_global_context(WebKitWebView* 
 }
 #endif
 
-static void webkitWebViewRunJavaScriptWithParams(WebKitWebView* webView, RunJavaScriptParameters&& params, const char* worldName, GRefPtr<GTask>&& task)
+enum class RunJavascriptReturnType {
+    JSCValue,
+#if !ENABLE(2022_GLIB_API)
+    WebKitJavascriptResult
+#endif
+};
+
+static void webkitWebViewRunJavaScriptWithParams(WebKitWebView* webView, RunJavaScriptParameters&& params, const char* worldName, RunJavascriptReturnType returnType, GRefPtr<GTask>&& task)
 {
     auto world = worldName ? API::ContentWorld::sharedWorldWithName(String::fromUTF8(worldName)) : Ref<API::ContentWorld> { API::ContentWorld::pageContentWorld() };
-    getPage(webView).runJavaScriptInFrameInScriptWorld(WTFMove(params), std::nullopt, world.get(), [task = WTFMove(task)] (auto&& result) {
+    getPage(webView).runJavaScriptInFrameInScriptWorld(WTFMove(params), std::nullopt, world.get(), [task = WTFMove(task), returnType] (auto&& result) {
         if (g_task_return_error_if_cancelled(task.get()))
             return;
 
@@ -3966,8 +3997,20 @@ static void webkitWebViewRunJavaScriptWithParams(WebKitWebView* webView, RunJava
             if (!result.value())
                 g_task_return_new_error(task.get(), WEBKIT_JAVASCRIPT_ERROR, WEBKIT_JAVASCRIPT_ERROR_INVALID_RESULT, "Unsupported result type");
             else {
-                g_task_return_pointer(task.get(), webkitJavascriptResultCreate(result.value()->internalRepresentation()),
-                    reinterpret_cast<GDestroyNotify>(webkit_javascript_result_unref));
+#if ENABLE(2022_GLIB_API)
+                ASSERT_UNUSED(returnType, returnType == RunJavascriptReturnType::JSCValue);
+                g_task_return_pointer(task.get(), API::SerializedScriptValue::deserialize(result.value()->internalRepresentation()).leakRef(),
+                    reinterpret_cast<GDestroyNotify>(g_object_unref));
+#else
+                if (returnType == RunJavascriptReturnType::JSCValue) {
+                    g_task_return_pointer(task.get(), API::SerializedScriptValue::deserialize(result.value()->internalRepresentation()).leakRef(),
+                        reinterpret_cast<GDestroyNotify>(g_object_unref));
+                } else {
+                    ASSERT(returnType == RunJavascriptReturnType::WebKitJavascriptResult);
+                    g_task_return_pointer(task.get(), webkitJavascriptResultCreate(result.value()->internalRepresentation()),
+                        reinterpret_cast<GDestroyNotify>(webkit_javascript_result_unref));
+                }
+#endif
             }
         } else {
             ExceptionDetails exceptionDetails = WTFMove(result.error());
@@ -3993,8 +4036,17 @@ void webkitWebViewRunJavascriptWithoutForcedUserGestures(WebKitWebView* webView,
     g_return_if_fail(WEBKIT_IS_WEB_VIEW(webView));
     g_return_if_fail(script);
 
-    RunJavaScriptParameters params = { String::fromUTF8(script), URL { }, RunAsAsyncFunction::No, std::nullopt, ForceUserGesture::No };
-    webkitWebViewRunJavaScriptWithParams(webView, WTFMove(params), nullptr, adoptGRef(g_task_new(webView, cancellable, callback, userData)));
+    RunJavaScriptParameters params = { String::fromUTF8(script), JSC::SourceTaintedOrigin::Untainted, URL { }, RunAsAsyncFunction::No, std::nullopt, ForceUserGesture::No, RemoveTransientActivation::Yes };
+    webkitWebViewRunJavaScriptWithParams(webView, WTFMove(params), nullptr, RunJavascriptReturnType::JSCValue, adoptGRef(g_task_new(webView, cancellable, callback, userData)));
+}
+
+static void webkitWebViewEvaluateJavascriptInternal(WebKitWebView* webView, const char* script, gssize length, const char* worldName, const char* sourceURI, RunJavascriptReturnType returnType, GCancellable* cancellable, GAsyncReadyCallback callback, gpointer userData)
+{
+    g_return_if_fail(WEBKIT_IS_WEB_VIEW(webView));
+    g_return_if_fail(script);
+
+    RunJavaScriptParameters params = { String::fromUTF8(script, length < 0 ? strlen(script) : length), JSC::SourceTaintedOrigin::Untainted, URL({ }, String::fromUTF8(sourceURI)), RunAsAsyncFunction::No, std::nullopt, ForceUserGesture::Yes, RemoveTransientActivation::Yes };
+    webkitWebViewRunJavaScriptWithParams(webView, WTFMove(params), worldName, returnType, adoptGRef(g_task_new(webView, cancellable, callback, userData)));
 }
 
 /**
@@ -4006,7 +4058,7 @@ void webkitWebViewRunJavascriptWithoutForcedUserGestures(WebKitWebView* webView,
  * @source_uri: (nullable): the source URI
  * @cancellable: (nullable): a #GCancellable or %NULL to ignore
  * @callback: (scope async): a #GAsyncReadyCallback to call when the script finished
- * @user_data: (closure): the data to pass to callback function
+ * @user_data: the data to pass to callback function
  *
  * Asynchronously evaluate @script in the script world with name @world_name of the main frame current context in @web_view.
  * If @world_name is %NULL, the default world is used. Any value that is not %NULL is a distinct world.
@@ -4029,18 +4081,16 @@ void webkitWebViewRunJavascriptWithoutForcedUserGestures(WebKitWebView* webView,
  *                               GAsyncResult *result,
  *                               gpointer      user_data)
  * {
- *     WebKitJavascriptResult *js_result;
  *     JSCValue               *value;
  *     GError                 *error = NULL;
  *
- *     js_result = webkit_web_view_evaluate_javascript_finish (WEBKIT_WEB_VIEW (object), result, &error);
- *     if (!js_result) {
+ *     value = webkit_web_view_evaluate_javascript_finish (WEBKIT_WEB_VIEW (object), result, &error);
+ *     if (!value) {
  *         g_warning ("Error running javascript: %s", error->message);
  *         g_error_free (error);
  *         return;
  *     }
  *
- *     value = webkit_javascript_result_get_js_value (js_result);
  *     if (jsc_value_is_string (value)) {
  *         gchar        *str_value = jsc_value_to_string (value);
  *         JSCException *exception = jsc_context_get_exception (jsc_value_get_context (value));
@@ -4052,7 +4102,7 @@ void webkitWebViewRunJavascriptWithoutForcedUserGestures(WebKitWebView* webView,
  *     } else {
  *         g_warning ("Error running javascript: unexpected return value");
  *     }
- *     webkit_javascript_result_unref (js_result);
+ *     g_object_unref (value);
  * }
  *
  * static void
@@ -4069,11 +4119,7 @@ void webkitWebViewRunJavascriptWithoutForcedUserGestures(WebKitWebView* webView,
  */
 void webkit_web_view_evaluate_javascript(WebKitWebView* webView, const char* script, gssize length, const char* worldName, const char* sourceURI, GCancellable* cancellable, GAsyncReadyCallback callback, gpointer userData)
 {
-    g_return_if_fail(WEBKIT_IS_WEB_VIEW(webView));
-    g_return_if_fail(script);
-
-    RunJavaScriptParameters params = { String::fromUTF8(script, length < 0 ? strlen(script) : length), URL({ }, String::fromUTF8(sourceURI)), RunAsAsyncFunction::No, std::nullopt, ForceUserGesture::Yes };
-    webkitWebViewRunJavaScriptWithParams(webView, WTFMove(params), worldName, adoptGRef(g_task_new(webView, cancellable, callback, userData)));
+    webkitWebViewEvaluateJavascriptInternal(webView, script, length, worldName, sourceURI, RunJavascriptReturnType::JSCValue, cancellable, callback, userData);
 }
 
 /**
@@ -4084,17 +4130,17 @@ void webkit_web_view_evaluate_javascript(WebKitWebView* webView, const char* scr
  *
  * Finish an asynchronous operation started with webkit_web_view_evaluate_javascript().
  *
- * Returns: (transfer full): a #WebKitJavascriptResult with the result of the last executed statement in script
+ * Returns: (transfer full): a #JSCValue with the result of the last executed statement in script
  *    or %NULL in case of error
  *
  * Since: 2.40
  */
-WebKitJavascriptResult* webkit_web_view_evaluate_javascript_finish(WebKitWebView* webView, GAsyncResult* result, GError** error)
+JSCValue* webkit_web_view_evaluate_javascript_finish(WebKitWebView* webView, GAsyncResult* result, GError** error)
 {
     g_return_val_if_fail(WEBKIT_IS_WEB_VIEW(webView), nullptr);
     g_return_val_if_fail(g_task_is_valid(result, webView), nullptr);
 
-    return static_cast<WebKitJavascriptResult*>(g_task_propagate_pointer(G_TASK(result), error));
+    return static_cast<JSCValue*>(g_task_propagate_pointer(G_TASK(result), error));
 }
 
 static ArgumentWireBytesMap parseAsyncFunctionArguments(GVariant* arguments, GError** error)
@@ -4122,6 +4168,23 @@ static ArgumentWireBytesMap parseAsyncFunctionArguments(GVariant* arguments, GEr
     return argumentsMap;
 }
 
+static void webkitWebViewCallAsyncJavascriptFunctionInternal(WebKitWebView* webView, const char* body, gssize length, GVariant* arguments, const char* worldName, const char* sourceURI, RunJavascriptReturnType returnType, GCancellable* cancellable, GAsyncReadyCallback callback, gpointer userData)
+{
+    g_return_if_fail(WEBKIT_IS_WEB_VIEW(webView));
+    g_return_if_fail(body);
+    g_return_if_fail(!arguments || g_variant_is_of_type(arguments, G_VARIANT_TYPE("a{sv}")));
+
+    GError* error = nullptr;
+    auto argumentsMap = parseAsyncFunctionArguments(arguments, &error);
+    if (error) {
+        g_task_report_error(webView, callback, userData, nullptr, error);
+        return;
+    }
+
+    RunJavaScriptParameters params = { String::fromUTF8(body, length < 0 ? strlen(body) : length), JSC::SourceTaintedOrigin::Untainted, URL({ }, String::fromUTF8(sourceURI)), RunAsAsyncFunction::Yes, WTFMove(argumentsMap), ForceUserGesture::Yes, RemoveTransientActivation::Yes };
+    webkitWebViewRunJavaScriptWithParams(webView, WTFMove(params), worldName, returnType, adoptGRef(g_task_new(webView, cancellable, callback, userData)));
+}
+
 /**
  * webkit_web_view_call_async_javascript_function:
  * @web_view: a #WebKitWebView
@@ -4132,7 +4195,7 @@ static ArgumentWireBytesMap parseAsyncFunctionArguments(GVariant* arguments, GEr
  * @source_uri: (nullable): the source URI
  * @cancellable: (nullable): a #GCancellable or %NULL to ignore
  * @callback: (scope async): a #GAsyncReadyCallback to call when the script finished
- * @user_data: (closure): the data to pass to callback function
+ * @user_data: the data to pass to callback function
  *
  * Asynchronously call @body with @arguments in the script world with name @world_name of the main frame current context in @web_view.
  * The @arguments values must be one of the following types, or contain only the following GVariant types: number, string and dictionary.
@@ -4157,18 +4220,16 @@ static ArgumentWireBytesMap parseAsyncFunctionArguments(GVariant* arguments, GEr
  *                               GAsyncResult *result,
  *                               gpointer      user_data)
  * {
- *     WebKitJavascriptResult *js_result;
  *     JSCValue               *value;
  *     GError                 *error = NULL;
  *
- *     js_result = webkit_web_view_call_async_javascript_function_finish (WEBKIT_WEB_VIEW (object), result, &error);
- *     if (!js_result) {
+ *     value = webkit_web_view_call_async_javascript_function_finish (WEBKIT_WEB_VIEW (object), result, &error);
+ *     if (!value) {
  *         g_warning ("Error running javascript: %s", error->message);
  *         g_error_free (error);
  *         return;
  *     }
  *
- *     value = webkit_javascript_result_get_js_value (js_result);
  *     if (jsc_value_is_number (value)) {
  *         gint32        int_value = jsc_value_to_string (value);
  *         JSCException *exception = jsc_context_get_exception (jsc_value_get_context (value));
@@ -4180,7 +4241,7 @@ static ArgumentWireBytesMap parseAsyncFunctionArguments(GVariant* arguments, GEr
  *     } else {
  *         g_warning ("Error running javascript: unexpected return value");
  *     }
- *     webkit_javascript_result_unref (js_result);
+ *     g_object_unref (value);
  * }
  *
  * static void
@@ -4199,19 +4260,7 @@ static ArgumentWireBytesMap parseAsyncFunctionArguments(GVariant* arguments, GEr
  */
 void webkit_web_view_call_async_javascript_function(WebKitWebView* webView, const char* body, gssize length, GVariant* arguments, const char* worldName, const char* sourceURI, GCancellable* cancellable, GAsyncReadyCallback callback, gpointer userData)
 {
-    g_return_if_fail(WEBKIT_IS_WEB_VIEW(webView));
-    g_return_if_fail(body);
-    g_return_if_fail(!arguments || g_variant_is_of_type(arguments, G_VARIANT_TYPE("a{sv}")));
-
-    GError* error = nullptr;
-    auto argumentsMap = parseAsyncFunctionArguments(arguments, &error);
-    if (error) {
-        g_task_report_error(webView, callback, userData, nullptr, error);
-        return;
-    }
-
-    RunJavaScriptParameters params = { String::fromUTF8(body, length < 0 ? strlen(body) : length), URL({ }, String::fromUTF8(sourceURI)), RunAsAsyncFunction::Yes, WTFMove(argumentsMap), ForceUserGesture::Yes };
-    webkitWebViewRunJavaScriptWithParams(webView, WTFMove(params), worldName, adoptGRef(g_task_new(webView, cancellable, callback, userData)));
+    webkitWebViewCallAsyncJavascriptFunctionInternal(webView, body, length, arguments, worldName, sourceURI, RunJavascriptReturnType::JSCValue, cancellable, callback, userData);
 }
 
 /**
@@ -4222,17 +4271,17 @@ void webkit_web_view_call_async_javascript_function(WebKitWebView* webView, cons
  *
  * Finish an asynchronous operation started with webkit_web_view_call_async_javascript_function().
  *
- * Returns: (transfer full): a #WebKitJavascriptResult with the return value of the async function
+ * Returns: (transfer full): a #JSCValue with the return value of the async function
  *    or %NULL in case of error
  *
  * Since: 2.40
  */
-WebKitJavascriptResult* webkit_web_view_call_async_javascript_function_finish(WebKitWebView* webView, GAsyncResult* result, GError** error)
+JSCValue* webkit_web_view_call_async_javascript_function_finish(WebKitWebView* webView, GAsyncResult* result, GError** error)
 {
     g_return_val_if_fail(WEBKIT_IS_WEB_VIEW(webView), nullptr);
     g_return_val_if_fail(g_task_is_valid(result, webView), nullptr);
 
-    return static_cast<WebKitJavascriptResult*>(g_task_propagate_pointer(G_TASK(result), error));
+    return static_cast<JSCValue*>(g_task_propagate_pointer(G_TASK(result), error));
 }
 
 #if !ENABLE(2022_GLIB_API)
@@ -4242,12 +4291,11 @@ WebKitJavascriptResult* webkit_web_view_call_async_javascript_function_finish(We
  * @script: the script to run
  * @cancellable: (allow-none): a #GCancellable or %NULL to ignore
  * @callback: (scope async): a #GAsyncReadyCallback to call when the script finished
- * @user_data: (closure): the data to pass to callback function
+ * @user_data: the data to pass to callback function
  *
  * Asynchronously run @script in the context of the current page in @web_view.
  *
- * If
- * WebKitSettings:enable-javascript is FALSE, this method will do nothing.
+ * If WebKitSettings:enable-javascript is FALSE, this method will do nothing.
  *
  * When the operation is finished, @callback will be called. You can then call
  * webkit_web_view_run_javascript_finish() to get the result of the operation.
@@ -4256,7 +4304,7 @@ WebKitJavascriptResult* webkit_web_view_call_async_javascript_function_finish(We
  */
 void webkit_web_view_run_javascript(WebKitWebView* webView, const gchar* script, GCancellable* cancellable, GAsyncReadyCallback callback, gpointer userData)
 {
-    webkit_web_view_evaluate_javascript(webView, script, -1, nullptr, nullptr, cancellable, callback, userData);
+    webkitWebViewEvaluateJavascriptInternal(webView, script, -1, nullptr, nullptr, RunJavascriptReturnType::WebKitJavascriptResult, cancellable, callback, userData);
 }
 
 /**
@@ -4332,7 +4380,7 @@ WebKitJavascriptResult* webkit_web_view_run_javascript_finish(WebKitWebView* web
  * @world_name: the name of a #WebKitScriptWorld
  * @cancellable: (allow-none): a #GCancellable or %NULL to ignore
  * @callback: (scope async): a #GAsyncReadyCallback to call when the script finished
- * @user_data: (closure): the data to pass to callback function
+ * @user_data: the data to pass to callback function
  *
  * Asynchronously run @script in the script world.
  *
@@ -4350,7 +4398,7 @@ void webkit_web_view_run_javascript_in_world(WebKitWebView* webView, const gchar
 {
     g_return_if_fail(worldName);
 
-    webkit_web_view_evaluate_javascript(webView, script, -1, worldName, nullptr, cancellable, callback, userData);
+    webkitWebViewEvaluateJavascriptInternal(webView, script, -1, worldName, nullptr, RunJavascriptReturnType::WebKitJavascriptResult, cancellable, callback, userData);
 }
 
 /**
@@ -4361,7 +4409,7 @@ void webkit_web_view_run_javascript_in_world(WebKitWebView* webView, const gchar
  * @world_name (nullable): the name of a #WebKitScriptWorld, if no name (i.e. %NULL) is provided, the default world is used. Any value that is not %NULL is a distinct world.
  * @cancellable: (allow-none): a #GCancellable or %NULL to ignore
  * @callback: (scope async): a #GAsyncReadyCallback to call when the script finished
- * @user_data: (closure): the data to pass to callback function
+ * @user_data: the data to pass to callback function
  *
  * Asynchronously run @body in the script world with name @world_name of the current page context in
  * @web_view. If WebKitSettings:enable-javascript is FALSE, this method will do nothing. This API
@@ -4424,7 +4472,7 @@ void webkit_web_view_run_javascript_in_world(WebKitWebView* webView, const gchar
  */
 void webkit_web_view_run_async_javascript_function_in_world(WebKitWebView* webView, const gchar* body, GVariant* arguments, const char* worldName, GCancellable* cancellable, GAsyncReadyCallback callback, gpointer userData)
 {
-    webkit_web_view_call_async_javascript_function(webView, body, -1, arguments, worldName, nullptr, cancellable, callback, userData);
+    webkitWebViewCallAsyncJavascriptFunctionInternal(webView, body, -1, arguments, worldName, nullptr, RunJavascriptReturnType::WebKitJavascriptResult, cancellable, callback, userData);
 }
 
 /**
@@ -4463,8 +4511,8 @@ static void resourcesStreamReadCallback(GObject* object, GAsyncResult* result, g
 
     WebKitWebView* webView = WEBKIT_WEB_VIEW(g_task_get_source_object(task.get()));
     gpointer outputStreamData = g_memory_output_stream_get_data(G_MEMORY_OUTPUT_STREAM(object));
-    RunJavaScriptParameters params = { String::fromUTF8(reinterpret_cast<const gchar*>(outputStreamData)), URL { }, RunAsAsyncFunction::No, std::nullopt, ForceUserGesture::Yes };
-    webkitWebViewRunJavaScriptWithParams(webView, WTFMove(params), nullptr, WTFMove(task));
+    RunJavaScriptParameters params = { String::fromUTF8(reinterpret_cast<const gchar*>(outputStreamData)), JSC::SourceTaintedOrigin::Untainted, URL { }, RunAsAsyncFunction::No, std::nullopt, ForceUserGesture::Yes, RemoveTransientActivation::Yes };
+    webkitWebViewRunJavaScriptWithParams(webView, WTFMove(params), nullptr, RunJavascriptReturnType::WebKitJavascriptResult, WTFMove(task));
 }
 
 /**
@@ -4473,7 +4521,7 @@ static void resourcesStreamReadCallback(GObject* object, GAsyncResult* result, g
  * @resource: the location of the resource to load
  * @cancellable: (allow-none): a #GCancellable or %NULL to ignore
  * @callback: (scope async): a #GAsyncReadyCallback to call when the script finished
- * @user_data: (closure): the data to pass to callback function
+ * @user_data: the data to pass to callback function
  *
  * Asynchronously run the script from @resource.
  *
@@ -4589,6 +4637,7 @@ struct ViewSaveAsyncData {
 };
 WEBKIT_DEFINE_ASYNC_DATA_STRUCT(ViewSaveAsyncData)
 
+#if ENABLE(MHTML)
 static void fileReplaceContentsCallback(GObject* object, GAsyncResult* result, gpointer data)
 {
     GRefPtr<GTask> task = adoptGRef(G_TASK(data));
@@ -4623,6 +4672,7 @@ static void getContentsAsMHTMLDataCallback(API::Data* wkData, GTask* taskPtr)
 
     g_task_return_boolean(task.get(), TRUE);
 }
+#endif // ENABLE(MHTML)
 
 /**
  * webkit_web_view_save:
@@ -4630,7 +4680,7 @@ static void getContentsAsMHTMLDataCallback(API::Data* wkData, GTask* taskPtr)
  * @save_mode: the #WebKitSaveMode specifying how the web page should be saved.
  * @cancellable: (allow-none): a #GCancellable or %NULL to ignore
  * @callback: (scope async): a #GAsyncReadyCallback to call when the request is satisfied
- * @user_data: (closure): the data to pass to callback function
+ * @user_data: the data to pass to callback function
  *
  * Asynchronously save the current web page.
  *
@@ -4649,12 +4699,14 @@ void webkit_web_view_save(WebKitWebView* webView, WebKitSaveMode saveMode, GCanc
     // We only support MHTML at the moment.
     g_return_if_fail(saveMode == WEBKIT_SAVE_MODE_MHTML);
 
+#if ENABLE(MHTML)
     GTask* task = g_task_new(webView, cancellable, callback, userData);
     g_task_set_source_tag(task, reinterpret_cast<gpointer>(webkit_web_view_save));
     g_task_set_task_data(task, createViewSaveAsyncData(), reinterpret_cast<GDestroyNotify>(destroyViewSaveAsyncData));
     getPage(webView).getContentsAsMHTMLData([task](API::Data* data) {
         getContentsAsMHTMLDataCallback(data, task);
     });
+#endif // ENABLE(MHTML)
 }
 
 /**
@@ -4693,7 +4745,7 @@ GInputStream* webkit_web_view_save_finish(WebKitWebView* webView, GAsyncResult* 
  * @save_mode: the #WebKitSaveMode specifying how the web page should be saved.
  * @cancellable: (allow-none): a #GCancellable or %NULL to ignore
  * @callback: (scope async): a #GAsyncReadyCallback to call when the request is satisfied
- * @user_data: (closure): the data to pass to callback function
+ * @user_data: the data to pass to callback function
  *
  * Asynchronously save the current web page.
  *
@@ -4713,6 +4765,7 @@ void webkit_web_view_save_to_file(WebKitWebView* webView, GFile* file, WebKitSav
     // We only support MHTML at the moment.
     g_return_if_fail(saveMode == WEBKIT_SAVE_MODE_MHTML);
 
+#if ENABLE(MHTML)
     GTask* task = g_task_new(webView, cancellable, callback, userData);
     g_task_set_source_tag(task, reinterpret_cast<gpointer>(webkit_web_view_save_to_file));
     ViewSaveAsyncData* data = createViewSaveAsyncData();
@@ -4722,6 +4775,7 @@ void webkit_web_view_save_to_file(WebKitWebView* webView, GFile* file, WebKitSav
     getPage(webView).getContentsAsMHTMLData([task](API::Data* data) {
         getContentsAsMHTMLDataCallback(data, task);
     });
+#endif // ENABLE(MHTML)
 }
 
 /**
@@ -4758,12 +4812,12 @@ WebKitDownload* webkit_web_view_download_uri(WebKitWebView* webView, const char*
     g_return_val_if_fail(uri, nullptr);
 
     auto& page = getPage(webView);
-    auto& downloadProxy = page.process().processPool().download(page.websiteDataStore(), &page, ResourceRequest { String::fromUTF8(uri) });
+    auto downloadProxy = page.process().processPool().download(page.websiteDataStore(), &page, ResourceRequest { String::fromUTF8(uri) });
     auto download = webkitDownloadCreate(downloadProxy, webView);
 #if ENABLE(2022_GLIB_API)
-    downloadProxy.setDidStartCallback([session = GRefPtr<WebKitNetworkSession> { webView->priv->networkSession }, download = download.get()](auto* downloadProxy) {
+    downloadProxy->setDidStartCallback([session = GRefPtr<WebKitNetworkSession> { webView->priv->networkSession }, download = download.get()](auto* downloadProxy) {
 #else
-    downloadProxy.setDidStartCallback([context = GRefPtr<WebKitWebContext> { webView->priv->context }, download = download.get()](auto* downloadProxy) {
+    downloadProxy->setDidStartCallback([context = GRefPtr<WebKitWebContext> { webView->priv->context }, download = download.get()](auto* downloadProxy) {
 #endif
         if (!downloadProxy)
             return;
@@ -4830,7 +4884,7 @@ gboolean webkit_web_view_get_tls_info(WebKitWebView* webView, GTlsCertificate** 
  * @options: #WebKitSnapshotOptions for the snapshot
  * @cancellable: (allow-none): a #GCancellable
  * @callback: (scope async): a #GAsyncReadyCallback
- * @user_data: (closure): user data
+ * @user_data: user data
  *
  * Asynchronously retrieves a snapshot of @web_view for @region.
  *
@@ -4860,9 +4914,9 @@ void webkit_web_view_get_snapshot(WebKitWebView* webView, WebKitSnapshotRegion r
         snapshotOptions |= SnapshotOptionsTransparentBackground;
 
     GRefPtr<GTask> task = adoptGRef(g_task_new(webView, cancellable, callback, userData));
-    getPage(webView).takeSnapshot({ }, { }, snapshotOptions, [task = WTFMove(task)](const ShareableBitmapHandle& handle) {
-        if (!handle.isNull()) {
-            if (auto bitmap = ShareableBitmap::create(handle, SharedMemory::Protection::ReadOnly)) {
+    getPage(webView).takeSnapshot({ }, { }, snapshotOptions, [task = WTFMove(task)](std::optional<ShareableBitmap::Handle>&& handle) {
+        if (handle) {
+            if (auto bitmap = ShareableBitmap::create(WTFMove(*handle), SharedMemory::Protection::ReadOnly)) {
                 if (auto surface = bitmap->createCairoSurface()) {
                     g_task_return_pointer(task.get(), surface.leakRef(), reinterpret_cast<GDestroyNotify>(cairo_surface_destroy));
                     return;
@@ -5025,8 +5079,8 @@ void webkit_web_view_restore_session_state(WebKitWebView* webView, WebKitWebView
 /**
  * webkit_web_view_add_frame_displayed_callback:
  * @web_view: a #WebKitWebView
- * @callback: a #WebKitFrameDisplayedCallback
- * @user_data: (closure): user data to pass to @callback
+ * @callback: (scope notified): a #WebKitFrameDisplayedCallback
+ * @user_data: user data to pass to @callback
  * @destroy_notify: (nullable): destroy notifier for @user_data
  *
  * Add a callback to be called when the backend notifies that a frame has been displayed in @web_view.
@@ -5079,7 +5133,7 @@ void webkit_web_view_remove_frame_displayed_callback(WebKitWebView* webView, uns
  * @message: a #WebKitUserMessage
  * @cancellable: (nullable): a #GCancellable or %NULL to ignore
  * @callback: (scope async): (nullable): A #GAsyncReadyCallback to call when the request is satisfied or %NULL
- * @user_data: (closure): the data to pass to callback function
+ * @user_data: the data to pass to callback function
  *
  * Send @message to the #WebKitWebPage corresponding to @web_view.
  *
@@ -5099,7 +5153,7 @@ void webkit_web_view_send_message_to_page(WebKitWebView* webView, WebKitUserMess
     GRefPtr<WebKitUserMessage> adoptedMessage = message;
     auto& page = getPage(webView);
     if (!callback) {
-        page.ensureRunningProcess().send(Messages::WebPage::SendMessageToWebExtension(webkitUserMessageGetMessage(message)), page.webPageID().toUInt64());
+        page.ensureRunningProcess().send(Messages::WebPage::SendMessageToWebProcessExtension(webkitUserMessageGetMessage(message)), page.webPageID().toUInt64());
         return;
     }
 
@@ -5117,7 +5171,7 @@ void webkit_web_view_send_message_to_page(WebKitWebView* webView, WebKitUserMess
             break;
         }
     };
-    page.ensureRunningProcess().sendWithAsyncReply(Messages::WebPage::SendMessageToWebExtensionWithReply(webkitUserMessageGetMessage(message)),
+    page.ensureRunningProcess().sendWithAsyncReply(Messages::WebPage::SendMessageToWebProcessExtensionWithReply(webkitUserMessageGetMessage(message)),
         WTFMove(completionHandler), page.webPageID().toUInt64());
 }
 

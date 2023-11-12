@@ -80,10 +80,10 @@ ExceptionOr<Ref<CSSUnitValue>> CSSUnitValue::create(double value, const String& 
 {
     auto parsedUnit = parseUnit(unit);
     if (parsedUnit == CSSUnitType::CSS_UNKNOWN)
-        return Exception { TypeError };
+        return Exception { ExceptionCode::TypeError };
     auto type = CSSNumericType::create(parsedUnit);
     if (!type)
-        return Exception { TypeError };
+        return Exception { ExceptionCode::TypeError };
     auto unitValue = adoptRef(*new CSSUnitValue(value, parsedUnit));
     unitValue->m_type = WTFMove(*type);
     return unitValue;
@@ -264,10 +264,7 @@ RefPtr<CSSValue> CSSUnitValue::toCSSValueWithProperty(CSSPropertyID propertyID) 
         auto sumNode = CSSCalcOperationNode::createSum(Vector { node.releaseNonNull() });
         if (!sumNode)
             return nullptr;
-        auto value = CSSCalcValue::create(sumNode.releaseNonNull());
-        if (!value)
-            return nullptr;
-        return CSSPrimitiveValue::create(value.releaseNonNull());
+        return CSSPrimitiveValue::create(CSSCalcValue::create(sumNode.releaseNonNull()));
     }
     return toCSSValue();
 }

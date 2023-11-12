@@ -30,7 +30,7 @@ config:
 
     Extension org.freedesktop.Platform.GL:
       # 1.4 is for Nvidia drivers
-      versions: "%{sdk-branch};1.4"
+      versions: "%{sdk-branch};%{sdk-branch-extra};1.4"
       version: "1.4"
       directory: "%{lib}/GL"
       subdirectories: "true"
@@ -72,11 +72,4 @@ config:
       directory: '%{lib}/openh264'
       add-ld-path: extra
       autodelete: 'false'
-      version: '%{sdk-branch}'
-
-    Extension org.freedesktop.Platform.sparkle-cdm:
-      directory: '%{lib}/sparkle-cdm'
-      autodelete: 'false'
-      no-autodownload: 'true'
-      add-ld-path: lib
       version: '%{sdk-branch}'

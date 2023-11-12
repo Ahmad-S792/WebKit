@@ -31,10 +31,10 @@
 #include "DataReference.h"
 #include "LibWebRTCNetworkMessages.h"
 #include "Logging.h"
-#include "NWSPI.h"
 #include "NetworkRTCUtilitiesCocoa.h"
 #include <WebCore/STUNMessageParsing.h>
 #include <dispatch/dispatch.h>
+#include <pal/spi/cocoa/NetworkSPI.h>
 #include <wtf/BlockPtr.h>
 
 namespace WebKit {
@@ -63,7 +63,6 @@ static inline void processIncomingData(RetainPtr<nw_connection_t>&& nwConnection
     nw_connection_receive(nwConnectionReference, 1, std::numeric_limits<uint32_t>::max(), makeBlockPtr([nwConnection = WTFMove(nwConnection), processData = WTFMove(processData), buffer = WTFMove(buffer)](dispatch_data_t content, nw_content_context_t context, bool isComplete, nw_error_t error) mutable {
         if (content) {
             dispatch_data_apply(content, makeBlockPtr([&](dispatch_data_t, size_t, const void* data, size_t size) {
-                // FIXME: Introduce uncheckedAppend version.
                 buffer.append(static_cast<const uint8_t*>(data), size);
                 return true;
             }).get());
@@ -101,14 +100,21 @@ NetworkRTCTCPSocketCocoa::NetworkRTCTCPSocketCocoa(LibWebRTCSocketIdentifier ide
     m_nwConnection = adoptNS(nw_connection_create(host.get(), tcpTLS.get()));
 
     nw_connection_set_queue(m_nwConnection.get(), tcpSocketQueue());
-    nw_connection_set_state_changed_handler(m_nwConnection.get(), makeBlockPtr([identifier = m_identifier, rtcProvider = Ref { rtcProvider }, connection = m_connection.copyRef()](nw_connection_state_t state, _Nullable nw_error_t error) {
-        ASSERT_UNUSED(error, !error);
+    nw_connection_set_state_changed_handler(m_nwConnection.get(), makeBlockPtr([weakThis = WeakPtr { *this }, identifier = m_identifier, rtcProvider = Ref { rtcProvider }, connection = m_connection.copyRef()](nw_connection_state_t state, _Nullable nw_error_t error) {
         switch (state) {
         case nw_connection_state_invalid:
         case nw_connection_state_waiting:
         case nw_connection_state_preparing:
             return;
         case nw_connection_state_ready:
+            rtcProvider->callOnRTCNetworkThread([weakThis, connection, identifier] {
+                if (!weakThis)
+                    return;
+                auto path = adoptNS(nw_connection_copy_current_path(weakThis->m_nwConnection.get()));
+                auto interface = adoptNS(nw_path_copy_interface(path.get()));
+                if (auto* name = nw_interface_get_name(interface.get()))
+                    connection->send(Messages::LibWebRTCNetwork::SignalUsedInterface(identifier, String::fromUTF8(name)), 0);
+            });
             connection->send(Messages::LibWebRTCNetwork::SignalConnect(identifier), 0);
             return;
         case nw_connection_state_failed:
@@ -122,7 +128,7 @@ NetworkRTCTCPSocketCocoa::NetworkRTCTCPSocketCocoa(LibWebRTCSocketIdentifier ide
         }
     }).get());
 
-    processIncomingData(m_nwConnection.get(), [identifier = m_identifier, connection = m_connection.copyRef(), ip = remoteAddress.ipaddr(), port = remoteAddress.port(), isSTUN = m_isSTUN](auto&& buffer) mutable {
+    processIncomingData(m_nwConnection.get(), [identifier = m_identifier, connection = m_connection.copyRef(), ip = remoteAddress.ipaddr(), port = remoteAddress.port(), isSTUN = m_isSTUN](Vector<uint8_t>&& buffer) mutable {
         return WebRTC::extractMessages(WTFMove(buffer), isSTUN ? WebRTC::MessageType::STUN : WebRTC::MessageType::Data, [&](auto* message, auto size) {
             IPC::DataReference data(message, size);
             connection->send(Messages::LibWebRTCNetwork::SignalReadPacket { identifier, data, RTCNetwork::IPAddress(ip), port, rtc::TimeMillis() * 1000 }, 0);
@@ -139,9 +145,18 @@ void NetworkRTCTCPSocketCocoa::close()
     m_rtcProvider.takeSocket(m_identifier);
 }
 
-void NetworkRTCTCPSocketCocoa::setOption(int, int)
+void NetworkRTCTCPSocketCocoa::setOption(int option, int value)
 {
-    // FIXME: Validate this is not needed.
+    if (option != rtc::Socket::OPT_DSCP)
+        return;
+
+    auto trafficClass = trafficClassFromDSCP(static_cast<rtc::DiffServCodePoint>(value));
+    if (!trafficClass) {
+        RELEASE_LOG_ERROR(WebRTC, "NetworkRTCTCPSocketCocoa has an unexpected DSCP value %d", value);
+        return;
+    }
+
+    nw_connection_reset_traffic_class(m_nwConnection.get(), *trafficClass);
 }
 
 static RetainPtr<dispatch_data_t> dataFromVector(Vector<uint8_t>&& v)
@@ -172,15 +187,14 @@ Vector<uint8_t> NetworkRTCTCPSocketCocoa::createMessageBuffer(const uint8_t* dat
         buffer.reserveInitialCapacity(messageLengths->messageLengthWithPadding);
         buffer.append(data, size);
         for (size_t cptr = 0 ; cptr < messageLengths->messageLengthWithPadding - size; ++cptr)
-            buffer.uncheckedAppend(0);
+            buffer.append(0);
         return buffer;
     }
 
     // Prepend length.
     Vector<uint8_t> buffer;
     buffer.reserveInitialCapacity(size + 2);
-    buffer.uncheckedAppend((size >> 8) & 0xFF);
-    buffer.uncheckedAppend(size & 0xFF);
+    buffer.appendList({ (size >> 8) & 0xFF, size & 0xFF });
     buffer.append(data, size);
     return buffer;
 }

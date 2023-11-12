@@ -109,7 +109,8 @@ public:
     void setScreenWakeLockPermission(bool);
 
     // MediaStream.
-    void setUserMediaPermission(bool);
+    void setCameraPermission(bool);
+    void setMicrophonePermission(bool);
     void resetUserMediaPermission();
     void setUserMediaPersistentPermissionForOrigin(bool permission, WKStringRef origin, WKStringRef parentOrigin);
     unsigned userMediaPermissionRequestCountForOrigin(WKStringRef origin, WKStringRef parentOrigin) const;
@@ -155,6 +156,12 @@ public:
 
     void clearResourceLoadStatistics();
     void reloadFromOrigin();
+
+    WKRetainPtr<WKStringRef> getBackgroundFetchIdentifier();
+    WKRetainPtr<WKStringRef> lastAddedBackgroundFetchIdentifier() const;
+    WKRetainPtr<WKStringRef> lastRemovedBackgroundFetchIdentifier() const;
+    WKRetainPtr<WKStringRef> lastUpdatedBackgroundFetchIdentifier() const;
+    WKRetainPtr<WKStringRef> backgroundFetchState(WKStringRef);
 
 private:
     InjectedBundle() = default;
@@ -214,6 +221,8 @@ private:
     Vector<String> m_allowedHosts;
 
     size_t m_userScriptInjectedCount { 0 };
+
+    WKRetainPtr<WKCaptionUserPreferencesTestingModeTokenRef> m_captionUserPreferencesTestingModeToken;
 };
 
 void postMessage(const char* name);

@@ -38,7 +38,8 @@ class TextControlInnerContainer final : public HTMLDivElement {
 public:
     static Ref<TextControlInnerContainer> create(Document&);
 private:
-    TextControlInnerContainer(Document&);
+    static constexpr auto CreateTextControlInnerContainer = CreateHTMLDivElement | NodeFlag::HasCustomStyleResolveCallbacks;
+    explicit TextControlInnerContainer(Document&);
     RenderPtr<RenderElement> createElementRenderer(RenderStyle&&, const RenderTreePosition&) override;
     std::optional<Style::ResolvedStyle> resolveCustomStyle(const Style::ResolutionContext&, const RenderStyle* shadowHostStyle) override;
 };
@@ -49,7 +50,8 @@ public:
     static Ref<TextControlInnerElement> create(Document&);
 
 private:
-    TextControlInnerElement(Document&);
+    static constexpr auto CreateTextControlInnerElement = CreateHTMLDivElement | NodeFlag::HasCustomStyleResolveCallbacks;
+    explicit TextControlInnerElement(Document&);
     std::optional<Style::ResolvedStyle> resolveCustomStyle(const Style::ResolutionContext&, const RenderStyle* shadowHostStyle) override;
 
     bool isMouseFocusable() const override { return false; }
@@ -73,7 +75,8 @@ public:
 private:
     void updateInnerTextElementEditabilityImpl(bool isEditable, bool initialization);
 
-    TextControlInnerTextElement(Document&);
+    static constexpr auto CreateTextControlInnerTextElement = CreateHTMLDivElement | NodeFlag::HasCustomStyleResolveCallbacks;
+    explicit TextControlInnerTextElement(Document&);
     RenderPtr<RenderElement> createElementRenderer(RenderStyle&&, const RenderTreePosition&) override;
     std::optional<Style::ResolvedStyle> resolveCustomStyle(const Style::ResolutionContext&, const RenderStyle* shadowHostStyle) override;
     bool isMouseFocusable() const override { return false; }
@@ -86,7 +89,8 @@ public:
     static Ref<TextControlPlaceholderElement> create(Document&);
 
 private:
-    TextControlPlaceholderElement(Document&);
+    static constexpr auto CreateTextControlPlaceholderElement = CreateHTMLDivElement | NodeFlag::HasCustomStyleResolveCallbacks;
+    explicit TextControlPlaceholderElement(Document&);
     
     std::optional<Style::ResolvedStyle> resolveCustomStyle(const Style::ResolutionContext&, const RenderStyle* shadowHostStyle) override;
 };
@@ -104,7 +108,8 @@ public:
     bool canAdjustStyleForAppearance() const { return m_canAdjustStyleForAppearance; }
 
 private:
-    SearchFieldResultsButtonElement(Document&);
+    static constexpr auto CreateSearchFieldResultsButtonElement = CreateHTMLDivElement | NodeFlag::HasCustomStyleResolveCallbacks;
+    explicit SearchFieldResultsButtonElement(Document&);
     bool isMouseFocusable() const override { return false; }
     std::optional<Style::ResolvedStyle> resolveCustomStyle(const Style::ResolutionContext&, const RenderStyle* shadowHostStyle) override;
     bool isSearchFieldResultsButtonElement() const override { return true; }
@@ -123,7 +128,8 @@ public:
 #endif
 
 private:
-    SearchFieldCancelButtonElement(Document&);
+    static constexpr auto CreateSearchFieldCancelButtonElement = CreateHTMLDivElement | NodeFlag::HasCustomStyleResolveCallbacks;
+    explicit SearchFieldCancelButtonElement(Document&);
     bool isMouseFocusable() const override { return false; }
     std::optional<Style::ResolvedStyle> resolveCustomStyle(const Style::ResolutionContext&, const RenderStyle* shadowHostStyle) override;
 };

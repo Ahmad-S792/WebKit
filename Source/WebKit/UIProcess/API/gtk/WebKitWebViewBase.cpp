@@ -34,13 +34,18 @@
 #include "DragSource.h"
 #include "DrawingAreaProxyCoordinatedGraphics.h"
 #include "DropTarget.h"
+#include "EditorState.h"
 #include "InputMethodFilter.h"
+#include "KeyAutoRepeatHandler.h"
 #include "KeyBindingTranslator.h"
 #include "NativeWebKeyboardEvent.h"
 #include "NativeWebMouseEvent.h"
+#include "NativeWebTouchEvent.h"
 #include "NativeWebWheelEvent.h"
 #include "PageClientImpl.h"
 #include "PointerLockManager.h"
+#include "ScreenManager.h"
+#include "ToplevelWindow.h"
 #include "ViewGestureController.h"
 #include "WebEventFactory.h"
 #include "WebInspectorUIProxy.h"
@@ -70,6 +75,8 @@
 #include <WebCore/PointerEvent.h>
 #include <WebCore/RefPtrCairo.h>
 #include <WebCore/Region.h>
+#include <WebCore/Scrollbar.h>
+#include <cmath>
 #include <gdk/gdk.h>
 #include <gdk/gdkkeysyms.h>
 #include <glib-object.h>
@@ -197,15 +204,15 @@ struct MotionEvent {
             modifiers.add(WebEventModifier::MetaKey);
 
         if (state & GDK_BUTTON1_MASK) {
-            button = WebMouseEventButton::LeftButton;
+            button = WebMouseEventButton::Left;
             buttons |= 1;
         }
         if (state & GDK_BUTTON2_MASK) {
-            button = WebMouseEventButton::MiddleButton;
+            button = WebMouseEventButton::Middle;
             buttons |= 4;
         }
         if (state & GDK_BUTTON3_MASK) {
-            button = WebMouseEventButton::RightButton;
+            button = WebMouseEventButton::Right;
             buttons |= 2;
         }
     }
@@ -219,7 +226,7 @@ struct MotionEvent {
 
     FloatPoint position;
     FloatPoint globalPosition;
-    WebMouseEventButton button { WebMouseEventButton::NoButton };
+    WebMouseEventButton button { WebMouseEventButton::None };
     unsigned short buttons { 0 };
     OptionSet<WebEventModifier> modifiers;
 };
@@ -237,10 +244,12 @@ struct _WebKitWebViewBasePrivate {
 #if GTK_CHECK_VERSION(3, 24, 0)
         , releaseEmojiChooserTimer(RunLoop::main(), this, &_WebKitWebViewBasePrivate::releaseEmojiChooserTimerFired)
 #endif
+        , nextPresentationUpdateTimer(RunLoop::main(), this, &_WebKitWebViewBasePrivate::nextPresentationUpdateTimerFired)
     {
 #if GTK_CHECK_VERSION(3, 24, 0)
         releaseEmojiChooserTimer.setPriority(RunLoopSourcePriority::ReleaseUnusedResourcesTimer);
 #endif
+        nextPresentationUpdateTimer.setPriority(GDK_PRIORITY_REDRAW - 10);
     }
 
     void updateActivityStateTimerFired()
@@ -264,6 +273,14 @@ struct _WebKitWebViewBasePrivate {
 #endif
     }
 #endif
+
+    void nextPresentationUpdateTimerFired()
+    {
+        while (!nextPresentationUpdateCallbacks.isEmpty()) {
+            auto callback = nextPresentationUpdateCallbacks.takeLast();
+            callback();
+        }
+    }
 
 #if !USE(GTK4)
     WebKitWebViewChildrenMap children;
@@ -291,13 +308,16 @@ struct _WebKitWebViewBasePrivate {
     GtkWidget* inspectorView { nullptr };
     AttachmentSide inspectorAttachmentSide { AttachmentSide::Bottom };
     unsigned inspectorViewSize { 0 };
+#if ENABLE(CONTEXT_MENUS)
 #if USE(GTK4)
     GRefPtr<GdkEvent> contextMenuEvent;
 #else
     GUniquePtr<GdkEvent> contextMenuEvent;
 #endif
     WebContextMenuProxyGtk* activeContextMenuProxy { nullptr };
+#endif // ENABLE(CONTEXT_MENUS)
     InputMethodFilter inputMethodFilter;
+    KeyAutoRepeatHandler keyAutoRepeatHandler;
     KeyBindingTranslator keyBindingTranslator;
     TouchEventsMap touchEvents;
     IntSize contentsSize;
@@ -305,25 +325,18 @@ struct _WebKitWebViewBasePrivate {
     bool isBlank;
     bool shouldNotifyFocusEvents { true };
 
-    GtkWindow* toplevelOnScreenWindow { nullptr };
-#if USE(GTK4)
-    unsigned long toplevelIsActiveID { 0 };
-    unsigned long toplevelWindowStateChangedID { 0 };
-    unsigned long toplevelWindowUnrealizedID { 0 };
-#else
-    unsigned long toplevelFocusInEventID { 0 };
-    unsigned long toplevelFocusOutEventID { 0 };
-    unsigned long toplevelWindowStateEventID { 0 };
-#endif
-    unsigned long toplevelWindowRealizedID { 0 };
+    ToplevelWindow* toplevelOnScreenWindow { nullptr };
 
     // View State.
-    OptionSet<ActivityState::Flag> activityState;
-    OptionSet<ActivityState::Flag> activityStateFlagsToUpdate;
+    OptionSet<ActivityState> activityState;
+    OptionSet<ActivityState> activityStateFlagsToUpdate;
     RunLoop::Timer updateActivityStateTimer;
 
+    PlatformDisplayID displayID;
+
 #if ENABLE(FULLSCREEN_API)
-    bool fullScreenModeActive { false };
+    WebFullScreenManagerProxy::FullscreenState fullScreenState;
+    bool windowWasAlreadyInFullScreen;
     std::unique_ptr<PAL::SleepDisabler> sleepDisabler;
 #endif
 
@@ -351,6 +364,10 @@ struct _WebKitWebViewBasePrivate {
     bool pageGrabbedTouch;
 
     std::unique_ptr<PointerLockManager> pointerLockManager;
+
+    Vector<CompletionHandler<void()>> nextPresentationUpdateCallbacks;
+    RunLoop::Timer nextPresentationUpdateTimer;
+    MonotonicTime nextPresentationUpdateStartTime;
 };
 
 /**
@@ -365,7 +382,27 @@ WEBKIT_DEFINE_TYPE(WebKitWebViewBase, webkit_web_view_base, GTK_TYPE_WIDGET)
 WEBKIT_DEFINE_TYPE(WebKitWebViewBase, webkit_web_view_base, GTK_TYPE_CONTAINER)
 #endif
 
-static void webkitWebViewBaseScheduleUpdateActivityState(WebKitWebViewBase* webViewBase, OptionSet<ActivityState::Flag> flagsToUpdate)
+#if ENABLE(FULLSCREEN_API)
+static void webkitWebViewBaseDidEnterFullScreen(WebKitWebViewBase*);
+static void webkitWebViewBaseDidExitFullScreen(WebKitWebViewBase*);
+static void webkitWebViewBaseRequestExitFullScreen(WebKitWebViewBase*);
+#endif
+
+static void webkitWebViewBaseUpdateDisplayID(WebKitWebViewBase* webViewBase, GdkMonitor* monitor)
+{
+    if (!monitor)
+        return;
+
+    auto displayID = ScreenManager::singleton().displayID(monitor);
+    if (displayID == webViewBase->priv->displayID)
+        return;
+
+    webViewBase->priv->displayID = displayID;
+    if (webViewBase->priv->pageProxy)
+        webViewBase->priv->pageProxy->windowScreenDidChange(displayID);
+}
+
+static void webkitWebViewBaseScheduleUpdateActivityState(WebKitWebViewBase* webViewBase, OptionSet<ActivityState> flagsToUpdate)
 {
     WebKitWebViewBasePrivate* priv = webViewBase->priv;
     priv->activityStateFlagsToUpdate.add(flagsToUpdate);
@@ -375,92 +412,137 @@ static void webkitWebViewBaseScheduleUpdateActivityState(WebKitWebViewBase* webV
     priv->updateActivityStateTimer.startOneShot(0_s);
 }
 
-#if !USE(GTK4)
-static gboolean toplevelWindowFocusInEvent(GtkWidget* widget, GdkEventFocus*, WebKitWebViewBase* webViewBase)
-{
-    // Spurious focus in events can occur when the window is hidden.
-    if (!gtk_widget_get_visible(widget))
-        return FALSE;
-
-    WebKitWebViewBasePrivate* priv = webViewBase->priv;
-    if (priv->activityState & ActivityState::WindowIsActive)
-        return FALSE;
-
-    priv->activityState.add(ActivityState::WindowIsActive);
-    webkitWebViewBaseScheduleUpdateActivityState(webViewBase, ActivityState::WindowIsActive);
-
-    return FALSE;
-}
-
-static gboolean toplevelWindowFocusOutEvent(GtkWidget*, GdkEventFocus*, WebKitWebViewBase* webViewBase)
+void webkitWebViewBaseToplevelWindowIsActiveChanged(WebKitWebViewBase* webViewBase, bool isActive)
 {
     WebKitWebViewBasePrivate* priv = webViewBase->priv;
-    if (!(priv->activityState & ActivityState::WindowIsActive))
-        return FALSE;
-
-    priv->activityState.remove(ActivityState::WindowIsActive);
-    webkitWebViewBaseScheduleUpdateActivityState(webViewBase, ActivityState::WindowIsActive);
-
-    return FALSE;
-}
-
-static gboolean toplevelWindowStateEvent(GtkWidget*, GdkEventWindowState* event, WebKitWebViewBase* webViewBase)
-{
-    WebKitWebViewBasePrivate* priv = webViewBase->priv;
-    if (!(event->changed_mask & GDK_WINDOW_STATE_ICONIFIED))
-        return FALSE;
-
-    bool visible = !(event->new_window_state & GDK_WINDOW_STATE_ICONIFIED);
-    if ((visible && priv->activityState & ActivityState::IsVisible) || (!visible && !(priv->activityState & ActivityState::IsVisible)))
-        return FALSE;
-
-    if (visible)
-        priv->activityState.add(ActivityState::IsVisible);
-    else
-        priv->activityState.remove(ActivityState::IsVisible);
-    webkitWebViewBaseScheduleUpdateActivityState(webViewBase, ActivityState::IsVisible);
-
-    return FALSE;
-}
-
-static void toplevelWindowRealized(WebKitWebViewBase* webViewBase)
-{
-    gtk_widget_realize(GTK_WIDGET(webViewBase));
-
-    WebKitWebViewBasePrivate* priv = webViewBase->priv;
-    if (priv->toplevelWindowRealizedID) {
-        g_signal_handler_disconnect(priv->toplevelOnScreenWindow, priv->toplevelWindowRealizedID);
-        priv->toplevelWindowRealizedID = 0;
+    if (isActive) {
+        if (priv->activityState & ActivityState::WindowIsActive)
+            return;
+        priv->activityState.add(ActivityState::WindowIsActive);
+#if USE(GTK4)
+        if (priv->activityState & ActivityState::IsFocused)
+            priv->inputMethodFilter.notifyFocusedIn();
+#endif
+    } else {
+        if (!(priv->activityState & ActivityState::WindowIsActive))
+            return;
+        priv->activityState.remove(ActivityState::WindowIsActive);
+#if USE(GTK4)
+        if (priv->activityState & ActivityState::IsFocused)
+            priv->inputMethodFilter.notifyFocusedOut();
+#endif
     }
+    webkitWebViewBaseScheduleUpdateActivityState(webViewBase, ActivityState::WindowIsActive);
 }
 
-static void webkitWebViewBaseSetToplevelOnScreenWindow(WebKitWebViewBase* webViewBase, GtkWindow* window)
+void webkitWebViewBaseToplevelWindowStateChanged(WebKitWebViewBase* webViewBase, uint32_t changedMask, uint32_t state)
+{
+    WebKitWebViewBasePrivate* priv = webViewBase->priv;
+#if ENABLE(FULLSCREEN_API)
+#if USE(GTK4)
+    bool changedFullscreen = changedMask & GDK_TOPLEVEL_STATE_FULLSCREEN;
+    bool fullscreen = state & GDK_TOPLEVEL_STATE_FULLSCREEN;
+#else
+    bool changedFullscreen = changedMask & GDK_WINDOW_STATE_FULLSCREEN;
+    bool fullscreen = state & GDK_WINDOW_STATE_FULLSCREEN;
+#endif
+    if (changedFullscreen) {
+        switch (priv->fullScreenState) {
+        case WebFullScreenManagerProxy::FullscreenState::EnteringFullscreen:
+            if (fullscreen)
+                webkitWebViewBaseDidEnterFullScreen(webViewBase);
+            break;
+        case WebFullScreenManagerProxy::FullscreenState::ExitingFullscreen:
+            if (!fullscreen)
+                webkitWebViewBaseDidExitFullScreen(webViewBase);
+            break;
+        case WebFullScreenManagerProxy::FullscreenState::InFullscreen:
+            if (!fullscreen && webkitWebViewBaseIsFullScreen(webViewBase))
+                webkitWebViewBaseRequestExitFullScreen(webViewBase);
+            break;
+        case WebFullScreenManagerProxy::FullscreenState::NotInFullscreen:
+            break;
+        }
+    }
+#endif
+
+#if USE(GTK4)
+    bool changedMinimized = changedMask & GDK_TOPLEVEL_STATE_MINIMIZED;
+    bool visible = !(state & GDK_TOPLEVEL_STATE_MINIMIZED);
+#else
+    bool changedMinimized = changedMask & GDK_WINDOW_STATE_ICONIFIED;
+    bool visible = !(state & GDK_WINDOW_STATE_ICONIFIED);
+#endif
+    if (!changedMinimized)
+        return;
+
+    if (visible) {
+        if (priv->activityState & ActivityState::IsVisible || !gtk_widget_get_mapped(GTK_WIDGET(webViewBase)) || !priv->toplevelOnScreenWindow->isInMonitor())
+            return;
+        priv->activityState.add(ActivityState::IsVisible);
+    } else {
+        if (!(priv->activityState & ActivityState::IsVisible))
+            return;
+        priv->activityState.remove(ActivityState::IsVisible);
+    }
+    webkitWebViewBaseScheduleUpdateActivityState(webViewBase, ActivityState::IsVisible);
+}
+
+void webkitWebViewBaseToplevelWindowMonitorChanged(WebKitWebViewBase* webViewBase, GdkMonitor* monitor)
+{
+    WebKitWebViewBasePrivate* priv = webViewBase->priv;
+    if (priv->toplevelOnScreenWindow->isInMonitor()) {
+        if (!(priv->activityState & ActivityState::IsVisible) && gtk_widget_get_mapped(GTK_WIDGET(webViewBase)) && !priv->toplevelOnScreenWindow->isMinimized()) {
+            priv->activityState.add(ActivityState::IsVisible);
+            webkitWebViewBaseScheduleUpdateActivityState(webViewBase, ActivityState::IsVisible);
+        }
+    } else {
+        if (priv->activityState & ActivityState::IsVisible) {
+            priv->activityState.remove(ActivityState::IsVisible);
+            webkitWebViewBaseScheduleUpdateActivityState(webViewBase, ActivityState::IsVisible);
+        }
+    }
+    webkitWebViewBaseUpdateDisplayID(webViewBase, monitor);
+}
+
+static void webkitWebViewBaseSetToplevelOnScreenWindow(WebKitWebViewBase* webViewBase, ToplevelWindow* window)
 {
     WebKitWebViewBasePrivate* priv = webViewBase->priv;
     if (priv->toplevelOnScreenWindow == window)
         return;
 
-    if (priv->toplevelFocusInEventID) {
-        g_signal_handler_disconnect(priv->toplevelOnScreenWindow, priv->toplevelFocusInEventID);
-        priv->toplevelFocusInEventID = 0;
-    }
-    if (priv->toplevelFocusOutEventID) {
-        g_signal_handler_disconnect(priv->toplevelOnScreenWindow, priv->toplevelFocusOutEventID);
-        priv->toplevelFocusOutEventID = 0;
-    }
-    if (priv->toplevelWindowStateEventID) {
-        g_signal_handler_disconnect(priv->toplevelOnScreenWindow, priv->toplevelWindowStateEventID);
-        priv->toplevelWindowStateEventID = 0;
-    }
-    if (priv->toplevelWindowRealizedID) {
-        g_signal_handler_disconnect(priv->toplevelOnScreenWindow, priv->toplevelWindowRealizedID);
-        priv->toplevelWindowRealizedID = 0;
-    }
+    if (priv->toplevelOnScreenWindow)
+        priv->toplevelOnScreenWindow->removeWebView(webViewBase);
 
     priv->toplevelOnScreenWindow = window;
 
-    if (!priv->toplevelOnScreenWindow) {
-        OptionSet<ActivityState::Flag> flagsToUpdate;
+    OptionSet<ActivityState> flagsToUpdate;
+    if (priv->toplevelOnScreenWindow) {
+        priv->toplevelOnScreenWindow->addWebView(webViewBase);
+
+        if (!(priv->activityState & ActivityState::IsInWindow)) {
+            priv->activityState.add(ActivityState::IsInWindow);
+            flagsToUpdate.add(ActivityState::IsInWindow);
+        }
+
+#if ENABLE(DEVELOPER_MODE)
+        // Xvfb doesn't support toplevel focus, so gtk_window_is_active() always returns false. We consider
+        // toplevel window to be always active since it's the only one.
+        if (WebCore::PlatformDisplay::sharedDisplay().type() == WebCore::PlatformDisplay::Type::X11) {
+            if (!g_strcmp0(g_getenv("UNDER_XVFB"), "yes")) {
+                priv->activityState.add(ActivityState::WindowIsActive);
+                flagsToUpdate.add(ActivityState::WindowIsActive);
+            }
+        }
+#endif
+
+        if (priv->toplevelOnScreenWindow->isActive() && !(priv->activityState & ActivityState::WindowIsActive)) {
+            priv->activityState.add(ActivityState::WindowIsActive);
+            flagsToUpdate.add(ActivityState::WindowIsActive);
+        }
+
+        webkitWebViewBaseUpdateDisplayID(webViewBase, priv->toplevelOnScreenWindow->monitor());
+    } else {
         if (priv->activityState & ActivityState::IsInWindow) {
             priv->activityState.remove(ActivityState::IsInWindow);
             flagsToUpdate.add(ActivityState::IsInWindow);
@@ -469,27 +551,11 @@ static void webkitWebViewBaseSetToplevelOnScreenWindow(WebKitWebViewBase* webVie
             priv->activityState.remove(ActivityState::WindowIsActive);
             flagsToUpdate.add(ActivityState::IsInWindow);
         }
-        if (flagsToUpdate)
-            webkitWebViewBaseScheduleUpdateActivityState(webViewBase, flagsToUpdate);
-
-        return;
     }
 
-    priv->toplevelFocusInEventID =
-        g_signal_connect(priv->toplevelOnScreenWindow, "focus-in-event",
-                         G_CALLBACK(toplevelWindowFocusInEvent), webViewBase);
-    priv->toplevelFocusOutEventID =
-        g_signal_connect(priv->toplevelOnScreenWindow, "focus-out-event",
-                         G_CALLBACK(toplevelWindowFocusOutEvent), webViewBase);
-    priv->toplevelWindowStateEventID =
-        g_signal_connect(priv->toplevelOnScreenWindow, "window-state-event", G_CALLBACK(toplevelWindowStateEvent), webViewBase);
-
-    if (gtk_widget_get_realized(GTK_WIDGET(window)))
-        gtk_widget_realize(GTK_WIDGET(webViewBase));
-    else
-        priv->toplevelWindowRealizedID = g_signal_connect_swapped(window, "realize", G_CALLBACK(toplevelWindowRealized), webViewBase);
+    if (flagsToUpdate)
+        webkitWebViewBaseScheduleUpdateActivityState(webViewBase, flagsToUpdate);
 }
-#endif
 
 static void webkitWebViewBaseRealize(GtkWidget* widget)
 {
@@ -535,6 +601,9 @@ static void webkitWebViewBaseRealize(GtkWidget* widget)
     GdkWindow* window = gdk_window_new(gtk_widget_get_parent_window(widget), &attributes, attributesMask);
     gtk_widget_set_window(widget, window);
     gdk_window_set_user_data(window, widget);
+
+    auto* monitor = gdk_display_get_monitor_at_window(gtk_widget_get_display(widget), window);
+    webkitWebViewBaseUpdateDisplayID(webView, monitor);
 #endif
 
     auto* imContext = priv->inputMethodFilter.context();
@@ -703,9 +772,40 @@ static void webkitWebViewBaseCompleteEmojiChooserRequest(WebKitWebViewBase* webV
 }
 #endif
 
+static void webkitWebViewBaseNextPresentationUpdateMonitorStart(WebKitWebViewBase* webViewBase, CompletionHandler<void()>&& callback)
+{
+    auto* priv = webViewBase->priv;
+    priv->nextPresentationUpdateCallbacks.insert(0, WTFMove(callback));
+    priv->nextPresentationUpdateStartTime = MonotonicTime::now();
+    priv->nextPresentationUpdateTimer.startOneShot(100_ms);
+}
+
+static void webkitWebViewBaseNextPresentationUpdateMonitorStop(WebKitWebViewBase* webViewBase)
+{
+    auto* priv = webViewBase->priv;
+    priv->nextPresentationUpdateTimer.stop();
+    priv->nextPresentationUpdateTimerFired();
+}
+
+static void webkitWebViewBaseNextPresentationUpdateFrame(WebKitWebViewBase* webViewBase)
+{
+    auto* priv = webViewBase->priv;
+    if (priv->nextPresentationUpdateCallbacks.isEmpty())
+        return;
+
+    // We wait up to 100 milliseconds for new frames. If there are several frames queued quickly,
+    // we want to wait until all of them have been processed, so after receiving a frame, we wait
+    // for the next frame (1 frame time and a half to make sure) or stop.
+    if (MonotonicTime::now() - priv->nextPresentationUpdateStartTime > 100_ms)
+        webkitWebViewBaseNextPresentationUpdateMonitorStop(webViewBase);
+    else
+        priv->nextPresentationUpdateTimer.startOneShot(24_ms);
+}
+
 static void webkitWebViewBaseDispose(GObject* gobject)
 {
     WebKitWebViewBase* webView = WEBKIT_WEB_VIEW_BASE(gobject);
+    webkitWebViewBaseNextPresentationUpdateMonitorStop(webView);
 #if USE(GTK4)
     webkitWebViewBaseRemoveDialog(webView, webView->priv->dialog);
     webkitWebViewBaseRemoveWebInspector(webView, webView->priv->inspectorView);
@@ -714,12 +814,13 @@ static void webkitWebViewBaseDispose(GObject* gobject)
     g_clear_pointer(&webView->priv->emojiChooser, gtk_widget_unparent);
 #else
     g_clear_pointer(&webView->priv->dialog, gtk_widget_destroy);
-    webkitWebViewBaseSetToplevelOnScreenWindow(webView, nullptr);
 #if ENABLE(ACCESSIBILITY)
     if (webView->priv->accessible)
         webkitWebViewAccessibleSetWebView(WEBKIT_WEB_VIEW_ACCESSIBLE(webView->priv->accessible.get()), nullptr);
 #endif // ENABLE(ACCESSIBILITY)
 #endif
+
+    webkitWebViewBaseSetToplevelOnScreenWindow(webView, nullptr);
 #if GTK_CHECK_VERSION(3, 24, 0)
     webkitWebViewBaseCompleteEmojiChooserRequest(webView, emptyString());
 #endif
@@ -777,6 +878,8 @@ static void webkitWebViewBaseSnapshot(GtkWidget* widget, GtkSnapshot* snapshot)
 
     if (webViewBase->priv->dialog)
         gtk_widget_snapshot_child(widget, webViewBase->priv->dialog, snapshot);
+
+    webkitWebViewBaseNextPresentationUpdateFrame(webViewBase);
 }
 #else
 static gboolean webkitWebViewBaseDraw(GtkWidget* widget, cairo_t* cr)
@@ -812,6 +915,8 @@ static gboolean webkitWebViewBaseDraw(GtkWidget* widget, cairo_t* cr)
 
     GTK_WIDGET_CLASS(webkit_web_view_base_parent_class)->draw(widget, cr);
 
+    webkitWebViewBaseNextPresentationUpdateFrame(webViewBase);
+
     return FALSE;
 }
 #endif
@@ -833,6 +938,14 @@ static void webkitWebViewBaseChildAllocate(GtkWidget* child, gpointer userData)
     priv->children.set(child, IntRect());
 }
 #endif
+
+static void webkitWebViewBaseSetSize(WebKitWebViewBase* webViewBase, const IntSize& size)
+{
+    auto* priv = webViewBase->priv;
+    priv->viewSize = size;
+    if (auto* drawingArea = static_cast<DrawingAreaProxyCoordinatedGraphics*>(priv->pageProxy->drawingArea()))
+        drawingArea->setSize(priv->viewSize);
+}
 
 #if USE(GTK4)
 static void webkitWebViewBaseSizeAllocate(GtkWidget* widget, int width, int height, int baseline)
@@ -893,10 +1006,7 @@ static void webkitWebViewBaseSizeAllocate(GtkWidget* widget, GtkAllocation* allo
     }
 #endif
 
-    priv->viewSize = viewRect.size();
-
-    if (auto* drawingArea = static_cast<DrawingAreaProxyCoordinatedGraphics*>(priv->pageProxy->drawingArea()))
-        drawingArea->setSize(priv->viewSize);
+    webkitWebViewBaseSetSize(webViewBase, viewRect.size());
 }
 
 #if USE(GTK4)
@@ -936,30 +1046,17 @@ static void webkitWebViewBaseMap(GtkWidget* widget)
 
     WebKitWebViewBase* webViewBase = WEBKIT_WEB_VIEW_BASE(widget);
     WebKitWebViewBasePrivate* priv = webViewBase->priv;
-    OptionSet<ActivityState::Flag> flagsToUpdate;
-    if (!(priv->activityState & ActivityState::IsVisible))
-        flagsToUpdate.add(ActivityState::IsVisible);
-    if (priv->toplevelOnScreenWindow) {
-        if (!(priv->activityState & ActivityState::IsInWindow))
-            flagsToUpdate.add(ActivityState::IsInWindow);
-
-#if ENABLE(DEVELOPER_MODE)
-        // Xvfb doesn't support toplevel focus, so gtk_window_is_active() always returns false. We consider
-        // toplevel window to be always active since it's the only one.
-        if (WebCore::PlatformDisplay::sharedDisplay().type() == WebCore::PlatformDisplay::Type::X11) {
-            if (!g_strcmp0(g_getenv("UNDER_XVFB"), "yes"))
-                flagsToUpdate.add(ActivityState::WindowIsActive);
-        }
-#endif
-
-        if (gtk_window_is_active(GTK_WINDOW(priv->toplevelOnScreenWindow)) && !(priv->activityState & ActivityState::WindowIsActive))
-            flagsToUpdate.add(ActivityState::WindowIsActive);
+    if (priv->viewSize.isEmpty()) {
+        auto size = webkitWebViewBaseGetViewSize(webViewBase);
+        if (!size.isEmpty())
+            webkitWebViewBaseSetSize(webViewBase, size);
     }
-    if (!flagsToUpdate)
+
+    if (priv->activityState & ActivityState::IsVisible)
         return;
 
-    priv->activityState.add(flagsToUpdate);
-    webkitWebViewBaseScheduleUpdateActivityState(webViewBase, flagsToUpdate);
+    priv->activityState.add(ActivityState::IsVisible);
+    webkitWebViewBaseScheduleUpdateActivityState(webViewBase, ActivityState::IsVisible);
 }
 
 static void webkitWebViewBaseUnmap(GtkWidget* widget)
@@ -1044,6 +1141,10 @@ static gboolean webkitWebViewBaseKeyPressEvent(GtkWidget* widget, GdkEventKey* k
     if (shouldForwardKeyEvent(webViewBase, reinterpret_cast<GdkEvent*>(keyEvent)))
         return GTK_WIDGET_CLASS(webkit_web_view_base_parent_class)->key_press_event(widget, keyEvent);
 
+    guint16 keyCode;
+    gdk_event_get_keycode(reinterpret_cast<GdkEvent*>(keyEvent), &keyCode);
+    bool isAutoRepeat = priv->keyAutoRepeatHandler.keyPress(keyCode);
+
     GdkModifierType state;
     guint keyval;
     gdk_event_get_state(reinterpret_cast<GdkEvent*>(keyEvent), &state);
@@ -1061,12 +1162,12 @@ static gboolean webkitWebViewBaseKeyPressEvent(GtkWidget* widget, GdkEventKey* k
         return GTK_WIDGET_CLASS(webkit_web_view_base_parent_class)->key_press_event(widget, keyEvent);
 
 #if ENABLE(FULLSCREEN_API)
-    if (priv->fullScreenModeActive) {
+    if (webkitWebViewBaseIsFullScreen(webViewBase)) {
         switch (keyval) {
         case GDK_KEY_Escape:
         case GDK_KEY_f:
         case GDK_KEY_F:
-            priv->pageProxy->fullScreenManager()->requestExitFullScreen();
+            webkitWebViewBaseRequestExitFullScreen(webViewBase);
             return GDK_EVENT_STOP;
         default:
             break;
@@ -1076,7 +1177,7 @@ static gboolean webkitWebViewBaseKeyPressEvent(GtkWidget* widget, GdkEventKey* k
 
     auto filterResult = priv->inputMethodFilter.filterKeyEvent(reinterpret_cast<GdkEvent*>(keyEvent));
     if (!filterResult.handled) {
-        priv->pageProxy->handleKeyboardEvent(NativeWebKeyboardEvent(reinterpret_cast<GdkEvent*>(keyEvent), filterResult.keyText,
+        priv->pageProxy->handleKeyboardEvent(NativeWebKeyboardEvent(reinterpret_cast<GdkEvent*>(keyEvent), filterResult.keyText, isAutoRepeat,
             priv->keyBindingTranslator.commandsForKeyEvent(keyEvent)));
     }
 
@@ -1088,8 +1189,10 @@ static gboolean webkitWebViewBaseKeyReleaseEvent(GtkWidget* widget, GdkEventKey*
     WebKitWebViewBase* webViewBase = WEBKIT_WEB_VIEW_BASE(widget);
     WebKitWebViewBasePrivate* priv = webViewBase->priv;
 
+    priv->keyAutoRepeatHandler.keyRelease();
+
     if (!priv->inputMethodFilter.filterKeyEvent(reinterpret_cast<GdkEvent*>(keyEvent)).handled)
-        priv->pageProxy->handleKeyboardEvent(NativeWebKeyboardEvent(reinterpret_cast<GdkEvent*>(keyEvent), { }, { }));
+        priv->pageProxy->handleKeyboardEvent(NativeWebKeyboardEvent(reinterpret_cast<GdkEvent*>(keyEvent), { }, false, { }));
 
     return GDK_EVENT_STOP;
 }
@@ -1120,6 +1223,8 @@ static gboolean webkitWebViewBaseKeyPressed(WebKitWebViewBase* webViewBase, unsi
     if (shouldForwardKeyEvent(webViewBase, event))
         return GDK_EVENT_PROPAGATE;
 
+    bool isAutoRepeat = priv->keyAutoRepeatHandler.keyPress(gdk_key_event_get_keycode(event));
+
 #if ENABLE(DEVELOPER_MODE) && OS(LINUX)
     if ((state & GDK_CONTROL_MASK) && (state & GDK_SHIFT_MASK) && keyval == GDK_KEY_G) {
         auto& preferences = priv->pageProxy->preferences();
@@ -1132,12 +1237,12 @@ static gboolean webkitWebViewBaseKeyPressed(WebKitWebViewBase* webViewBase, unsi
         return gtk_event_controller_key_forward(GTK_EVENT_CONTROLLER_KEY(controller), priv->dialog);
 
 #if ENABLE(FULLSCREEN_API)
-    if (priv->fullScreenModeActive) {
+    if (webkitWebViewBaseIsFullScreen(webViewBase)) {
         switch (keyval) {
         case GDK_KEY_Escape:
         case GDK_KEY_f:
         case GDK_KEY_F:
-            priv->pageProxy->fullScreenManager()->requestExitFullScreen();
+            webkitWebViewBaseRequestExitFullScreen(webViewBase);
             return GDK_EVENT_STOP;
         default:
             break;
@@ -1147,7 +1252,7 @@ static gboolean webkitWebViewBaseKeyPressed(WebKitWebViewBase* webViewBase, unsi
 
     auto filterResult = priv->inputMethodFilter.filterKeyEvent(event);
     if (!filterResult.handled) {
-        priv->pageProxy->handleKeyboardEvent(NativeWebKeyboardEvent(event, filterResult.keyText,
+        priv->pageProxy->handleKeyboardEvent(NativeWebKeyboardEvent(event, filterResult.keyText, isAutoRepeat,
             priv->keyBindingTranslator.commandsForKeyEvent(GTK_EVENT_CONTROLLER_KEY(controller))));
     }
 
@@ -1158,9 +1263,11 @@ static void webkitWebViewBaseKeyReleased(WebKitWebViewBase* webViewBase, unsigne
 {
     WebKitWebViewBasePrivate* priv = webViewBase->priv;
 
+    priv->keyAutoRepeatHandler.keyRelease();
+
     auto* event = gtk_event_controller_get_current_event(controller);
     if (!priv->inputMethodFilter.filterKeyEvent(event).handled)
-        priv->pageProxy->handleKeyboardEvent(NativeWebKeyboardEvent(event, { }, { }));
+        priv->pageProxy->handleKeyboardEvent(NativeWebKeyboardEvent(event, { }, false, { }));
 }
 #endif
 
@@ -1188,11 +1295,13 @@ static void webkitWebViewBaseHandleMouseEvent(WebKitWebViewBase* webViewBase, Gd
 
         priv->inputMethodFilter.cancelComposition();
 
+#if ENABLE(CONTEXT_MENUS)
         guint button;
         gdk_event_get_button(event, &button);
         // If it's a right click event save it as a possible context menu event.
         if (button == GDK_BUTTON_SECONDARY)
             priv->contextMenuEvent.reset(gdk_event_copy(event));
+#endif // ENABLE(CONTEXT_MENUS)
 
         clickCount = priv->clickCounter.currentClickCountForGdkButtonEvent(event);
     }
@@ -1307,8 +1416,18 @@ static bool shouldInvertDirectionForScrollEvent(WebHitTestResultData::IsScrollba
 }
 
 #if !USE(GTK4)
-static void webkitWebViewBaseHandleWheelEvent(WebKitWebViewBase* webViewBase, GdkEvent* event, std::optional<WebWheelEvent::Phase> phase = std::nullopt, std::optional<WebWheelEvent::Phase> momentum = std::nullopt)
+static gboolean webkitWebViewBaseScrollEvent(GtkWidget* widget, GdkEventScroll* eventScroll)
 {
+    WebKitWebViewBase* webViewBase = WEBKIT_WEB_VIEW_BASE(widget);
+    WebKitWebViewBasePrivate* priv = webViewBase->priv;
+
+    auto* event = reinterpret_cast<GdkEvent*>(eventScroll);
+    if (shouldForwardWheelEvent(webViewBase, event))
+        return GDK_EVENT_PROPAGATE;
+
+    if (priv->dialog)
+        return GDK_EVENT_PROPAGATE;
+
     ViewGestureController* controller = webkitWebViewBaseViewGestureController(webViewBase);
     if (controller && controller->isSwipeGestureEnabled()) {
         double deltaX, deltaY;
@@ -1324,49 +1443,63 @@ static void webkitWebViewBaseHandleWheelEvent(WebKitWebViewBase* webViewBase, Gd
 
         PlatformGtkScrollData scrollData = { .delta = delta, .eventTime = eventTime, .source = source, .isEnd = isEnd };
         if (controller->handleScrollWheelEvent(&scrollData))
-            return;
+            return GDK_EVENT_STOP;
     }
 
-    WebKitWebViewBasePrivate* priv = webViewBase->priv;
-    ASSERT(!priv->dialog);
-    if (phase)
-        priv->pageProxy->handleWheelEvent(NativeWebWheelEvent(event, phase.value(), momentum.value_or(WebWheelEvent::Phase::PhaseNone)));
-    else
-        priv->pageProxy->handleWheelEvent(NativeWebWheelEvent(event));
-}
+    auto phase = gdk_event_is_scroll_stop_event(event) ? WebWheelEvent::Phase::PhaseEnded : WebWheelEvent::Phase::PhaseChanged;
+    double x, y;
+    gdk_event_get_coords(event, &x, &y);
+    IntPoint position(clampToInteger(x), clampToInteger(y));
+    double xRoot, yRoot;
+    gdk_event_get_root_coords(event, &xRoot, &yRoot);
+    IntPoint globalPosition(clampToInteger(xRoot), clampToInteger(yRoot));
 
-static gboolean webkitWebViewBaseScrollEvent(GtkWidget* widget, GdkEventScroll* event)
-{
-    WebKitWebViewBase* webViewBase = WEBKIT_WEB_VIEW_BASE(widget);
-    WebKitWebViewBasePrivate* priv = webViewBase->priv;
-
-    if (shouldForwardWheelEvent(webViewBase, reinterpret_cast<GdkEvent*>(event)))
-        return GDK_EVENT_PROPAGATE;
-
-    if (priv->dialog)
-        return GDK_EVENT_PROPAGATE;
-
-    if (shouldInvertDirectionForScrollEvent(priv->mouseIsOverScrollbar, event->state & GDK_SHIFT_MASK)) {
-        switch (event->direction) {
-        case GDK_SCROLL_UP:
-            event->direction = GDK_SCROLL_LEFT;
-            break;
-        case GDK_SCROLL_LEFT:
-            event->direction = GDK_SCROLL_UP;
-            break;
-        case GDK_SCROLL_DOWN:
-            event->direction = GDK_SCROLL_RIGHT;
-            break;
-        case GDK_SCROLL_RIGHT:
-            event->direction = GDK_SCROLL_DOWN;
-            break;
-        case GDK_SCROLL_SMOOTH:
-            std::swap(event->delta_x, event->delta_y);
-            break;
+    bool hasPreciseScrollingDeltas = false;
+    FloatSize wheelTicks;
+    GdkScrollDirection direction;
+    if (!gdk_event_get_scroll_direction(event, &direction)) {
+        direction = GDK_SCROLL_SMOOTH;
+        double deltaX, deltaY;
+        if (gdk_event_get_scroll_deltas(event, &deltaX, &deltaY)) {
+            wheelTicks = FloatSize(-deltaX, -deltaY);
+            if (auto* device = gdk_event_get_source_device(event))
+                hasPreciseScrollingDeltas = gdk_device_get_source(device) != GDK_SOURCE_MOUSE;
         }
     }
 
-    webkitWebViewBaseHandleWheelEvent(webViewBase, reinterpret_cast<GdkEvent*>(event));
+    switch (direction) {
+    case GDK_SCROLL_UP:
+        wheelTicks = FloatSize(0, 1);
+        break;
+    case GDK_SCROLL_LEFT:
+        wheelTicks = FloatSize(1, 0);
+        break;
+    case GDK_SCROLL_DOWN:
+        wheelTicks = FloatSize(0, -1);
+        break;
+    case GDK_SCROLL_RIGHT:
+        wheelTicks = FloatSize(-1, 0);
+        break;
+    case GDK_SCROLL_SMOOTH:
+        break;
+    }
+
+    float stepX, stepY;
+    if (hasPreciseScrollingDeltas)
+        stepX = stepY = static_cast<float>(Scrollbar::pixelsPerLineStep());
+    else {
+        stepX = wheelTicks.width() ? static_cast<float>(Scrollbar::pixelsPerLineStep(priv->viewSize.width())) : 0;
+        stepY = wheelTicks.height() ? static_cast<float>(Scrollbar::pixelsPerLineStep(priv->viewSize.height())) : 0;
+    }
+
+    if (shouldInvertDirectionForScrollEvent(priv->mouseIsOverScrollbar, eventScroll->state & GDK_SHIFT_MASK)) {
+        wheelTicks = wheelTicks.transposedSize();
+        std::swap(stepX, stepY);
+    }
+
+    FloatSize delta = wheelTicks.scaled(stepX, stepY);
+
+    priv->pageProxy->handleNativeWheelEvent(NativeWebWheelEvent(event, position, globalPosition, delta, wheelTicks, phase, WebWheelEvent::Phase::PhaseNone, hasPreciseScrollingDeltas));
 
     return GDK_EVENT_STOP;
 }
@@ -1403,11 +1536,46 @@ static gboolean handleScroll(WebKitWebViewBase* webViewBase, double deltaX, doub
             return GDK_EVENT_STOP;
     }
 
-    if (!isEnd && shouldInvertDirectionForScrollEvent(priv->mouseIsOverScrollbar, gdk_event_get_modifier_state(event) & GDK_SHIFT_MASK))
-        std::swap(deltaX, deltaY);
+    if (!event)
+        return GDK_EVENT_PROPAGATE;
 
-    if (event)
-        priv->pageProxy->handleWheelEvent(NativeWebWheelEvent(event, priv->lastMotionEvent ? IntPoint(priv->lastMotionEvent->position) : IntPoint(), FloatSize(-deltaX, -deltaY)));
+    auto phase = gdk_event_get_event_type(event) != GDK_SCROLL || gdk_scroll_event_is_stop(event) ? WebWheelEvent::Phase::PhaseEnded : WebWheelEvent::Phase::PhaseChanged;
+    IntPoint position;
+    if (priv->lastMotionEvent)
+        position = IntPoint(priv->lastMotionEvent->position);
+
+    bool hasPreciseScrollingDeltas = false;
+#if GTK_CHECK_VERSION(4, 7, 0)
+    hasPreciseScrollingDeltas = gdk_event_get_event_type(event) != GDK_SCROLL || gdk_scroll_event_get_unit(event) != GDK_SCROLL_UNIT_WHEEL;
+#else
+    if (gdk_scroll_event_get_direction(event) == GDK_SCROLL_SMOOTH) {
+        if (auto* device = gdk_event_get_source_device(event))
+            hasPreciseScrollingDeltas = gdk_device_get_source(device) != GDK_SOURCE_MOUSE;
+    }
+#endif
+
+    FloatSize wheelTicks(-deltaX, -deltaY);
+    float stepX = wheelTicks.width() ? static_cast<float>(Scrollbar::pixelsPerLineStep(priv->viewSize.width())) : 0;
+    float stepY = wheelTicks.height() ? static_cast<float>(Scrollbar::pixelsPerLineStep(priv->viewSize.height())) : 0;
+
+    if (!isEnd && shouldInvertDirectionForScrollEvent(priv->mouseIsOverScrollbar, gdk_event_get_modifier_state(event) & GDK_SHIFT_MASK)) {
+        wheelTicks = wheelTicks.transposedSize();
+        std::swap(stepX, stepY);
+    }
+
+    FloatSize delta;
+#if GTK_CHECK_VERSION(4, 7, 0)
+    // Keep in sync with https://gitlab.gnome.org/GNOME/gtk/-/blob/493660a296af3b8a140714988ddece4199818a04/gtk/gtkscrolledwindow.c#L204
+    static const double gtkScrollDeltaMultiplier = 2.5;
+    if (hasPreciseScrollingDeltas)
+        delta = wheelTicks.scaled(gtkScrollDeltaMultiplier);
+    else
+        delta = wheelTicks.scaled(stepX, stepY);
+#else
+    delta = wheelTicks.scaled(stepX, stepY);
+#endif
+
+    priv->pageProxy->handleNativeWheelEvent(NativeWebWheelEvent(event, position, position, delta, wheelTicks, phase, WebWheelEvent::Phase::PhaseNone, hasPreciseScrollingDeltas));
 
     return GDK_EVENT_STOP;
 }
@@ -1429,6 +1597,7 @@ static void webkitWebViewBaseScrollEnd(WebKitWebViewBase* webViewBase, GtkEventC
 #endif
 
 #if !USE(GTK4)
+#if ENABLE(CONTEXT_MENUS)
 static gboolean webkitWebViewBasePopupMenu(GtkWidget* widget)
 {
     WebKitWebViewBase* webViewBase = WEBKIT_WEB_VIEW_BASE(widget);
@@ -1442,6 +1611,7 @@ static gboolean webkitWebViewBasePopupMenu(GtkWidget* widget)
 
     return TRUE;
 }
+#endif // ENABLE(CONTEXT_MENUS)
 
 static gboolean webkitWebViewBaseMotionNotifyEvent(GtkWidget* widget, GdkEventMotion* event)
 {
@@ -1575,12 +1745,40 @@ static void webkitWebViewBaseLeave(WebKitWebViewBase* webViewBase, GdkCrossingMo
         return;
 #endif
 
-    priv->pageProxy->handleMouseEvent(NativeWebMouseEvent({ -1, -1 }));
+    if (!priv->lastMotionEvent)
+        return;
+
+    // We need to synthesize a fake mouse event here to let WebCore know that the mouse has left the
+    // web view. Let's compute a point outside the web view that is close to the previous
+    // coordinates of the pointer before it left the web view. First we'll figure out which
+    // coordinate is closest to an edge of the web view, then we'll adjust the coordinate to be one
+    // pixel outside the view. This is not necessarily the closest point outside the web view, but
+    // it's simple to calculate and surely good enough.
+
+    int previousX = std::round(priv->lastMotionEvent->position.x());
+    int previousY = std::round(priv->lastMotionEvent->position.y());
+    int width = gtk_widget_get_width(GTK_WIDGET(webViewBase));
+    int height = gtk_widget_get_height(GTK_WIDGET(webViewBase));
+    int xDistanceFromRightEdge = width - previousX;
+    int yDistanceFromBottomEdge = height - previousY;
+
+    if (previousX <= xDistanceFromRightEdge && previousX <= previousY && previousX <= yDistanceFromBottomEdge)
+        priv->pageProxy->handleMouseEvent(NativeWebMouseEvent({ -1, previousY }));
+    else if (xDistanceFromRightEdge <= previousX && xDistanceFromRightEdge <= previousY && xDistanceFromRightEdge <= yDistanceFromBottomEdge)
+        priv->pageProxy->handleMouseEvent(NativeWebMouseEvent({ width, previousY }));
+    else if (previousY <= previousX && previousY <= xDistanceFromRightEdge && previousY <= yDistanceFromBottomEdge)
+        priv->pageProxy->handleMouseEvent(NativeWebMouseEvent({ previousX, -1 }));
+    else {
+        ASSERT(yDistanceFromBottomEdge <= previousX);
+        ASSERT(yDistanceFromBottomEdge <= previousY);
+        ASSERT(yDistanceFromBottomEdge <= xDistanceFromRightEdge);
+        priv->pageProxy->handleMouseEvent(NativeWebMouseEvent({ previousX, height }));
+    }
 }
 #endif
 
 #if ENABLE(TOUCH_EVENTS)
-static void appendTouchEvent(GtkWidget* webViewBase, Vector<WebPlatformTouchPoint>& touchPoints, GdkEvent* event, WebPlatformTouchPoint::TouchPointState state)
+static void appendTouchEvent(GtkWidget* webViewBase, Vector<WebPlatformTouchPoint>& touchPoints, GdkEvent* event, WebPlatformTouchPoint::State state)
 {
     gdouble x, y;
     gdk_event_get_coords(event, &x, &y);
@@ -1594,25 +1792,25 @@ static void appendTouchEvent(GtkWidget* webViewBase, Vector<WebPlatformTouchPoin
     gdk_event_get_root_coords(event, &xRoot, &yRoot);
 
     uint32_t identifier = GPOINTER_TO_UINT(gdk_event_get_event_sequence(event));
-    touchPoints.uncheckedAppend(WebPlatformTouchPoint(identifier, state, IntPoint(xRoot, yRoot), IntPoint(x, y)));
+    touchPoints.append(WebPlatformTouchPoint(identifier, state, IntPoint(xRoot, yRoot), IntPoint(x, y)));
 }
 
-static inline WebPlatformTouchPoint::TouchPointState touchPointStateForEvents(GdkEvent* current, GdkEvent* event)
+static inline WebPlatformTouchPoint::State touchPointStateForEvents(GdkEvent* current, GdkEvent* event)
 {
     if (gdk_event_get_event_sequence(current) != gdk_event_get_event_sequence(event))
-        return WebPlatformTouchPoint::TouchStationary;
+        return WebPlatformTouchPoint::State::Stationary;
 
     switch (gdk_event_get_event_type(event)) {
     case GDK_TOUCH_UPDATE:
-        return WebPlatformTouchPoint::TouchMoved;
+        return WebPlatformTouchPoint::State::Moved;
     case GDK_TOUCH_BEGIN:
-        return WebPlatformTouchPoint::TouchPressed;
+        return WebPlatformTouchPoint::State::Pressed;
     case GDK_TOUCH_END:
-        return WebPlatformTouchPoint::TouchReleased;
+        return WebPlatformTouchPoint::State::Released;
     case GDK_TOUCH_CANCEL:
-        return WebPlatformTouchPoint::TouchCancelled;
+        return WebPlatformTouchPoint::State::Cancelled;
     default:
-        return WebPlatformTouchPoint::TouchStationary;
+        return WebPlatformTouchPoint::State::Stationary;
     }
 }
 
@@ -1629,7 +1827,7 @@ static void webkitWebViewBaseGetTouchPointsForEvent(WebKitWebViewBase* webViewBa
 
     // Touch was already removed from the TouchEventsMap, add it here.
     if (touchEnd)
-        appendTouchEvent(widget, touchPoints, event, WebPlatformTouchPoint::TouchReleased);
+        appendTouchEvent(widget, touchPoints, event, WebPlatformTouchPoint::State::Released);
 }
 
 #if USE(GTK4)
@@ -1793,121 +1991,24 @@ static AtkObject* webkitWebViewBaseGetAccessible(GtkWidget* widget)
 #endif
 
 #if USE(GTK4)
-static void toplevelWindowIsActiveChanged(GtkWindow* window, GParamSpec*, WebKitWebViewBase* webViewBase)
-{
-    WebKitWebViewBasePrivate* priv = webViewBase->priv;
-    if (gtk_window_is_active(window)) {
-        if (priv->activityState & ActivityState::WindowIsActive)
-            return;
-        priv->activityState.add(ActivityState::WindowIsActive);
-        if (priv->activityState & ActivityState::IsFocused)
-            priv->inputMethodFilter.notifyFocusedIn();
-    } else {
-        if (!(priv->activityState & ActivityState::WindowIsActive))
-            return;
-        priv->activityState.remove(ActivityState::WindowIsActive);
-        if (priv->activityState & ActivityState::IsFocused)
-            priv->inputMethodFilter.notifyFocusedOut();
-    }
-
-    webkitWebViewBaseScheduleUpdateActivityState(webViewBase, ActivityState::WindowIsActive);
-}
-
-static void toplevelWindowStateChanged(GdkSurface* surface, GParamSpec*, WebKitWebViewBase* webViewBase)
-{
-    auto state = gdk_toplevel_get_state(GDK_TOPLEVEL(surface));
-    bool visible = !(state & GDK_TOPLEVEL_STATE_MINIMIZED);
-    WebKitWebViewBasePrivate* priv = webViewBase->priv;
-    if (visible) {
-        if (priv->activityState & ActivityState::IsVisible)
-            return;
-        priv->activityState.add(ActivityState::IsVisible);
-    } else {
-        if (!(priv->activityState & ActivityState::IsVisible))
-            return;
-        priv->activityState.remove(ActivityState::IsVisible);
-    }
-    webkitWebViewBaseScheduleUpdateActivityState(webViewBase, ActivityState::IsVisible);
-}
-
-static void toplevelWindowRealized(WebKitWebViewBase* webViewBase)
-{
-    WebKitWebViewBasePrivate* priv = webViewBase->priv;
-    g_clear_signal_handler(&priv->toplevelWindowRealizedID, priv->toplevelOnScreenWindow);
-    priv->toplevelWindowStateChangedID =
-        g_signal_connect(gtk_native_get_surface(GTK_NATIVE(priv->toplevelOnScreenWindow)), "notify::state", G_CALLBACK(toplevelWindowStateChanged), webViewBase);
-}
-
-static void toplevelWindowUnrealized(WebKitWebViewBase* webViewBase)
-{
-    WebKitWebViewBasePrivate* priv = webViewBase->priv;
-    g_clear_signal_handler(&priv->toplevelWindowUnrealizedID, priv->toplevelOnScreenWindow);
-    g_clear_signal_handler(&priv->toplevelWindowStateChangedID, gtk_native_get_surface(GTK_NATIVE(priv->toplevelOnScreenWindow)));
-}
-
 static void webkitWebViewBaseRoot(GtkWidget* widget)
 {
     GTK_WIDGET_CLASS(webkit_web_view_base_parent_class)->root(widget);
 
-    WebKitWebViewBase* webViewBase = WEBKIT_WEB_VIEW_BASE(widget);
-    WebKitWebViewBasePrivate* priv = webViewBase->priv;
-    priv->toplevelOnScreenWindow = GTK_WINDOW(gtk_widget_get_root(widget));
-
-    OptionSet<ActivityState::Flag> flagsToUpdate;
-    if (!(priv->activityState & ActivityState::IsInWindow)) {
-        priv->activityState.add(ActivityState::IsInWindow);
-        flagsToUpdate.add(ActivityState::IsInWindow);
-    }
-    if (gtk_widget_get_visible(GTK_WIDGET(priv->toplevelOnScreenWindow)) && gtk_window_is_active(priv->toplevelOnScreenWindow)) {
-        priv->activityState.add(ActivityState::WindowIsActive);
-        flagsToUpdate.add(ActivityState::IsInWindow);
-    }
-    if (flagsToUpdate)
-        webkitWebViewBaseScheduleUpdateActivityState(webViewBase, flagsToUpdate);
-
-    priv->toplevelIsActiveID =
-        g_signal_connect(priv->toplevelOnScreenWindow, "notify::is-active", G_CALLBACK(toplevelWindowIsActiveChanged), widget);
-    if (gtk_widget_get_realized(GTK_WIDGET(priv->toplevelOnScreenWindow))) {
-        priv->toplevelWindowStateChangedID =
-            g_signal_connect(gtk_native_get_surface(GTK_NATIVE(priv->toplevelOnScreenWindow)), "notify::state", G_CALLBACK(toplevelWindowStateChanged), widget);
-    } else {
-        priv->toplevelWindowRealizedID =
-            g_signal_connect_swapped(priv->toplevelOnScreenWindow, "realize", G_CALLBACK(toplevelWindowRealized), widget);
-    }
-    priv->toplevelWindowUnrealizedID =
-        g_signal_connect_swapped(priv->toplevelOnScreenWindow, "unrealize", G_CALLBACK(toplevelWindowUnrealized), widget);
+    webkitWebViewBaseSetToplevelOnScreenWindow(WEBKIT_WEB_VIEW_BASE(widget), ToplevelWindow::forGtkWindow(GTK_WINDOW(gtk_widget_get_root(widget))));
 }
 
 static void webkitWebViewBaseUnroot(GtkWidget* widget)
 {
     GTK_WIDGET_CLASS(webkit_web_view_base_parent_class)->unroot(widget);
 
-    WebKitWebViewBase* webViewBase = WEBKIT_WEB_VIEW_BASE(widget);
-    WebKitWebViewBasePrivate* priv = webViewBase->priv;
-    g_clear_signal_handler(&priv->toplevelIsActiveID, priv->toplevelOnScreenWindow);
-    g_clear_signal_handler(&priv->toplevelWindowRealizedID, priv->toplevelOnScreenWindow);
-    g_clear_signal_handler(&priv->toplevelWindowUnrealizedID, priv->toplevelOnScreenWindow);
-    if (gtk_widget_get_realized(GTK_WIDGET(priv->toplevelOnScreenWindow)))
-        g_clear_signal_handler(&priv->toplevelWindowStateChangedID, gtk_native_get_surface(GTK_NATIVE(priv->toplevelOnScreenWindow)));
-    priv->toplevelOnScreenWindow = nullptr;
-
-    OptionSet<ActivityState::Flag> flagsToUpdate;
-    if (priv->activityState & ActivityState::IsInWindow) {
-        priv->activityState.remove(ActivityState::IsInWindow);
-        flagsToUpdate.add(ActivityState::IsInWindow);
-    }
-    if (priv->activityState & ActivityState::WindowIsActive) {
-        priv->activityState.remove(ActivityState::WindowIsActive);
-        flagsToUpdate.add(ActivityState::IsInWindow);
-    }
-    if (flagsToUpdate)
-        webkitWebViewBaseScheduleUpdateActivityState(webViewBase, flagsToUpdate);
+    webkitWebViewBaseSetToplevelOnScreenWindow(WEBKIT_WEB_VIEW_BASE(widget), nullptr);
 }
 #else
 static void webkitWebViewBaseHierarchyChanged(GtkWidget* widget, GtkWidget* oldToplevel)
 {
     WebKitWebViewBasePrivate* priv = WEBKIT_WEB_VIEW_BASE(widget)->priv;
-    if (widgetIsOnscreenToplevelWindow(oldToplevel) && GTK_WINDOW(oldToplevel) == priv->toplevelOnScreenWindow) {
+    if (widgetIsOnscreenToplevelWindow(oldToplevel) && priv->toplevelOnScreenWindow && GTK_WINDOW(oldToplevel) == priv->toplevelOnScreenWindow->window()) {
         webkitWebViewBaseSetToplevelOnScreenWindow(WEBKIT_WEB_VIEW_BASE(widget), nullptr);
         return;
     }
@@ -1915,7 +2016,7 @@ static void webkitWebViewBaseHierarchyChanged(GtkWidget* widget, GtkWidget* oldT
     if (!oldToplevel) {
         GtkWidget* toplevel = gtk_widget_get_toplevel(widget);
         if (widgetIsOnscreenToplevelWindow(toplevel))
-            webkitWebViewBaseSetToplevelOnScreenWindow(WEBKIT_WEB_VIEW_BASE(widget), GTK_WINDOW(toplevel));
+            webkitWebViewBaseSetToplevelOnScreenWindow(WEBKIT_WEB_VIEW_BASE(widget), ToplevelWindow::forGtkWindow(GTK_WINDOW(toplevel)));
     }
 }
 #endif
@@ -2036,6 +2137,24 @@ static void webkitWebViewBaseTouchPress(WebKitWebViewBase* webViewBase, int nPre
     webViewBase->priv->isLongPressed = false;
 }
 
+static unsigned modifiersForSynthesizedEvent(GdkEvent* event)
+{
+    if (!event)
+        return 0;
+
+    GdkModifierType state;
+    if (!gdk_event_get_state(event, &state))
+        return 0;
+
+    unsigned modifiers = state;
+    // For synthesized events we assume GDK_LOCK_MASK is always CapsLock
+    // so we remove the flag if present and caps lock state is disabled.
+    if (modifiers & GDK_LOCK_MASK && !eventModifiersContainCapsLock(event))
+        modifiers &= ~GDK_LOCK_MASK;
+
+    return modifiers;
+}
+
 static void webkitWebViewBaseTouchRelease(WebKitWebViewBase* webViewBase, int nPress, double x, double y, GtkGesture* gesture)
 {
     WebKitWebViewBasePrivate* priv = webViewBase->priv;
@@ -2054,7 +2173,7 @@ static void webkitWebViewBaseTouchRelease(WebKitWebViewBase* webViewBase, int nP
         buttons = GDK_BUTTON1_MASK;
     }
 
-    unsigned modifiers = gtk_event_controller_get_current_event_state(GTK_EVENT_CONTROLLER(gesture));
+    unsigned modifiers = modifiersForSynthesizedEvent(gtk_event_controller_get_current_event(GTK_EVENT_CONTROLLER(gesture)));
     webkitWebViewBaseSynthesizeMouseEvent(webViewBase, MouseEventType::Motion, 0, 0, x, y, modifiers, nPress, mousePointerEventType(), PlatformMouseEvent::IsTouch::Yes);
     webkitWebViewBaseSynthesizeMouseEvent(webViewBase, MouseEventType::Press, button, 0, x, y, modifiers, nPress, mousePointerEventType(), PlatformMouseEvent::IsTouch::Yes);
     webkitWebViewBaseSynthesizeMouseEvent(webViewBase, MouseEventType::Release, button, buttons, x, y, modifiers, nPress, mousePointerEventType(), PlatformMouseEvent::IsTouch::Yes);
@@ -2084,7 +2203,7 @@ static void webkitWebViewBaseTouchDragUpdate(WebKitWebViewBase* webViewBase, dou
     auto* sequence = gtk_gesture_single_get_current_sequence(GTK_GESTURE_SINGLE(gesture));
     auto* event = gtk_gesture_get_last_event(gesture, sequence);
 
-    unsigned modifiers = gtk_event_controller_get_current_event_state(GTK_EVENT_CONTROLLER(gesture));
+    unsigned modifiers = modifiersForSynthesizedEvent(gtk_event_controller_get_current_event(GTK_EVENT_CONTROLLER(gesture)));
     if (!priv->isBeingDragged) {
         if (!gtk_drag_check_threshold(GTK_WIDGET(webViewBase), 0, 0, static_cast<int>(offsetX), static_cast<int>(offsetY)))
             return;
@@ -2128,7 +2247,7 @@ static void webkitWebViewBaseTouchDragEnd(WebKitWebViewBase* webViewBase, gdoubl
     if (priv->isLongPressed) {
         double x, y;
         gtk_gesture_drag_get_start_point(GTK_GESTURE_DRAG(gesture), &x, &y);
-        unsigned modifiers = gtk_event_controller_get_current_event_state(GTK_EVENT_CONTROLLER(gesture));
+        unsigned modifiers = modifiersForSynthesizedEvent(gtk_event_controller_get_current_event(GTK_EVENT_CONTROLLER(gesture)));
         webkitWebViewBaseSynthesizeMouseEvent(webViewBase, MouseEventType::Release, GDK_BUTTON_PRIMARY, GDK_BUTTON1_MASK, x + offsetX, y + offsetY, modifiers, 0, mousePointerEventType(), PlatformMouseEvent::IsTouch::Yes);
     }
 }
@@ -2314,7 +2433,9 @@ static void webkit_web_view_base_class_init(WebKitWebViewBaseClass* webkitWebVie
     widgetClass->button_press_event = webkitWebViewBaseButtonPressEvent;
     widgetClass->button_release_event = webkitWebViewBaseButtonReleaseEvent;
     widgetClass->scroll_event = webkitWebViewBaseScrollEvent;
+#if ENABLE(CONTEXT_MENUS)
     widgetClass->popup_menu = webkitWebViewBasePopupMenu;
+#endif // ENABLE(CONTEXT_MENUS)
     widgetClass->motion_notify_event = webkitWebViewBaseMotionNotifyEvent;
     widgetClass->enter_notify_event = webkitWebViewBaseCrossingNotifyEvent;
     widgetClass->leave_notify_event = webkitWebViewBaseCrossingNotifyEvent;
@@ -2377,10 +2498,20 @@ static void deviceScaleFactorChanged(WebKitWebViewBase* webkitWebViewBase)
 void webkitWebViewBaseCreateWebPage(WebKitWebViewBase* webkitWebViewBase, Ref<API::PageConfiguration>&& configuration)
 {
     WebKitWebViewBasePrivate* priv = webkitWebViewBase->priv;
+
     WebProcessPool* processPool = configuration->processPool();
+    if (!processPool) {
+        auto processPoolConfiguration = API::ProcessPoolConfiguration::create();
+        processPool = &WebProcessPool::create(processPoolConfiguration).leakRef();
+        configuration->setProcessPool(processPool);
+    }
+
     priv->pageProxy = processPool->createWebPage(*priv->pageClient, WTFMove(configuration));
     priv->acceleratedBackingStore = AcceleratedBackingStore::create(*priv->pageProxy);
     priv->pageProxy->initializeWebPage();
+
+    if (priv->displayID)
+        priv->pageProxy->windowScreenDidChange(priv->displayID);
 
     // We attach this here, because changes in scale factor are passed directly to the page proxy.
     priv->pageProxy->setIntrinsicDeviceScaleFactor(gtk_widget_get_scale_factor(GTK_WIDGET(webkitWebViewBase)));
@@ -2457,50 +2588,97 @@ void webkitWebViewBasePropagateWheelEvent(WebKitWebViewBase* webkitWebViewBase, 
 #endif
 }
 
+#if ENABLE(FULLSCREEN_API)
+static bool webkitWebViewBaseToplevelOnScreenWindowIsFullScreen(WebKitWebViewBase* webkitWebViewBase)
+{
+    WebKitWebViewBasePrivate* priv = webkitWebViewBase->priv;
+    return priv->toplevelOnScreenWindow && priv->toplevelOnScreenWindow->isFullscreen();
+}
+
+void webkitWebViewBaseWillEnterFullScreen(WebKitWebViewBase* webkitWebViewBase)
+{
+    WebKitWebViewBasePrivate* priv = webkitWebViewBase->priv;
+    ASSERT(priv->fullScreenState == WebFullScreenManagerProxy::FullscreenState::NotInFullscreen);
+    if (auto* fullScreenManagerProxy = priv->pageProxy->fullScreenManager())
+        fullScreenManagerProxy->willEnterFullScreen();
+    priv->fullScreenState = WebFullScreenManagerProxy::FullscreenState::EnteringFullscreen;
+}
+
 void webkitWebViewBaseEnterFullScreen(WebKitWebViewBase* webkitWebViewBase)
 {
-#if ENABLE(FULLSCREEN_API)
     WebKitWebViewBasePrivate* priv = webkitWebViewBase->priv;
-    ASSERT(!priv->fullScreenModeActive);
+    ASSERT(priv->fullScreenState == WebFullScreenManagerProxy::FullscreenState::EnteringFullscreen);
 
-    WebFullScreenManagerProxy* fullScreenManagerProxy = priv->pageProxy->fullScreenManager();
-    fullScreenManagerProxy->willEnterFullScreen();
+    if (webkitWebViewBaseToplevelOnScreenWindowIsFullScreen(webkitWebViewBase)) {
+        priv->windowWasAlreadyInFullScreen = true;
+        webkitWebViewBaseDidEnterFullScreen(webkitWebViewBase);
+        return;
+    }
 
-    GtkWidget* topLevelWindow = gtk_widget_get_toplevel(GTK_WIDGET(webkitWebViewBase));
-    if (gtk_widget_is_toplevel(topLevelWindow))
-        gtk_window_fullscreen(GTK_WINDOW(topLevelWindow));
-    fullScreenManagerProxy->didEnterFullScreen();
-    priv->fullScreenModeActive = true;
+    priv->windowWasAlreadyInFullScreen = false;
+
+    if (priv->toplevelOnScreenWindow)
+        gtk_window_fullscreen(priv->toplevelOnScreenWindow->window());
+}
+
+static void webkitWebViewBaseDidEnterFullScreen(WebKitWebViewBase* webkitWebViewBase)
+{
+    WebKitWebViewBasePrivate* priv = webkitWebViewBase->priv;
+    ASSERT(priv->fullScreenState == WebFullScreenManagerProxy::FullscreenState::EnteringFullscreen);
+    if (auto* fullScreenManagerProxy = priv->pageProxy->fullScreenManager())
+        fullScreenManagerProxy->didEnterFullScreen();
+    priv->fullScreenState = WebFullScreenManagerProxy::FullscreenState::InFullscreen;
     priv->sleepDisabler = PAL::SleepDisabler::create(String::fromUTF8(_("Website running in fullscreen mode")), PAL::SleepDisabler::Type::Display);
-#endif
+}
+
+void webkitWebViewBaseWillExitFullScreen(WebKitWebViewBase* webkitWebViewBase)
+{
+    WebKitWebViewBasePrivate* priv = webkitWebViewBase->priv;
+    ASSERT(priv->fullScreenState == WebFullScreenManagerProxy::FullscreenState::EnteringFullscreen || priv->fullScreenState == WebFullScreenManagerProxy::FullscreenState::InFullscreen);
+    if (auto* fullScreenManagerProxy = priv->pageProxy->fullScreenManager())
+        fullScreenManagerProxy->willExitFullScreen();
+    priv->fullScreenState = WebFullScreenManagerProxy::FullscreenState::ExitingFullscreen;
 }
 
 void webkitWebViewBaseExitFullScreen(WebKitWebViewBase* webkitWebViewBase)
 {
-#if ENABLE(FULLSCREEN_API)
     WebKitWebViewBasePrivate* priv = webkitWebViewBase->priv;
-    ASSERT(priv->fullScreenModeActive);
+    ASSERT(priv->fullScreenState == WebFullScreenManagerProxy::FullscreenState::ExitingFullscreen);
 
-    WebFullScreenManagerProxy* fullScreenManagerProxy = priv->pageProxy->fullScreenManager();
-    fullScreenManagerProxy->willExitFullScreen();
+    if (!webkitWebViewBaseToplevelOnScreenWindowIsFullScreen(webkitWebViewBase) || priv->windowWasAlreadyInFullScreen) {
+        webkitWebViewBaseDidExitFullScreen(webkitWebViewBase);
+        return;
+    }
 
-    GtkWidget* topLevelWindow = gtk_widget_get_toplevel(GTK_WIDGET(webkitWebViewBase));
-    if (gtk_widget_is_toplevel(topLevelWindow))
-        gtk_window_unfullscreen(GTK_WINDOW(topLevelWindow));
-    fullScreenManagerProxy->didExitFullScreen();
-    priv->fullScreenModeActive = false;
+    if (priv->toplevelOnScreenWindow)
+        gtk_window_unfullscreen(priv->toplevelOnScreenWindow->window());
+}
+
+static void webkitWebViewBaseDidExitFullScreen(WebKitWebViewBase* webkitWebViewBase)
+{
+    WebKitWebViewBasePrivate* priv = webkitWebViewBase->priv;
+    ASSERT(priv->fullScreenState == WebFullScreenManagerProxy::FullscreenState::ExitingFullscreen);
+    if (auto* fullScreenManagerProxy = priv->pageProxy->fullScreenManager())
+        fullScreenManagerProxy->didExitFullScreen();
+    priv->fullScreenState = WebFullScreenManagerProxy::FullscreenState::NotInFullscreen;
     priv->sleepDisabler = nullptr;
-#endif
+}
+
+static void webkitWebViewBaseRequestExitFullScreen(WebKitWebViewBase* webkitWebViewBase)
+{
+    WebKitWebViewBasePrivate* priv = webkitWebViewBase->priv;
+    ASSERT(priv->fullScreenState == WebFullScreenManagerProxy::FullscreenState::EnteringFullscreen || priv->fullScreenState == WebFullScreenManagerProxy::FullscreenState::InFullscreen);
+    if (auto* fullScreenManagerProxy = priv->pageProxy->fullScreenManager())
+        fullScreenManagerProxy->requestExitFullScreen();
 }
 
 bool webkitWebViewBaseIsFullScreen(WebKitWebViewBase* webkitWebViewBase)
 {
-#if ENABLE(FULLSCREEN_API)
-    return webkitWebViewBase->priv->fullScreenModeActive;
-#else
-    return false;
-#endif
+    WebKitWebViewBasePrivate* priv = webkitWebViewBase->priv;
+    return priv->fullScreenState == WebFullScreenManagerProxy::FullscreenState::EnteringFullscreen || priv->fullScreenState == WebFullScreenManagerProxy::FullscreenState::InFullscreen;
+
 }
+#endif // ENABLE(FULLSCREEN_API)
 
 void webkitWebViewBaseSetInspectorViewSize(WebKitWebViewBase* webkitWebViewBase, unsigned size)
 {
@@ -2511,6 +2689,7 @@ void webkitWebViewBaseSetInspectorViewSize(WebKitWebViewBase* webkitWebViewBase,
         gtk_widget_queue_resize_no_redraw(GTK_WIDGET(webkitWebViewBase));
 }
 
+#if ENABLE(CONTEXT_MENUS)
 void webkitWebViewBaseSetActiveContextMenuProxy(WebKitWebViewBase* webkitWebViewBase, WebContextMenuProxyGtk* contextMenuProxy)
 {
     webkitWebViewBase->priv->activeContextMenuProxy = contextMenuProxy;
@@ -2536,6 +2715,7 @@ GUniquePtr<GdkEvent> webkitWebViewBaseTakeContextMenuEvent(WebKitWebViewBase* we
     return WTFMove(webkitWebViewBase->priv->contextMenuEvent);
 }
 #endif
+#endif // ENABLE(CONTEXT_MENUS)
 
 void webkitWebViewBaseSetFocus(WebKitWebViewBase* webViewBase, bool focused)
 {
@@ -2545,7 +2725,7 @@ void webkitWebViewBaseSetFocus(WebKitWebViewBase* webViewBase, bool focused)
     if ((focused && priv->activityState & ActivityState::IsFocused) || (!focused && !(priv->activityState & ActivityState::IsFocused)))
         return;
 
-    OptionSet<ActivityState::Flag> flagsToUpdate { ActivityState::IsFocused };
+    OptionSet<ActivityState> flagsToUpdate { ActivityState::IsFocused };
     if (focused) {
         priv->activityState.add(ActivityState::IsFocused);
 
@@ -2691,12 +2871,6 @@ void webkitWebViewBaseExitAcceleratedCompositingMode(WebKitWebViewBase* webkitWe
     webkitWebViewBase->priv->acceleratedBackingStore->update(LayerTreeContext());
 }
 
-bool webkitWebViewBaseMakeGLContextCurrent(WebKitWebViewBase* webkitWebViewBase)
-{
-    ASSERT(webkitWebViewBase->priv->acceleratedBackingStore);
-    return webkitWebViewBase->priv->acceleratedBackingStore->makeContextCurrent();
-}
-
 void webkitWebViewBaseWillSwapWebProcess(WebKitWebViewBase* webkitWebViewBase)
 {
     WebKitWebViewBasePrivate* priv = webkitWebViewBase->priv;
@@ -2725,6 +2899,8 @@ void webkitWebViewBaseDidRelaunchWebProcess(WebKitWebViewBase* webkitWebViewBase
         priv->viewGestureController = makeUnique<WebKit::ViewGestureController>(*priv->pageProxy);
         priv->viewGestureController->setSwipeGestureEnabled(priv->isBackForwardNavigationGestureEnabled);
     }
+    if (priv->displayID)
+        priv->pageProxy->windowScreenDidChange(priv->displayID);
 }
 
 void webkitWebViewBasePageClosed(WebKitWebViewBase* webkitWebViewBase)
@@ -2756,7 +2932,7 @@ RefPtr<WebKit::ViewSnapshot> webkitWebViewBaseTakeViewSnapshot(WebKitWebViewBase
     return ViewSnapshot::create(WTFMove(surface));
 #else
     WebKitWebViewBasePrivate* priv = webkitWebViewBase->priv;
-    auto* renderer = gtk_native_get_renderer(GTK_NATIVE(priv->toplevelOnScreenWindow));
+    auto* renderer = gtk_native_get_renderer(GTK_NATIVE(priv->toplevelOnScreenWindow->window()));
 
     GRefPtr<GtkSnapshot> snapshot = adoptGRef(gtk_snapshot_new());
 
@@ -2886,6 +3062,7 @@ int webkitWebViewBaseRenderHostFileDescriptor(WebKitWebViewBase* webkitWebViewBa
 }
 #endif
 
+#if ENABLE(POINTER_LOCK)
 void webkitWebViewBaseRequestPointerLock(WebKitWebViewBase* webViewBase)
 {
     WebKitWebViewBasePrivate* priv = webViewBase->priv;
@@ -2912,6 +3089,7 @@ void webkitWebViewBaseDidLosePointerLock(WebKitWebViewBase* webViewBase)
     priv->pointerLockManager->unlock();
     priv->pointerLockManager = nullptr;
 }
+#endif // ENABLE(POINTER_LOCK)
 
 void webkitWebViewBaseSetInputMethodContext(WebKitWebViewBase* webViewBase, WebKitInputMethodContext* context)
 {
@@ -2939,7 +3117,7 @@ static inline OptionSet<WebEventModifier> toWebKitModifiers(unsigned modifiers)
         webEventModifiers.add(WebEventModifier::AltKey);
     if (modifiers & GDK_META_MASK)
         webEventModifiers.add(WebEventModifier::MetaKey);
-    if (PlatformKeyboardEvent::modifiersContainCapsLock(modifiers))
+    if (modifiers & GDK_LOCK_MASK)
         webEventModifiers.add(WebEventModifier::CapsLockKey);
     return webEventModifiers;
 }
@@ -2966,19 +3144,19 @@ void webkitWebViewBaseSynthesizeMouseEvent(WebKitWebViewBase* webViewBase, Mouse
         return;
     }
 
-    WebMouseEventButton webEventButton = WebMouseEventButton::NoButton;
+    WebMouseEventButton webEventButton = WebMouseEventButton::None;
     switch (button) {
     case 0:
-        webEventButton = WebMouseEventButton::NoButton;
+        webEventButton = WebMouseEventButton::None;
         break;
     case 1:
-        webEventButton = WebMouseEventButton::LeftButton;
+        webEventButton = WebMouseEventButton::Left;
         break;
     case 2:
-        webEventButton = WebMouseEventButton::MiddleButton;
+        webEventButton = WebMouseEventButton::Middle;
         break;
     case 3:
-        webEventButton = WebMouseEventButton::RightButton;
+        webEventButton = WebMouseEventButton::Right;
         break;
     }
 
@@ -2996,8 +3174,8 @@ void webkitWebViewBaseSynthesizeMouseEvent(WebKitWebViewBase* webViewBase, Mouse
     case MouseEventType::Press:
         webEventType = WebEventType::MouseDown;
         priv->inputMethodFilter.cancelComposition();
-#if !USE(GTK4)
-        if (webEventButton == WebMouseEventButton::RightButton) {
+#if !USE(GTK4) && ENABLE(CONTEXT_MENUS)
+        if (webEventButton == WebMouseEventButton::Right) {
             GUniquePtr<GdkEvent> event(gdk_event_new(GDK_BUTTON_PRESS));
             event->button.window = gtk_widget_get_window(GTK_WIDGET(webViewBase));
             g_object_ref(event->button.window);
@@ -3026,11 +3204,11 @@ void webkitWebViewBaseSynthesizeMouseEvent(WebKitWebViewBase* webViewBase, Mouse
     case MouseEventType::Motion:
         webEventType = WebEventType::MouseMove;
         if (buttons & GDK_BUTTON1_MASK)
-            webEventButton = WebMouseEventButton::LeftButton;
+            webEventButton = WebMouseEventButton::Left;
         else if (buttons & GDK_BUTTON2_MASK)
-            webEventButton = WebMouseEventButton::MiddleButton;
+            webEventButton = WebMouseEventButton::Middle;
         else if (buttons & GDK_BUTTON3_MASK)
-            webEventButton = WebMouseEventButton::RightButton;
+            webEventButton = WebMouseEventButton::Right;
 
         if (priv->lastMotionEvent)
             movementDelta = FloatPoint(x, y) - priv->lastMotionEvent->globalPosition;
@@ -3049,6 +3227,9 @@ void webkitWebViewBaseSynthesizeKeyEvent(WebKitWebViewBase* webViewBase, KeyEven
     if (priv->dialog)
         return;
 
+    auto keycode = widgetKeyvalToKeycode(GTK_WIDGET(webViewBase), keyval);
+    bool isAutoRepeat = type == KeyEventType::Press && priv->keyAutoRepeatHandler.keyPress(keycode);
+
     if (type != KeyEventType::Release) {
         if (auto* popupMenu = priv->pageProxy->activePopupMenu()) {
             auto* gtkPopupMenu = static_cast<WebPopupMenuProxyGtk*>(popupMenu);
@@ -3062,12 +3243,12 @@ void webkitWebViewBaseSynthesizeKeyEvent(WebKitWebViewBase* webViewBase, KeyEven
         }
 
 #if ENABLE(FULLSCREEN_API)
-        if (priv->fullScreenModeActive) {
+        if (webkitWebViewBaseIsFullScreen(webViewBase)) {
             switch (keyval) {
             case GDK_KEY_Escape:
             case GDK_KEY_f:
             case GDK_KEY_F:
-                priv->pageProxy->fullScreenManager()->requestExitFullScreen();
+                webkitWebViewBaseRequestExitFullScreen(webViewBase);
                 return;
             default:
                 break;
@@ -3075,7 +3256,7 @@ void webkitWebViewBaseSynthesizeKeyEvent(WebKitWebViewBase* webViewBase, KeyEven
         }
 #endif
 
-#if !USE(GTK4)
+#if !USE(GTK4) && ENABLE(CONTEXT_MENUS)
         if (priv->activeContextMenuProxy && keyval == GDK_KEY_Escape) {
             gtk_menu_shell_deactivate(GTK_MENU_SHELL(priv->activeContextMenuProxy->gtkWidget()));
             return;
@@ -3096,7 +3277,6 @@ void webkitWebViewBaseSynthesizeKeyEvent(WebKitWebViewBase* webViewBase, KeyEven
 #endif
     }
 
-    auto keycode = widgetKeyvalToKeycode(GTK_WIDGET(webViewBase), keyval);
     if (modifiers && shouldTranslate == ShouldTranslateKeyboardState::Yes) {
         auto* display = gtk_widget_get_display(GTK_WIDGET(webViewBase));
 #if USE(GTK4)
@@ -3143,6 +3323,7 @@ void webkitWebViewBaseSynthesizeKeyEvent(WebKitWebViewBase* webViewBase, KeyEven
                 PlatformKeyboardEvent::windowsKeyCodeForGdkKeyCode(keyval),
                 static_cast<int>(keyval),
                 priv->keyBindingTranslator.commandsForKeyval(keyval, modifiers),
+                isAutoRepeat,
                 keyval >= GDK_KEY_KP_Space && keyval <= GDK_KEY_KP_9,
                 webEventModifiers));
         }
@@ -3159,10 +3340,14 @@ void webkitWebViewBaseSynthesizeKeyEvent(WebKitWebViewBase* webViewBase, KeyEven
                 PlatformKeyboardEvent::windowsKeyCodeForGdkKeyCode(keyval),
                 static_cast<int>(keyval),
                 { },
+                false,
                 keyval >= GDK_KEY_KP_Space && keyval <= GDK_KEY_KP_9,
                 webEventModifiers));
         }
     }
+
+    if (type == KeyEventType::Release)
+        priv->keyAutoRepeatHandler.keyRelease();
 }
 
 static inline WebWheelEvent::Phase toWebKitWheelEventPhase(WheelEventPhase phase)
@@ -3201,7 +3386,7 @@ void webkitWebViewBaseSynthesizeWheelEvent(WebKitWebViewBase* webViewBase, const
     if (!hasPreciseDeltas)
         delta.scale(static_cast<float>(Scrollbar::pixelsPerLineStep()));
 
-    priv->pageProxy->handleWheelEvent(NativeWebWheelEvent(const_cast<GdkEvent*>(event), { x, y }, widgetRootCoords(GTK_WIDGET(webViewBase), x, y),
+    priv->pageProxy->handleNativeWheelEvent(NativeWebWheelEvent(const_cast<GdkEvent*>(event), { x, y }, widgetRootCoords(GTK_WIDGET(webViewBase), x, y),
         delta, wheelTicks, toWebKitWheelEventPhase(phase), toWebKitWheelEventPhase(momentumPhase), true));
 }
 
@@ -3225,4 +3410,9 @@ void webkitWebViewBasePageGrabbedTouch(WebKitWebViewBase* webViewBase)
 void webkitWebViewBaseSetShouldNotifyFocusEvents(WebKitWebViewBase* webViewBase, bool shouldNotifyFocusEvents)
 {
     webViewBase->priv->shouldNotifyFocusEvents = shouldNotifyFocusEvents;
+}
+
+void webkitWebViewBaseCallAfterNextPresentationUpdate(WebKitWebViewBase* webViewBase, CompletionHandler<void()>&& callback)
+{
+    webkitWebViewBaseNextPresentationUpdateMonitorStart(webViewBase, WTFMove(callback));
 }

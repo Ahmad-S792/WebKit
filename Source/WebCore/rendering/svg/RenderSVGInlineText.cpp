@@ -1,6 +1,6 @@
 /*
  * Copyright (C) 2006 Oliver Hunt <ojh16@student.canterbury.ac.nz>
- * Copyright (C) 2006 Apple Inc.
+ * Copyright (C) 2006-2023 Apple Inc. All rights reserved.
  * Copyright (C) 2007 Nikolas Zimmermann <zimmermann@kde.org>
  * Copyright (C) 2008 Rob Buis <buis@kde.org>
  * Copyright (C) Research In Motion Limited 2010. All rights reserved.
@@ -72,10 +72,11 @@ static String applySVGWhitespaceRules(const String& string, bool preserveWhiteSp
 }
 
 RenderSVGInlineText::RenderSVGInlineText(Text& textNode, const String& string)
-    : RenderText(textNode, applySVGWhitespaceRules(string, false))
+    : RenderText(Type::SVGInlineText, textNode, applySVGWhitespaceRules(string, false))
     , m_scalingFactor(1)
     , m_layoutAttributes(*this)
 {
+    ASSERT(isRenderSVGInlineText());
 }
 
 String RenderSVGInlineText::originalText() const
@@ -95,8 +96,8 @@ void RenderSVGInlineText::styleDidChange(StyleDifference diff, const RenderStyle
     RenderText::styleDidChange(diff, oldStyle);
     updateScaledFont();
 
-    bool newPreserves = style().whiteSpace() == WhiteSpace::Pre;
-    bool oldPreserves = oldStyle ? oldStyle->whiteSpace() == WhiteSpace::Pre : false;
+    bool newPreserves = style().whiteSpaceCollapse() == WhiteSpaceCollapse::Preserve;
+    bool oldPreserves = oldStyle ? oldStyle->whiteSpaceCollapse() == WhiteSpaceCollapse::Preserve : false;
     if (oldPreserves && !newPreserves) {
         setText(applySVGWhitespaceRules(originalText(), false), true);
         return;
@@ -112,7 +113,7 @@ void RenderSVGInlineText::styleDidChange(StyleDifference diff, const RenderStyle
 
     // The text metrics may be influenced by style changes.
     if (auto* textAncestor = RenderSVGText::locateRenderSVGTextAncestor(*this))
-        textAncestor->subtreeStyleDidChange(this);
+        textAncestor->setNeedsLayout();
 }
 
 std::unique_ptr<LegacyInlineTextBox> RenderSVGInlineText::createTextBox()
@@ -142,7 +143,7 @@ bool RenderSVGInlineText::characterStartsNewTextChunk(int position) const
     ASSERT(position < static_cast<int>(text().length()));
 
     // Each <textPath> element starts a new text chunk, regardless of any x/y values.
-    if (!position && parent()->isSVGTextPath() && !previousSibling())
+    if (!position && parent()->isRenderSVGTextPath() && !previousSibling())
         return true;
 
     const SVGCharacterDataMap::const_iterator it = m_layoutAttributes.characterDataMap().find(static_cast<unsigned>(position + 1));
@@ -207,20 +208,21 @@ void RenderSVGInlineText::updateScaledFont()
     computeNewScaledFontForStyle(*this, style(), m_scalingFactor, m_scaledFont);
 }
 
+float RenderSVGInlineText::computeScalingFactorForRenderer(const RenderObject& renderer)
+{
+#if ENABLE(LAYER_BASED_SVG_ENGINE)
+    if (renderer.document().settings().layerBasedSVGEngineEnabled()) {
+        if (const auto* layerRenderer = lineageOfType<RenderLayerModelObject>(renderer).first())
+            return SVGLayerTransformComputation(*layerRenderer).calculateScreenFontSizeScalingFactor();
+    }
+#endif
+    return SVGRenderingContext::calculateScreenFontSizeScalingFactor(renderer);
+}
+
 void RenderSVGInlineText::computeNewScaledFontForStyle(const RenderObject& renderer, const RenderStyle& style, float& scalingFactor, FontCascade& scaledFont)
 {
-    auto computeScalingFactor = [&renderer]() {
-#if ENABLE(LAYER_BASED_SVG_ENGINE)
-        if (renderer.document().settings().layerBasedSVGEngineEnabled()) {
-            if (const auto* layerRenderer = lineageOfType<RenderLayerModelObject>(renderer).first())
-                return SVGLayerTransformComputation(*layerRenderer).calculateScreenFontSizeScalingFactor();
-        }
-#endif
-        return SVGRenderingContext::calculateScreenFontSizeScalingFactor(renderer);
-    };
-
     // Alter font-size to the right on-screen value to avoid scaling the glyphs themselves, except when GeometricPrecision is specified
-    scalingFactor = computeScalingFactor();
+    scalingFactor = computeScalingFactorForRenderer(renderer);
     if (!scalingFactor || style.fontDescription().textRenderingMode() == TextRenderingMode::GeometricPrecision) {
         scalingFactor = 1;
         scaledFont = style.fontCascade();

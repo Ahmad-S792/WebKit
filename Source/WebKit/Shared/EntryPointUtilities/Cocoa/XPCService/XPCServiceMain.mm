@@ -30,6 +30,7 @@
 #import "WKCrashReporter.h"
 #import "XPCServiceEntryPoint.h"
 #import <CoreFoundation/CoreFoundation.h>
+#import <mach/mach.h>
 #import <pal/spi/cf/CFUtilitiesSPI.h>
 #import <pal/spi/cocoa/LaunchServicesSPI.h>
 #import <sys/sysctl.h>
@@ -37,6 +38,9 @@
 #import <wtf/Language.h>
 #import <wtf/OSObjectPtr.h>
 #import <wtf/RetainPtr.h>
+#import <wtf/WTFProcess.h>
+#import <wtf/spi/cocoa/OSLogSPI.h>
+#import <wtf/spi/darwin/SandboxSPI.h>
 #import <wtf/spi/darwin/XPCSPI.h>
 
 namespace WebKit {
@@ -62,7 +66,58 @@ static void setAppleLanguagesPreference()
         LOG(Language, "Bootstrap message does not contain OverrideLanguages");
 }
 
-static void XPCServiceEventHandler(xpc_connection_t peer)
+static void initializeCFPrefs()
+{
+#if ENABLE(CFPREFS_DIRECT_MODE)
+    // Enable CFPrefs direct mode to avoid unsuccessfully attempting to connect to the daemon and getting blocked by the sandbox.
+    _CFPrefsSetDirectModeEnabled(YES);
+#if HAVE(CF_PREFS_SET_READ_ONLY)
+    _CFPrefsSetReadOnly(YES);
+#endif
+#endif // ENABLE(CFPREFS_DIRECT_MODE)
+}
+
+static void initializeLogd(bool disableLogging)
+{
+#if ENABLE(LOGD_BLOCKING_IN_WEBCONTENT)
+    if (disableLogging) {
+        os_trace_set_mode(OS_TRACE_MODE_OFF);
+        return;
+    }
+#else
+    UNUSED_PARAM(disableLogging);
+#endif
+
+    os_trace_set_mode(OS_TRACE_MODE_INFO | OS_TRACE_MODE_DEBUG);
+
+    // Log a long message to make sure the XPC connection to the log daemon for oversized messages is opened.
+    // This is needed to block launchd after the WebContent process has launched, since access to launchd is
+    // required when opening new XPC connections.
+    char stringWithSpaces[1024];
+    memset(stringWithSpaces, ' ', sizeof(stringWithSpaces));
+    stringWithSpaces[sizeof(stringWithSpaces) - 1] = 0;
+    RELEASE_LOG(Process, "Initialized logd %s", stringWithSpaces);
+}
+
+#if PLATFORM(MAC) || PLATFORM(MACCATALYST)
+
+NEVER_INLINE NO_RETURN_DUE_TO_CRASH static void crashDueWebKitFrameworkVersionMismatch()
+{
+    CRASH();
+}
+static void checkFrameworkVersion(xpc_object_t message)
+{
+    auto webKitBundleVersion = String::fromLatin1(xpc_dictionary_get_string(message, "WebKitBundleVersion"));
+    String expectedBundleVersion = [NSBundle bundleForClass:NSClassFromString(@"WKWebView")].infoDictionary[(__bridge NSString *)kCFBundleVersionKey];
+    if (!webKitBundleVersion.isNull() && !expectedBundleVersion.isNull() && webKitBundleVersion != expectedBundleVersion) {
+        auto errorMessage = makeString("WebKit framework version mismatch: ", webKitBundleVersion, " != ", expectedBundleVersion);
+        logAndSetCrashLogMessage(errorMessage.utf8().data());
+        crashDueWebKitFrameworkVersionMismatch();
+    }
+}
+#endif // PLATFORM(MAC)
+
+void XPCServiceEventHandler(xpc_connection_t peer)
 {
     OSObjectPtr<xpc_connection_t> retainedPeerConnection(peer);
 
@@ -76,7 +131,7 @@ static void XPCServiceEventHandler(xpc_connection_t peer)
                     RELEASE_LOG_FAULT(IPC, "Exiting: Received XPC event type: %{public}s", event == XPC_ERROR_CONNECTION_INVALID ? "XPC_ERROR_CONNECTION_INVALID" : "XPC_ERROR_TERMINATION_IMMINENT");
                     // FIXME: Handle this case more gracefully.
                     [[NSRunLoop mainRunLoop] performBlock:^{
-                        exit(EXIT_FAILURE);
+                        exitProcess(EXIT_FAILURE);
                     }];
                 }
             }
@@ -89,6 +144,17 @@ static void XPCServiceEventHandler(xpc_connection_t peer)
             return;
         }
         if (!strcmp(messageName, "bootstrap")) {
+            bool disableLogging = xpc_dictionary_get_bool(event, "disable-logging");
+            initializeLogd(disableLogging);
+
+#if PLATFORM(IOS_FAMILY)
+            auto containerEnvironmentVariables = xpc_dictionary_get_value(event, "ContainerEnvironmentVariables");
+            xpc_dictionary_apply(containerEnvironmentVariables, ^(const char *key, xpc_object_t value) {
+                setenv(key, xpc_string_get_string_ptr(value), 1);
+                return true;
+            });
+#endif
+
             const char* serviceName = xpc_dictionary_get_string(event, "service-name");
             if (!serviceName) {
                 RELEASE_LOG_ERROR(IPC, "XPCServiceEventHandler: 'service-name' is not present in the XPC dictionary");
@@ -112,7 +178,7 @@ static void XPCServiceEventHandler(xpc_connection_t peer)
             if (!initializerFunctionPtr) {
                 RELEASE_LOG_FAULT(IPC, "Exiting: Unable to find entry point in WebKit.framework with name: %s", [(__bridge NSString *)entryPointFunctionName UTF8String]);
                 [[NSRunLoop mainRunLoop] performBlock:^{
-                    exit(EXIT_FAILURE);
+                    exitProcess(EXIT_FAILURE);
                 }];
                 return;
             }
@@ -130,6 +196,12 @@ static void XPCServiceEventHandler(xpc_connection_t peer)
                 dup2(fd, STDERR_FILENO);
 
             WorkQueue::main().dispatchSync([initializerFunctionPtr, event = OSObjectPtr<xpc_object_t>(event), retainedPeerConnection] {
+                WTF::initializeMainThread();
+
+                initializeCFPrefs();
+#if PLATFORM(MAC) || PLATFORM(MACCATALYST)
+                checkFrameworkVersion(event.get());
+#endif
                 initializerFunctionPtr(retainedPeerConnection.get(), event.get());
 
                 setAppleLanguagesPreference();
@@ -144,37 +216,11 @@ static void XPCServiceEventHandler(xpc_connection_t peer)
     xpc_connection_resume(peer);
 }
 
-#if PLATFORM(MAC) || PLATFORM(MACCATALYST)
-
-NEVER_INLINE NO_RETURN_DUE_TO_CRASH static void crashDueWebKitFrameworkVersionMismatch()
-{
-    CRASH();
-}
-
-#endif // PLATFORM(MAC)
-
 int XPCServiceMain(int, const char**)
 {
-#if ENABLE(CFPREFS_DIRECT_MODE)
-    // Enable CFPrefs direct mode to avoid unsuccessfully attempting to connect to the daemon and getting blocked by the sandbox.
-    _CFPrefsSetDirectModeEnabled(YES);
-#if HAVE(CF_PREFS_SET_READ_ONLY)
-    _CFPrefsSetReadOnly(YES);
-#endif
-#endif // ENABLE(CFPREFS_DIRECT_MODE)
-
-    WTF::initializeMainThread();
-
     auto bootstrap = adoptOSObject(xpc_copy_bootstrap());
 
     if (bootstrap) {
-#if PLATFORM(IOS_FAMILY)
-        auto containerEnvironmentVariables = xpc_dictionary_get_value(bootstrap.get(), "ContainerEnvironmentVariables");
-        xpc_dictionary_apply(containerEnvironmentVariables, ^(const char *key, xpc_object_t value) {
-            setenv(key, xpc_string_get_string_ptr(value), 1);
-            return true;
-        });
-#endif
 #if PLATFORM(MAC) || PLATFORM(MACCATALYST)
 #if ASAN_ENABLED
         // EXC_RESOURCE on ASAN builds freezes the process for several minutes: rdar://65027596
@@ -189,13 +235,6 @@ int XPCServiceMain(int, const char**)
             }
         }
 #endif
-        auto webKitBundleVersion = String::fromLatin1(xpc_dictionary_get_string(bootstrap.get(), "WebKitBundleVersion"));
-        String expectedBundleVersion = [NSBundle bundleWithIdentifier:@"com.apple.WebKit"].infoDictionary[(__bridge NSString *)kCFBundleVersionKey];
-        if (!webKitBundleVersion.isNull() && !expectedBundleVersion.isNull() && webKitBundleVersion != expectedBundleVersion) {
-            auto errorMessage = makeString("WebKit framework version mismatch: ", webKitBundleVersion, " != ", expectedBundleVersion);
-            logAndSetCrashLogMessage(errorMessage.utf8().data());
-            crashDueWebKitFrameworkVersionMismatch();
-        }
 #endif
     }
 

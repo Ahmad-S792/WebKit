@@ -32,6 +32,8 @@
 #include "FontSelector.h"
 #include "MathMLNames.h"
 #include "MathMLRowElement.h"
+#include "RenderBoxInlines.h"
+#include "RenderBoxModelObjectInlines.h"
 #include "RenderInline.h"
 #include "RenderMathMLFencedOperator.h"
 #include "RenderText.h"
@@ -49,8 +51,9 @@ static constexpr auto gOpeningBraceChar = "("_s;
 static constexpr auto gClosingBraceChar = ")"_s;
 
 RenderMathMLFenced::RenderMathMLFenced(MathMLRowElement& element, RenderStyle&& style)
-    : RenderMathMLRow(element, WTFMove(style))
+    : RenderMathMLRow(Type::MathMLFenced, element, WTFMove(style))
 {
+    ASSERT(isRenderMathMLFenced());
 }
 
 void RenderMathMLFenced::updateFromElement()
@@ -69,7 +72,7 @@ void RenderMathMLFenced::updateFromElement()
     if (!separators.isNull()) {
         StringBuilder characters;
         for (unsigned i = 0; i < separators.length(); i++) {
-            if (!isSpaceOrNewline(separators[i]))
+            if (!deprecatedIsSpaceOrNewline(separators[i]))
                 characters.append(separators[i]);
         }
         m_separators = !characters.length() ? 0 : characters.toString().impl();

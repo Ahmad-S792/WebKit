@@ -23,7 +23,6 @@
 #include "BeforeUnloadEvent.h"
 #include "ContentSecurityPolicy.h"
 #include "EventNames.h"
-#include "Frame.h"
 #include "HTMLElement.h"
 #include "JSDOMConvertNullable.h"
 #include "JSDOMConvertStrings.h"
@@ -34,12 +33,13 @@
 #include "JSExecState.h"
 #include "JSExecStateInstrumentation.h"
 #include "JSWorkerGlobalScope.h"
+#include "LocalFrame.h"
 #include "ScriptController.h"
 #include "WebCoreJSClientData.h"
 #include "WorkerGlobalScope.h"
 #include <JavaScriptCore/ExceptionHelpers.h>
 #include <JavaScriptCore/JSLock.h>
-#include <JavaScriptCore/VMEntryScope.h>
+#include <JavaScriptCore/VMEntryScopeInlines.h>
 #include <JavaScriptCore/Watchdog.h>
 #include <wtf/Ref.h>
 #include <wtf/Scope.h>
@@ -53,13 +53,14 @@ JSEventListener::JSEventListener(JSObject* function, JSObject* wrapper, bool isA
     , m_wasCreatedFromMarkup(createdFromMarkup == CreatedFromMarkup::Yes)
     , m_isInitialized(false)
     , m_wrapper(wrapper)
-    , m_isolatedWorld(isolatedWorld)
+    , m_isolatedWorld(&isolatedWorld)
 {
     if (function) {
         ASSERT(wrapper);
         m_jsFunction = JSC::Weak<JSC::JSObject>(function);
         m_isInitialized = true;
     }
+    static_cast<JSVMClientData*>(isolatedWorld.vm().clientData)->addClient(*this);
 }
 
 JSEventListener::~JSEventListener() = default;
@@ -92,8 +93,8 @@ void JSEventListener::replaceJSFunctionForAttributeListener(JSObject* function, 
 
 JSValue eventHandlerAttribute(EventTarget& eventTarget, const AtomString& eventType, DOMWrapperWorld& isolatedWorld)
 {
-    if (auto* jsListener = eventTarget.attributeEventListener(eventType, isolatedWorld)) {
-        if (auto* context = eventTarget.scriptExecutionContext()) {
+    if (RefPtr jsListener = eventTarget.attributeEventListener(eventType, isolatedWorld)) {
+        if (RefPtr context = eventTarget.scriptExecutionContext()) {
             if (auto* jsFunction = jsListener->ensureJSFunction(*context))
                 return jsFunction;
         }
@@ -142,29 +143,33 @@ void JSEventListener::handleEvent(ScriptExecutionContext& scriptExecutionContext
     if (!jsFunction)
         return;
 
-    auto* globalObject = toJSDOMGlobalObject(scriptExecutionContext, m_isolatedWorld);
+    if (UNLIKELY(!m_isolatedWorld))
+        return;
+
+    auto* globalObject = toJSDOMGlobalObject(scriptExecutionContext, *m_isolatedWorld);
     if (!globalObject)
         return;
 
     if (scriptExecutionContext.isDocument()) {
-        auto* window = jsCast<JSDOMWindow*>(globalObject);
+        auto* window = jsCast<JSLocalDOMWindow*>(globalObject);
         if (!window->wrapped().isCurrentlyDisplayedInFrame())
             return;
         if (wasCreatedFromMarkup()) {
-            auto* element = dynamicDowncast<Element>(*event.target());
-            if (!scriptExecutionContext.contentSecurityPolicy()->allowInlineEventHandlers(sourceURL().string(), sourcePosition().m_line, code(), element))
+            RefPtr element = dynamicDowncast<Element>(*event.target());
+            if (!scriptExecutionContext.checkedContentSecurityPolicy()->allowInlineEventHandlers(sourceURL().string(), sourcePosition().m_line, code(), element.get()))
                 return;
         }
         // FIXME: Is this check needed for other contexts?
-        auto& script = window->wrapped().frame()->script();
-        if (!script.canExecuteScripts(AboutToExecuteScript) || script.isPaused())
+        RefPtr frame = window->wrapped().frame();
+        CheckedRef script = frame->script();
+        if (!script->canExecuteScripts(ReasonForCallingCanExecuteScripts::AboutToExecuteScript) || script->isPaused())
             return;
     }
 
     auto* jsFunctionGlobalObject = jsFunction->globalObject();
 
     RefPtr<Event> savedEvent;
-    auto* jsFunctionWindow = jsDynamicCast<JSDOMWindow*>(jsFunctionGlobalObject);
+    auto* jsFunctionWindow = jsDynamicCast<JSLocalDOMWindow*>(jsFunctionGlobalObject);
     if (jsFunctionWindow) {
         savedEvent = jsFunctionWindow->currentEvent();
 
@@ -277,7 +282,7 @@ String JSEventListener::functionName() const
     if (!m_wrapper || !m_jsFunction)
         return { };
 
-    auto& vm = isolatedWorld().vm();
+    auto& vm = m_isolatedWorld->vm();
     JSC::JSLockHolder lock(vm);
 
     auto* handlerFunction = JSC::jsDynamicCast<JSC::JSFunction*>(m_jsFunction.get());
@@ -285,6 +290,14 @@ String JSEventListener::functionName() const
         return { };
 
     return handlerFunction->name(vm);
+}
+
+void JSEventListener::willDestroyVM()
+{
+    m_jsFunction.clear();
+    m_wrapper.clear();
+    m_isInitialized = false;
+    m_isolatedWorld = nullptr;
 }
 
 } // namespace WebCore

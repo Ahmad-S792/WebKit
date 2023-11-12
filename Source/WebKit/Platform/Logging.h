@@ -40,7 +40,7 @@ extern "C" {
 
 #define WEBKIT2_LOG_CHANNELS(M) \
     M(ActivityState) \
-    M(PrivateClickMeasurement) \
+    M(AdvancedPrivacyProtections) \
     M(AppSSO) \
     M(Automation) \
     M(AutomationInteractions) \
@@ -60,12 +60,14 @@ extern "C" {
     M(IPCMessages) \
     M(ITPDebug) \
     M(IconDatabase) \
+    M(Images) \
     M(ImageAnalysis) \
     M(IncrementalPDF) \
     M(IncrementalPDFVerbose) \
     M(IndexedDB) \
     M(Inspector) \
     M(KeyHandling) \
+    M(Keychain) \
     M(Language) \
     M(Layers) \
     M(Layout) \
@@ -84,18 +86,20 @@ extern "C" {
     M(PerformanceLogging) \
     M(Plugins) \
     M(Printing) \
+    M(PrivateClickMeasurement) \
     M(Process) \
     M(ProcessSuspension) \
     M(ProcessSwapping) \
     M(ProximityNetworking) \
     M(Push) \
-    M(RemoteRenderingBufferVolatility) \
+    M(RemoteLayerBuffers) \
     M(RemoteLayerTree) \
     M(Resize) \
     M(ResourceLoadStatistics) \
     M(Sandbox) \
     M(ScrollAnimations) \
     M(Scrolling) \
+    M(SecureCoding) \
     M(Selection) \
     M(ServiceWorker) \
     M(SessionState) \
@@ -103,6 +107,8 @@ extern "C" {
     M(SharedWorker) \
     M(Storage) \
     M(StorageAPI) \
+    M(SystemPreview) \
+    M(Telephony) \
     M(TextInput) \
     M(TextInteraction) \
     M(Translation) \

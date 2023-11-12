@@ -26,10 +26,9 @@
 #include "config.h"
 #include "NavigatorWebDriver.h"
 
-#include "Frame.h"
+#include "LocalFrame.h"
 #include "Navigator.h"
 #include "Page.h"
-
 
 namespace WebCore {
 using namespace JSC;
@@ -45,7 +44,7 @@ const char* NavigatorWebDriver::supplementName()
 
 bool NavigatorWebDriver::isControlledByAutomation(const Navigator& navigator)
 {
-    auto* frame = navigator.frame();
+    RefPtr frame = navigator.frame();
     if (!frame || !frame->page())
         return false;
 

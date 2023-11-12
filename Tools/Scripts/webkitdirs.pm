@@ -1,4 +1,4 @@
-# Copyright (C) 2005-2022 Apple Inc. All rights reserved.
+# Copyright (C) 2005-2023 Apple Inc. All rights reserved.
 # Copyright (C) 2009 Google Inc. All rights reserved.
 # Copyright (C) 2011 Research In Motion Limited. All rights reserved.
 # Copyright (C) 2013 Nokia Corporation and/or its subsidiary(-ies).
@@ -40,7 +40,7 @@ use Digest::MD5 qw(md5_hex);
 use FindBin;
 use File::Basename;
 use File::Find;
-use File::Glob qw(bsd_glob);
+use File::Glob qw(bsd_glob GLOB_TILDE);
 use File::Path qw(make_path mkpath rmtree);
 use File::Spec;
 use File::Temp qw(tempdir);
@@ -63,6 +63,7 @@ BEGIN {
    @ISA         = qw(Exporter);
    @EXPORT      = qw(
        &XcodeCoverageSupportOptions
+       &XcodeExportCompileCommandsOptions
        &XcodeOptionString
        &XcodeOptionStringNoConfig
        &XcodeOptions
@@ -120,19 +121,18 @@ BEGIN {
        &isAppleCocoaWebKit
        &isAppleMacWebKit
        &isAppleWebKit
-       &isAppleWinWebKit
        &isCMakeBuild
        &isCygwin
        &isDebianBased
        &isFedoraBased
        &isEmbeddedWebKit
-       &isFTW
        &isGenerateProjectOnly
        &isGtk
        &isIOSWebKit
        &isInspectorFrontend
        &isJSCOnly
        &isLinux
+       &isMacCatalystWebKit
        &isPlayStation
        &isWPE
        &isWinCairo
@@ -143,6 +143,7 @@ BEGIN {
        &jscProductDir
        &launcherName
        &launcherPath
+       &libFuzzerIsEnabled
        &ltoMode
        &markBaseProductDirectoryAsCreatedByXcodeBuildSystem
        &maxCPULoad
@@ -159,7 +160,6 @@ BEGIN {
        &prependToEnvironmentVariableList
        &printHelpAndExitForRunAndDebugWebKitAppIfNeeded
        &productDir
-       &productDirForCMake
        &prohibitUnknownPort
        &relativeScriptsDir
        &removeCMakeCache
@@ -183,9 +183,9 @@ BEGIN {
        &setPathForRunningWebKitApp
        &setUpGuardMallocIfNeeded
        &setXcodeSDK
-       &setupAppleWinEnv
        &setupMacWebKitEnvironment
        &setupUnixWebKitEnvironment
+       &setupWindowsWebKitEnvironment
        &sharedCommandLineOptions
        &sharedCommandLineOptionsUsage
        &shouldBuildForCrossTarget
@@ -194,16 +194,20 @@ BEGIN {
        &splitVersionString
        &tsanIsEnabled
        &ubsanIsEnabled
+       &usesCryptexPath
        &willUseAppleTVDeviceSDK
        &willUseAppleTVSimulatorSDK
        &willUseIOSDeviceSDK
        &willUseIOSSimulatorSDK
        &willUseWatchDeviceSDK
        &willUseWatchSimulatorSDK
+       &willUseVisionDeviceSDK
+       &willUseVisionSimulatorSDK
        &winVersion
        &wrapperPrefixIfNeeded
        &xcodeSDK
        &xcodeSDKPlatformName
+       &xcodeVersion
        DO_NOT_USE_OPEN_COMMAND
        Mac
        USE_OPEN_COMMAND
@@ -215,12 +219,11 @@ BEGIN {
 
 # Ports
 use constant {
-    AppleWin    => "AppleWin",
-    FTW         => "FTW",
     GTK         => "GTK",
     iOS         => "iOS",
     tvOS        => "tvOS",
     watchOS     => "watchOS",
+    visionOS    => "visionOS",
     Mac         => "Mac",
     MacCatalyst => "MacCatalyst",
     JSCOnly     => "JSCOnly",
@@ -246,6 +249,7 @@ my %nativeArchitectureMap = ();
 my $asanIsEnabled;
 my $tsanIsEnabled;
 my $ubsanIsEnabled;
+my $libFuzzerIsEnabled;
 my $coverageIsEnabled;
 my $forceOptimizationLevel;
 my $ltoMode;
@@ -357,6 +361,12 @@ sub determineXcodeVersion
     $xcodeVersion = ($xcodebuildVersionOutput =~ /Xcode ([0-9]+(\.[0-9]+)*)/) ? $1 : "3.0";
 }
 
+sub xcodeVersion
+{
+    determineXcodeVersion();
+    return $xcodeVersion;
+}
+
 sub readXcodeUserDefault($)
 {
     my ($key) = @_;
@@ -406,11 +416,20 @@ sub determineBaseProductDir
         $setSharedPrecompsDir = 1 if $buildLocationStyle ne "DeterminedByTargets";
 
         if (!defined($baseProductDir)) {
-            $baseProductDir = join '', readXcodeUserDefault("IDEApplicationwideBuildSettings");
-            $baseProductDir = $1 if $baseProductDir =~ /SYMROOT\s*=\s*\"(.*?)\";/s;
+            my $customPaths = join '', readXcodeUserDefault("IDEApplicationwideBuildSettings");
+            $baseProductDir = $1 if $customPaths =~ /SYMROOT\s*=\s*\"(.*?)\";/s;
         }
 
-        undef $baseProductDir unless $baseProductDir =~ /^\//;
+        # Glob to expand tilde in pathnames
+        # (https://bugs.webkit.org/show_bug.cgi?id=249442).
+        ($baseProductDir) = bsd_glob($baseProductDir) if defined($baseProductDir);
+
+        if (defined($baseProductDir) && $baseProductDir !~ /^\//) {
+            # webkitdirs can be run from arbitrary directories, so any
+            # user-specified build directory must be absolute.
+            print STDERR "Ignoring Xcode application-wide build directory \"$baseProductDir\" because it's not an absolute path.\n";
+            undef $baseProductDir;
+        }
     }
 
     if (!defined($baseProductDir)) { # Port-specific checks failed, use default
@@ -428,7 +447,7 @@ sub determineBaseProductDir
         $baseProductDir =~ s|^~/|$ENV{HOME}/|;
         die "Can't handle Xcode product directory with a ~ in it.\n" if $baseProductDir =~ /~/;
         die "Can't handle Xcode product directory with a variable in it.\n" if $baseProductDir =~ /\$/;
-        $baseProductDir = realpath($baseProductDir);
+        $baseProductDir = realpath($baseProductDir) if -e $baseProductDir;
         @baseProductDirOption = ("SYMROOT=$baseProductDir", "OBJROOT=$baseProductDir");
         push(@baseProductDirOption, "SHARED_PRECOMPS_DIR=${baseProductDir}/PrecompiledHeaders") if $setSharedPrecompsDir;
         push(@baseProductDirOption, "INDEX_ENABLE_DATA_STORE=YES", "INDEX_DATA_STORE_DIR=${indexDataStoreDir}") if $indexDataStoreDir;
@@ -604,6 +623,13 @@ sub determineUBSanIsEnabled
     $ubsanIsEnabled = readSanitizerConfiguration("UBSan");
 }
 
+sub determineLibFuzzerIsEnabled
+{
+    return if defined $libFuzzerIsEnabled;
+    determineBaseProductDir();
+    $libFuzzerIsEnabled = readSanitizerConfiguration("LibFuzzer");
+}
+
 sub determineForceOptimizationLevel
 {
     return if defined $forceOptimizationLevel;
@@ -704,10 +730,11 @@ sub argumentsForConfiguration()
     push(@args, '--tvos-simulator') if (defined $xcodeSDKPlatformName && $xcodeSDKPlatformName eq 'appletvsimulator');
     push(@args, '--watchos-device') if (defined $xcodeSDKPlatformName && $xcodeSDKPlatformName eq 'watchos');
     push(@args, '--watchos-simulator') if (defined $xcodeSDKPlatformName && $xcodeSDKPlatformName eq 'watchsimulator');
+    push(@args, '--visionos-device') if (defined $xcodeSDKPlatformName && $xcodeSDKPlatformName eq 'xros');
+    push(@args, '--visionos-simulator') if (defined $xcodeSDKPlatformName && $xcodeSDKPlatformName eq 'xrsimulator');
     push(@args, '--maccatalyst') if (defined $xcodeSDKPlatformName && $xcodeSDKPlatformName eq 'maccatalyst');
     push(@args, '--32-bit') if ($architecture eq "x86" and !isWin64());
     push(@args, '--64-bit') if (isWin64());
-    push(@args, '--ftw') if isFTW();
     push(@args, '--gtk') if isGtk();
     push(@args, '--wpe') if isWPE();
     push(@args, '--jsc-only') if isJSCOnly();
@@ -719,7 +746,7 @@ sub argumentsForConfiguration()
 sub extractNonMacOSHostConfiguration
 {
     my @args = ();
-    my @extract = ('--device', '--gtk', '--ios', '--platform', '--sdk', '--simulator', '--wincairo', '--ftw', '--tvos', '--watchos', 'SDKROOT', 'ARCHS');
+    my @extract = ('--device', '--gtk', '--ios', '--platform', '--sdk', '--simulator', '--wincairo', '--tvos', '--watchos', 'SDKROOT', 'ARCHS');
     foreach (@{$_[0]}) {
         my $line = $_;
         my $flag = 0;
@@ -792,6 +819,8 @@ sub isValidXcodeSDKPlatformName($) {
         macosx
         watchos
         watchsimulator
+        xros
+        xrsimulator
         maccatalyst
     );
     return grep { $_ eq $name } @platforms;
@@ -852,6 +881,12 @@ sub determineXcodeSDKPlatformName {
     }
     if (checkForArgumentAndRemoveFromARGV("--watchos-simulator")) {
         $xcodeSDKPlatformName ||= "watchsimulator";
+    }
+    if (checkForArgumentAndRemoveFromARGV("--visionos-device")) {
+        $xcodeSDKPlatformName ||= "xros";
+    }
+    if (checkForArgumentAndRemoveFromARGV("--visionos-simulator")) {
+        $xcodeSDKPlatformName ||= "xrsimulator";
     }
     if (checkForArgumentAndRemoveFromARGV("--maccatalyst")) {
         $xcodeSDKPlatformName ||= "maccatalyst";
@@ -986,11 +1021,7 @@ sub determineConfigurationForVisualStudio
 
 sub usesPerConfigurationBuildDirectory
 {
-    # [Gtk] We don't have Release/Debug configurations in straight
-    # autotool builds (non build-webkit). In this case and if
-    # WEBKIT_OUTPUTDIR exist, use that as our configuration dir. This will
-    # allows us to run run-webkit-tests without using build-webkit.
-    return ($ENV{"WEBKIT_OUTPUTDIR"} && isGtk()) || isAppleWinWebKit() || isFTW();
+    return (defined $ENV{"WEBKIT_OUTPUTDIR"});
 }
 
 sub determineConfigurationProductDir
@@ -998,13 +1029,13 @@ sub determineConfigurationProductDir
     return if defined $configurationProductDir;
     determineBaseProductDir();
     determineConfiguration();
-    if (isAppleWinWebKit() || isWinCairo() || isPlayStation() || isFTW()) {
+    if (isWinCairo() || isPlayStation()) {
         $configurationProductDir = File::Spec->catdir($baseProductDir, $configuration);
     } else {
         if (usesPerConfigurationBuildDirectory()) {
             $configurationProductDir = "$baseProductDir";
         } else {
-            if (shouldUseFlatpak() or shouldBuildForCrossTarget() or inCrossTargetEnvironment()) {
+            if (isGtk() or isWPE() or isJSCOnly() or shouldUseFlatpak() or shouldBuildForCrossTarget() or inCrossTargetEnvironment()) {
                 $configurationProductDir = "$baseProductDir/$portName/$configuration";
             } else {
                 $configurationProductDir = "$baseProductDir/$configuration";
@@ -1111,6 +1142,12 @@ sub ubsanIsEnabled()
     return $ubsanIsEnabled;
 }
 
+sub libFuzzerIsEnabled()
+{
+    determineLibFuzzerIsEnabled();
+    return $libFuzzerIsEnabled;
+}
+
 sub coverageIsEnabled()
 {
     determineCoverageIsEnabled();
@@ -1153,11 +1190,6 @@ sub determineGenerateDsym()
     $generateDsym = checkForArgumentAndRemoveFromARGV("--dsym");
 }
 
-sub hasIOSDevelopmentCertificate()
-{
-    return !exitStatus(system("security find-identity -p codesigning | grep '" . IOS_DEVELOPMENT_CERTIFICATE_NAME_PREFIX . "' > /dev/null 2>&1"));
-}
-
 sub argumentsForXcode()
 {
     my @args = ();
@@ -1196,6 +1228,7 @@ sub XcodeOptions
     determineASanIsEnabled();
     determineTSanIsEnabled();
     determineUBSanIsEnabled();
+    determineLibFuzzerIsEnabled();
     determineForceOptimizationLevel();
     determineCoverageIsEnabled();
     determineLTOMode();
@@ -1212,29 +1245,19 @@ sub XcodeOptions
         push @options, ("-workspace", $workspace) if $workspace;
     }
     push @options, ("-configuration", $configuration);
-    if ($asanIsEnabled) {
-        my $xcconfig = $ubsanIsEnabled ? "asan+ubsan.xcconfig" : "asan.xcconfig";
-        push @options, ("-xcconfig", File::Spec->catfile(sourceDir(), "Tools", "sanitizer", $xcconfig));
-        my $asanIgnorePath = File::Spec->catfile(sourceDir(), "Tools", "sanitizer", "webkit-asan-ignore.txt");
-        push @options, "ASAN_IGNORE=$asanIgnorePath" if -e $asanIgnorePath;
-    } elsif ($tsanIsEnabled) {
-        push @options, ("-xcconfig", File::Spec->catfile(sourceDir(), "Tools", "sanitizer", "tsan.xcconfig"));
-    } elsif (ubsanIsEnabled) {
-        push @options, ("-xcconfig", File::Spec->catfile(sourceDir(), "Tools", "sanitizer", "ubsan.xcconfig"));
-    }
+    push @options, ("ENABLE_ADDRESS_SANITIZER=YES") if $asanIsEnabled;
+    push @options, ("ENABLE_THREAD_SANITIZER=YES") if $tsanIsEnabled;
+    push @options, ("ENABLE_UNDEFINED_BEHAVIOR_SANITIZER=YES") if $ubsanIsEnabled;
+    push @options, ("ENABLE_LIBFUZZER=YES") if $libFuzzerIsEnabled;
     push @options, XcodeCoverageSupportOptions() if $coverageIsEnabled;
-    if ($forceOptimizationLevel) {
-        if ($asanIsEnabled || $tsanIsEnabled || $ubsanIsEnabled) {
-            # Command-line Xcode variable won't override that same varible set in a command-line xcconfig file.
-            push @options, "WK_FORCE_OPTIMIZATION_LEVEL=$forceOptimizationLevel";
-        } else {
-            push @options, "GCC_OPTIMIZATION_LEVEL=$forceOptimizationLevel";
-        }
-    }
+    push @options, "GCC_OPTIMIZATION_LEVEL=$forceOptimizationLevel" if $forceOptimizationLevel;
     push @options, "WK_LTO_MODE=$ltoMode" if $ltoMode;
     push @options, @baseProductDirOption;
     push @options, "ARCHS=$architecture" if $architecture;
     push @options, "SDKROOT=$xcodeSDK" if $xcodeSDK;
+    if (xcodeVersion() lt "15.0") {
+        push @options, "TAPI_USE_SRCROOT=YES" if $ENV{UseSRCROOTSupportForTAPI};
+    }
 
     my @features = webkitperl::FeatureList::getFeatureOptionList();
     foreach (@features) {
@@ -1253,15 +1276,6 @@ sub XcodeOptions
     die "Cannot enable both ASAN and TSAN at the same time\n" if $asanIsEnabled && $tsanIsEnabled;
     die "Cannot enable both (ASAN or TSAN) and Coverage at this time\n" if $coverageIsEnabled && ($asanIsEnabled || $tsanIsEnabled);
 
-    if (willUseIOSDeviceSDK() || willUseWatchDeviceSDK() || willUseAppleTVDeviceSDK()) {
-        if (hasIOSDevelopmentCertificate()) {
-            # FIXME: May match more than one installed development certificate.
-            push @options, "CODE_SIGN_IDENTITY=" . IOS_DEVELOPMENT_CERTIFICATE_NAME_PREFIX;
-        } else {
-            push @options, "CODE_SIGN_IDENTITY="; # No identity
-            push @options, "CODE_SIGNING_REQUIRED=NO";
-        }
-    }
     push @options, argumentsForXcode();
     return @options;
 }
@@ -1279,6 +1293,11 @@ sub XcodeOptionStringNoConfig
 sub XcodeCoverageSupportOptions()
 {
     return ("-xcconfig", sourceDir() . "/Tools/coverage/coverage.xcconfig");
+}
+
+sub XcodeExportCompileCommandsOptions()
+{
+    return ("OTHER_CFLAGS=\$(inherited) -gen-cdb-fragment-path \$(BUILT_PRODUCTS_DIR)/compile_commands", "GCC_PRECOMPILE_PREFIX_HEADER=NO", "CLANG_ENABLE_MODULE_DEBUGGING=NO", "COMPILER_INDEX_STORE_ENABLE=NO");
 }
 
 sub XcodeStaticAnalyzerOption()
@@ -1450,13 +1469,6 @@ sub builtDylibPathForName
     if (isAppleCocoaWebKit()) {
         return "$configurationProductDir/$libraryName.framework/Versions/A/$libraryName";
     }
-    if (isAppleWinWebKit() || isFTW()) {
-        if ($libraryName eq "JavaScriptCore") {
-            return "$baseProductDir/lib/$libraryName.lib";
-        } else {
-            return "$baseProductDir/$libraryName.intermediate/$configuration/$libraryName.intermediate/$libraryName.lib";
-        }
-    }
     if (isWPE()) {
         return "$configurationProductDir/lib/libWPEWebKit-1.0.so";
     }
@@ -1572,7 +1584,6 @@ sub determinePortName()
     return if defined $portName;
 
     my %argToPortName = (
-        ftw => FTW,
         gtk => GTK,
         'jsc-only' => JSCOnly,
         playstation => PlayStation,
@@ -1594,7 +1605,7 @@ sub determinePortName()
     # Port was not selected via command line, use appropriate default value
 
     if (isAnyWindows()) {
-        $portName = AppleWin;
+        $portName = WinCairo;
     } elsif (isDarwin()) {
         determineXcodeSDKPlatformName();
         if (willUseIOSDeviceSDK() || willUseIOSSimulatorSDK()) {
@@ -1603,6 +1614,8 @@ sub determinePortName()
             $portName = tvOS;
         } elsif (willUseWatchDeviceSDK() || willUseWatchSimulatorSDK()) {
             $portName = watchOS;
+        } elsif (willUseVisionDeviceSDK() || willUseVisionSimulatorSDK()) {
+            $portName = visionOS;
         } elsif (willUseMacCatalystSDK()) {
             $portName = MacCatalyst;
         } else {
@@ -1660,11 +1673,6 @@ sub isDebianBased()
 sub isFedoraBased()
 {
     return -e "/etc/fedora-release";
-}
-
-sub isFTW()
-{
-    return portName() eq FTW;
 }
 
 sub isWinCairo()
@@ -1822,14 +1830,19 @@ sub isWatchOSWebKit()
     return portName() eq watchOS;
 }
 
+sub isVisionOSWebKit()
+{
+    return portName() eq visionOS;
+}
+
 sub isEmbeddedWebKit()
 {
-    return isIOSWebKit() || isTVOSWebKit() || isWatchOSWebKit();
+    return isIOSWebKit() || isTVOSWebKit() || isWatchOSWebKit() || isVisionOSWebKit;
 }
 
 sub isAppleWebKit()
 {
-    return isAppleCocoaWebKit() || isAppleWinWebKit();
+    return isAppleCocoaWebKit();
 }
 
 sub isAppleMacWebKit()
@@ -1847,9 +1860,9 @@ sub isAppleCocoaWebKit()
     return isAppleMacWebKit() || isEmbeddedWebKit() || isMacCatalystWebKit();
 }
 
-sub isAppleWinWebKit()
+sub usesCryptexPath
 {
-    return portName() eq AppleWin;
+    return isAppleMacWebKit() || isMacCatalystWebKit() || isIOSWebKit();
 }
 
 sub simulatorDeviceFromJSON
@@ -1930,6 +1943,16 @@ sub willUseWatchDeviceSDK()
 sub willUseWatchSimulatorSDK()
 {
     return xcodeSDKPlatformName() eq "watchsimulator";
+}
+
+sub willUseVisionDeviceSDK()
+{
+    return xcodeSDKPlatformName() eq "xros";
+}
+
+sub willUseVisionSimulatorSDK()
+{
+    return xcodeSDKPlatformName() eq "xrsimulator";
 }
 
 sub willUseMacCatalystSDK()
@@ -2104,8 +2127,6 @@ sub launcherName()
         return "MiniBrowser";
     } elsif (isAppleMacWebKit()) {
         return "Safari";
-    } elsif (isAppleWinWebKit() || isFTW()) {
-        return "MiniBrowser";
     }
 }
 
@@ -2164,108 +2185,6 @@ sub fontExists($)
     my $cmd = "reg query \"HKLM\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Fonts\" /v \"$font\" 2>&1";
     my $val = `$cmd`;
     return $? == 0;
-}
-
-sub checkInstalledTools()
-{
-    # environment variables. Avoid until this is corrected.
-    my $pythonVer = `python --version 2>&1`;
-    die "You must have Python installed to build WebKit.\n" if ($?);
-
-    # cURL 7.34.0 has a bug that prevents authentication with opensource.apple.com (and other things using SSL3).
-    my $curlVer = `curl --version 2> NUL`;
-    if (!$? and $curlVer =~ "(.*curl.*)") {
-        $curlVer = $1;
-        if ($curlVer =~ /libcurl\/7\.34\.0/) {
-            print "cURL version 7.34.0 has a bug that prevents authentication with SSL v2 or v3.\n";
-            print "cURL 7.33.0 is known to work. The cURL projects is preparing an update to\n";
-            print "correct this problem.\n\n";
-            die "Please install a working cURL and try again.\n";
-        }
-    }
-
-    # MathML requires fonts that may not ship with Windows.
-    # Warn the user if they are missing.
-    my @fonts = ('Cambria & Cambria Math (TrueType)', 'LatinModernMath-Regular (TrueType)', 'STIXMath-Regular (TrueType)');
-    my @missing = ();
-    foreach my $font (@fonts) {
-        push @missing, $font if not fontExists($font);
-    }
-
-    if (scalar @missing > 0) {
-        print "*************************************************************\n";
-        print "Mathematical fonts, such as Latin Modern Math are needed to\n";
-        print "use the MathML feature.  You do not appear to have these fonts\n";
-        print "on your system.\n\n";
-        print "You can download a suitable set of fonts from the following URL:\n";
-        print "https://trac.webkit.org/wiki/MathML/Fonts\n";
-        print "*************************************************************\n";
-    }
-
-    print "Installed tools are correct for the WebKit build.\n";
-}
-
-sub setupAppleWinEnv()
-{
-    return unless isAppleWinWebKit() || isFTW();
-
-    checkInstalledTools();
-
-    if (isWindowsNT()) {
-        my $restartNeeded = 0;
-        my %variablesToSet = ();
-
-        # FIXME: We should remove this explicit version check for cygwin once we stop supporting Cygwin 1.7.9 or older versions. 
-        # https://bugs.webkit.org/show_bug.cgi?id=85791
-        my $uname_version = (POSIX::uname())[2];
-        $uname_version =~ s/\(.*\)//;  # Remove the trailing cygwin version, if any.
-        $uname_version =~ s/\-.*$//; # Remove trailing dash-version content, if any
-        if (version->parse($uname_version) < version->parse("1.7.10")) {
-            # Setting the environment variable 'CYGWIN' to 'tty' makes cygwin enable extra support (i.e., termios)
-            # for UNIX-like ttys in the Windows console
-            $variablesToSet{CYGWIN} = "tty" unless $ENV{CYGWIN};
-        }
-        
-        # Those environment variables must be set to be able to build inside Visual Studio.
-        $variablesToSet{WEBKIT_LIBRARIES} = windowsLibrariesDir() unless $ENV{WEBKIT_LIBRARIES};
-        $variablesToSet{WEBKIT_OUTPUTDIR} = windowsOutputDir() unless $ENV{WEBKIT_OUTPUTDIR};
-        $variablesToSet{MSBUILDDISABLENODEREUSE} = "1" unless $ENV{MSBUILDDISABLENODEREUSE};
-        $variablesToSet{_IsNativeEnvironment} = "true" unless $ENV{_IsNativeEnvironment};
-        $variablesToSet{PreferredToolArchitecture} = "x64" unless $ENV{PreferredToolArchitecture};
-
-        foreach my $variable (keys %variablesToSet) {
-            print "Setting the Environment Variable '" . $variable . "' to '" . $variablesToSet{$variable} . "'\n\n";
-            my $ret = system "setx", $variable, $variablesToSet{$variable};
-            if ($ret != 0) {
-                system qw(regtool -s set), '\\HKEY_CURRENT_USER\\Environment\\' . $variable, $variablesToSet{$variable};
-            }
-            $restartNeeded ||=  $variable eq "WEBKIT_LIBRARIES" || $variable eq "WEBKIT_OUTPUTDIR";
-        }
-
-        if ($restartNeeded) {
-            print "Please restart your computer before attempting to build inside Visual Studio.\n\n";
-        }
-    } else {
-        if (!defined $ENV{'WEBKIT_LIBRARIES'} || !$ENV{'WEBKIT_LIBRARIES'}) {
-            print "Warning: You must set the 'WebKit_Libraries' environment variable\n";
-            print "         to be able build WebKit from within Visual Studio 2017 and newer.\n";
-            print "         Make sure that 'WebKit_Libraries' points to the\n";
-            print "         'WebKitLibraries/win' directory, not the 'WebKitLibraries/' directory.\n\n";
-        }
-        if (!defined $ENV{'WEBKIT_OUTPUTDIR'} || !$ENV{'WEBKIT_OUTPUTDIR'}) {
-            print "Warning: You must set the 'WebKit_OutputDir' environment variable\n";
-            print "         to be able build WebKit from within Visual Studio 2017 and newer.\n\n";
-        }
-        if (!defined $ENV{'MSBUILDDISABLENODEREUSE'} || !$ENV{'MSBUILDDISABLENODEREUSE'}) {
-            print "Warning: You should set the 'MSBUILDDISABLENODEREUSE' environment variable to '1'\n";
-            print "         to avoid periodic locked log files when building.\n\n";
-        }
-    }
-    # FIXME (125180): Remove the following temporary 64-bit support once official support is available.
-    if (isWin64() and !$ENV{'WEBKIT_64_SUPPORT'}) {
-        print "Warning: You must set the 'WEBKIT_64_SUPPORT' environment variable\n";
-        print "         to be able run WebKit or JavaScriptCore tests.\n\n";
-    }
 }
 
 sub setupCygwinEnv()
@@ -2340,11 +2259,11 @@ sub getMSBuildPlatformArgument()
 
 sub getCMakeWindowsToolsetArgument()
 {
+    my @args;
     my $toolset = getVisualStudioToolset();
-    if (defined($toolset) && length($toolset)) {
-        return "-A $toolset";
-    }
-    return "";
+    push(@args, '-A', $toolset) if defined($toolset) && length($toolset);
+    push(@args, '-T', 'ClangCL') if defined($ENV{CC}) && $ENV{CC} =~ 'clang-cl';
+    return @args;
 }
 
 sub buildVisualStudioProject
@@ -2584,7 +2503,7 @@ sub shouldUseFlatpak()
         return 0;
     }
 
-    if (defined $ENV{'WEBKIT_JHBUILD'} && $ENV{'WEBKIT_JHBUILD'}) {
+    if ((defined $ENV{'WEBKIT_JHBUILD'} && $ENV{'WEBKIT_JHBUILD'}) or defined $ENV{'WEBKIT_BUILD_USE_SYSTEM_LIBRARIES'}) {
         return 0;
     }
 
@@ -2598,12 +2517,7 @@ sub shouldUseFlatpak()
 
 sub cmakeCachePath()
 {
-    return File::Spec->catdir(productDirForCMake(), "CMakeCache.txt");
-}
-
-sub cmakeFilesPath()
-{
-    return File::Spec->catdir(productDirForCMake(), "CMakeFiles");
+    return File::Spec->catdir(productDir(), "CMakeCache.txt");
 }
 
 sub shouldRemoveCMakeCache(@)
@@ -2614,7 +2528,7 @@ sub shouldRemoveCMakeCache(@)
     my (@buildArgs) = grep(/^-/, sort(@_, @originalArgv));
 
     # We check this first, because we always want to create this file for a fresh build.
-    my $productDir = productDirForCMake();
+    my $productDir = productDir();
     my $optionsCache = File::Spec->catdir($productDir, "build-webkit-options.txt");
     my $joinedBuildArgs = join(" ", @buildArgs);
     if (isCachedArgumentfileOutOfDate($optionsCache, $joinedBuildArgs)) {
@@ -2639,6 +2553,11 @@ sub shouldRemoveCMakeCache(@)
 
     my $globalConfiguration = File::Spec->catdir(sourceDir(), "Source", "cmake", "OptionsCommon.cmake");
     if ($cacheFileModifiedTime < stat($globalConfiguration)->mtime) {
+        return 1;
+    }
+
+    my $compilerFlagsCMake = File::Spec->catdir(sourceDir(), "Source", "cmake", "WebKitCompilerFlags.cmake");
+    if ($cacheFileModifiedTime < stat($compilerFlagsCMake)->mtime) {
         return 1;
     }
 
@@ -2679,9 +2598,7 @@ sub removeCMakeCache(@)
     my (@buildArgs) = @_;
     if (shouldRemoveCMakeCache(@buildArgs)) {
         my $cmakeCache = cmakeCachePath();
-        my $cmakeFiles = cmakeFilesPath();
         unlink($cmakeCache) if -e $cmakeCache;
-        rmtree($cmakeFiles) if -d $cmakeFiles;
     }
 }
 
@@ -2717,11 +2634,11 @@ sub cmakeGeneratedBuildfile(@)
 {
     my ($willUseNinja) = @_;
     if ($willUseNinja) {
-        return File::Spec->catfile(productDirForCMake(), "build.ninja")
+        return File::Spec->catfile(productDir(), "build.ninja")
     } elsif (isAnyWindows()) {
-        return File::Spec->catfile(productDirForCMake(), "WebKit.sln")
+        return File::Spec->catfile(productDir(), "WebKit.sln")
     } else {
-        return File::Spec->catfile(productDirForCMake(), "Makefile")
+        return File::Spec->catfile(productDir(), "Makefile")
     }
 }
 
@@ -2730,7 +2647,7 @@ sub generateBuildSystemFromCMakeProject
     my ($prefixPath, @cmakeArgs) = @_;
     my $config = configuration();
     my $port = cmakeBasedPortName();
-    my $buildPath = productDirForCMake();
+    my $buildPath = productDir();
     File::Path::mkpath($buildPath) unless -d $buildPath;
     my $originalWorkingDirectory = getcwd();
     chdir($buildPath) or die;
@@ -2744,7 +2661,6 @@ sub generateBuildSystemFromCMakeProject
     my @args;
     push @args, "-DPORT=\"$port\"";
     push @args, "-DCMAKE_INSTALL_PREFIX=\"$prefixPath\"" if $prefixPath;
-    push @args, "-DCMAKE_EXPORT_COMPILE_COMMANDS=ON";
     if ($config =~ /release/i) {
         push @args, "-DCMAKE_BUILD_TYPE=Release";
     } elsif ($config =~ /debug/i) {
@@ -2754,6 +2670,7 @@ sub generateBuildSystemFromCMakeProject
     push @args, "-DENABLE_SANITIZERS=address" if asanIsEnabled();
     push @args, "-DENABLE_SANITIZERS=thread" if tsanIsEnabled();
     push @args, "-DENABLE_SANITIZERS=undefined" if ubsanIsEnabled();
+    push @args, "-DENABLE_SANITIZERS=fuzzer" if libFuzzerIsEnabled();
 
     push @args, "-DLTO_MODE=$ltoMode" if ltoMode();
 
@@ -2810,18 +2727,11 @@ sub generateBuildSystemFromCMakeProject
     return $returnCode;
 }
 
-sub productDirForCMake() {
-    if (shouldBuildForCrossTarget() or inCrossTargetEnvironment()) {
-        return productDir();
-    }
-    return File::Spec->catdir(baseProductDir(), configuration());
-}
-
 sub buildCMakeGeneratedProject($)
 {
     my (@makeArgs) = @_;
     my $config = configuration();
-    my $buildPath = productDirForCMake();
+    my $buildPath = productDir();
     if (! -d $buildPath) {
         die "Must call generateBuildSystemFromCMakeProject() before building CMake project.";
     }
@@ -2851,7 +2761,7 @@ sub buildCMakeGeneratedProject($)
 sub cleanCMakeGeneratedProject()
 {
     my $config = configuration();
-    my $buildPath = productDirForCMake();
+    my $buildPath = productDir();
     if (-d $buildPath) {
         return systemVerbose("cmake", "--build", $buildPath, "--config", $config, "--target", "clean");
     }
@@ -2944,31 +2854,14 @@ sub promptUser
     return $input ? $input : $default;
 }
 
-sub appleApplicationSupportPath
-{
-    open INSTALL_DIR, "</proc/registry/HKEY_LOCAL_MACHINE/SOFTWARE/Apple\ Inc./Apple\ Application\ Support/InstallDir";
-    my $path = <INSTALL_DIR>;
-    $path =~ s/[\r\n\x00].*//;
-    close INSTALL_DIR;
-
-    my $unixPath = `cygpath -u '$path'`;
-    chomp $unixPath;
-    return $unixPath;
-}
-
 sub setPathForRunningWebKitApp
 {
     my ($env) = @_;
 
     if (isAnyWindows()) {
         my $productBinaryDir = executableProductDir();
-        if (isAppleWinWebKit() || isFTW()) {
-            $env->{PATH} = join(':', $productBinaryDir, appleApplicationSupportPath(), $env->{PATH} || "");
-        } elsif (isWinCairo()) {
-            my $winCairoBin = sourceDir() . "/WebKitLibraries/win/" . (isWin64() ? "bin64/" : "bin32/");
-            my $gstreamerBin = isWin64() ? $ENV{"GSTREAMER_1_0_ROOT_X86_64"} . "bin" : $ENV{"GSTREAMER_1_0_ROOT_X86"} . "bin";
-            $env->{PATH} = join(':', $productBinaryDir, $winCairoBin, $gstreamerBin, $env->{PATH} || "");
-        }
+        my $winCairoBin = sourceDir() . "/WebKitLibraries/win/" . (isWin64() ? "bin64/" : "bin32/");
+        $env->{PATH} = join(':', $productBinaryDir, $winCairoBin, $env->{PATH} || "");
     }
 }
 
@@ -3037,7 +2930,17 @@ sub setupUnixWebKitEnvironment($)
     my ($productDir) = @_;
 
     $ENV{TEST_RUNNER_INJECTED_BUNDLE_FILENAME} = File::Spec->catfile($productDir, "lib", "libTestRunnerInjectedBundle.so");
-    $ENV{TEST_RUNNER_TEST_PLUGIN_PATH} = File::Spec->catdir($productDir, "lib", "plugins");
+}
+
+sub setupWindowsWebKitEnvironment()
+{
+    my $lib;
+    if ($ENV{WEBKIT_LIBRARIES}) {
+        $lib = File::Spec->catfile($ENV{WEBKIT_LIBRARIES}, 'bin64');
+    } else  {
+        $lib = File::Spec->catfile(sourceDir(), 'WebKitLibraries', 'win', 'bin64');
+    }
+    $ENV{PATH} = $lib . ';' . $ENV{PATH};
 }
 
 sub setupIOSWebKitEnvironment($)
@@ -3432,12 +3335,6 @@ sub runSafari
         return runMacWebKitApp(safariPath());
     }
 
-    if (isAppleWinWebKit() || isFTW()) {
-        my $result;
-        my $webKitLauncherPath = File::Spec->catfile(executableProductDir(), "MiniBrowser.exe");
-        return system { $webKitLauncherPath } $webKitLauncherPath, @ARGV;
-    }
-
     return 1; # Unsupported platform; can't run Safari on this platform.
 }
 
@@ -3445,10 +3342,6 @@ sub runMiniBrowser
 {
     if (isAppleMacWebKit()) {
         return runMacWebKitApp(File::Spec->catfile(productDir(), "MiniBrowser.app", "Contents", "MacOS", "MiniBrowser"));
-    }
-    if (isAppleWinWebKit() || isFTW()) {
-        my $webKitLauncherPath = File::Spec->catfile(executableProductDir(), "MiniBrowser.exe");
-        return system { $webKitLauncherPath } $webKitLauncherPath, @ARGV;
     }
     if (isIOSWebKit()) {
         return runIOSWebKitApp(mobileMiniBrowserBundle());

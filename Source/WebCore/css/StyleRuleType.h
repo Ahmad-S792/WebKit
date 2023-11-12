@@ -51,6 +51,8 @@ enum class StyleRuleType : uint8_t {
     FontPaletteValues,
     FontFeatureValuesBlock,
     Property,
+    StyleWithNesting,
+    Scope,
 };
 
 static constexpr auto firstUnexposedStyleRuleType = StyleRuleType::LayerBlock;

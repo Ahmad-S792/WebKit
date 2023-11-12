@@ -42,6 +42,11 @@ enum class LLIntBuiltin : uint8_t {
     TableCopy,
     DataDrop,
     ElemDrop,
+    RefTest,
+    RefCast,
+    ArrayNewData,
+    ArrayNewElem,
+    AnyConvertExtern,
 };
 
 } } // namespace JSC::Wasm

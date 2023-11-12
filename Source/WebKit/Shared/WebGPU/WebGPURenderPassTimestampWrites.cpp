@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2021 Apple Inc. All rights reserved.
+ * Copyright (C) 2021-2023 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -30,52 +30,29 @@
 
 #include "WebGPUConvertFromBackingContext.h"
 #include "WebGPUConvertToBackingContext.h"
-#include <pal/graphics/WebGPU/WebGPURenderPassTimestampWrites.h>
+#include <WebCore/WebGPURenderPassTimestampWrites.h>
 
 namespace WebKit::WebGPU {
 
-std::optional<RenderPassTimestampWrite> ConvertToBackingContext::convertToBacking(const PAL::WebGPU::RenderPassTimestampWrite& renderPassTimestampWrite)
+std::optional<RenderPassTimestampWrites> ConvertToBackingContext::convertToBacking(const WebCore::WebGPU::RenderPassTimestampWrites& renderPassTimestampWrite)
 {
-    auto querySet = convertToBacking(renderPassTimestampWrite.querySet);
+    if (!renderPassTimestampWrite.querySet)
+        return std::nullopt;
+
+    auto querySet = convertToBacking(*renderPassTimestampWrite.querySet);
     if (!querySet)
         return std::nullopt;
 
-    return { { querySet, renderPassTimestampWrite.queryIndex, renderPassTimestampWrite.location } };
+    return { { querySet, renderPassTimestampWrite.beginningOfPassWriteIndex, renderPassTimestampWrite.endOfPassWriteIndex } };
 }
 
-std::optional<RenderPassTimestampWrites> ConvertToBackingContext::convertToBacking(const PAL::WebGPU::RenderPassTimestampWrites& renderPassTimestampWrites)
-{
-    Vector<RenderPassTimestampWrite> timestampWrites;
-    timestampWrites.reserveInitialCapacity(renderPassTimestampWrites.size());
-    for (const auto& timestampWrite : renderPassTimestampWrites) {
-        auto convertedTimestampWrite = convertToBacking(timestampWrite);
-        if (!convertedTimestampWrite)
-            return std::nullopt;
-        timestampWrites.uncheckedAppend(WTFMove(*convertedTimestampWrite));
-    }
-    return timestampWrites;
-}
-
-std::optional<PAL::WebGPU::RenderPassTimestampWrite> ConvertFromBackingContext::convertFromBacking(const RenderPassTimestampWrite& renderPassTimestampWrite)
+std::optional<WebCore::WebGPU::RenderPassTimestampWrites> ConvertFromBackingContext::convertFromBacking(const RenderPassTimestampWrites& renderPassTimestampWrite)
 {
     auto* querySet = convertQuerySetFromBacking(renderPassTimestampWrite.querySet);
     if (!querySet)
         return std::nullopt;
 
-    return { { *querySet, renderPassTimestampWrite.queryIndex, renderPassTimestampWrite.location } };
-}
-
-std::optional<PAL::WebGPU::RenderPassTimestampWrites> ConvertFromBackingContext::convertFromBacking(const RenderPassTimestampWrites& renderPassTimestampWrites)
-{
-    Vector<PAL::WebGPU::RenderPassTimestampWrite> timestampWrites;
-    timestampWrites.reserveInitialCapacity(renderPassTimestampWrites.size());
-    for (const auto& backingTimestampWrite : renderPassTimestampWrites) {
-        auto timestampWrite = convertFromBacking(backingTimestampWrite);
-        if (!timestampWrite)
-            return std::nullopt;
-        timestampWrites.uncheckedAppend(WTFMove(*timestampWrite));
-    }
-    return timestampWrites;
+    return { { querySet, renderPassTimestampWrite.beginningOfPassWriteIndex, renderPassTimestampWrite.endOfPassWriteIndex } };
 }
 
 } // namespace WebKit

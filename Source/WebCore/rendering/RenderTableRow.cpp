@@ -30,6 +30,9 @@
 #include "HTMLNames.h"
 #include "HitTestResult.h"
 #include "PaintInfo.h"
+#include "RenderBoxInlines.h"
+#include "RenderBoxModelObjectInlines.h"
+#include "RenderElementInlines.h"
 #include "RenderLayoutState.h"
 #include "RenderTableCell.h"
 #include "RenderTreeBuilder.h"
@@ -45,19 +48,19 @@ using namespace HTMLNames;
 WTF_MAKE_ISO_ALLOCATED_IMPL(RenderTableRow);
 
 RenderTableRow::RenderTableRow(Element& element, RenderStyle&& style)
-    : RenderBox(element, WTFMove(style), 0)
+    : RenderBox(Type::TableRow, element, WTFMove(style), 0)
     , m_rowIndex(unsetRowIndex)
 {
     setInline(false);
-    setIsTableRow();
+    ASSERT(isRenderTableRow());
 }
 
 RenderTableRow::RenderTableRow(Document& document, RenderStyle&& style)
-    : RenderBox(document, WTFMove(style), 0)
+    : RenderBox(Type::TableRow, document, WTFMove(style), 0)
     , m_rowIndex(unsetRowIndex)
 {
     setInline(false);
-    setIsTableRow();
+    ASSERT(isRenderTableRow());
 }
 
 void RenderTableRow::willBeRemovedFromTree(IsInternalMove isInternalMove)
@@ -87,7 +90,7 @@ void RenderTableRow::styleDidChange(StyleDifference diff, const RenderStyle* old
 
     // If border was changed, notify table.
     if (RenderTable* table = this->table()) {
-        if (oldStyle && oldStyle->border() != style().border())
+        if (oldStyle && !oldStyle->borderIsEquivalentForPainting(style()))
             table->invalidateCollapsedBorders();
 
         if (oldStyle && diff == StyleDifference::Layout && needsLayout() && table->collapseBorders() && borderWidthChanged(oldStyle, &style())) {
@@ -143,7 +146,7 @@ void RenderTableRow::layout()
 
     auto* layoutState = view().frameView().layoutContext().layoutState();
     bool paginated = layoutState->isPaginated();
-                
+
     for (RenderTableCell* cell = firstCell(); cell; cell = cell->nextCell()) {
         if (!cell->needsLayout() && paginated && (layoutState->pageLogicalHeightChanged() || (layoutState->pageLogicalHeight() && layoutState->pageLogicalOffset(cell, cell->logicalTop()) != cell->pageLogicalOffset())))
             cell->setChildNeedsLayout(MarkOnlyThis);
@@ -244,6 +247,16 @@ RenderPtr<RenderTableRow> RenderTableRow::createTableRowWithStyle(Document& docu
 RenderPtr<RenderTableRow> RenderTableRow::createAnonymousWithParentRenderer(const RenderTableSection& parent)
 {
     return RenderTableRow::createTableRowWithStyle(parent.document(), parent.style());
+}
+
+bool RenderTableRow::requiresLayer() const
+{
+    return hasNonVisibleOverflow() || hasTransformRelatedProperty() || hasHiddenBackface() || hasClipPath() || createsGroup() || isStickilyPositioned();
+}
+
+RenderPtr<RenderBox> RenderTableRow::createAnonymousBoxWithSameTypeAs(const RenderBox& renderer) const
+{
+    return RenderTableRow::createTableRowWithStyle(renderer.document(), renderer.style());
 }
 
 } // namespace WebCore

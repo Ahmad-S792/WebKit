@@ -53,16 +53,21 @@ ContextMenuContextData::ContextMenuContextData(const IntPoint& menuLocation, con
     , m_menuItems(menuItems)
     , m_webHitTestResultData({ context.hitTestResult(), true })
     , m_selectedText(context.selectedText())
+    , m_hasEntireImage(context.hasEntireImage())
 #if ENABLE(SERVICE_CONTROLS)
     , m_selectionIsEditable(false)
 #endif
 {
 #if ENABLE(SERVICE_CONTROLS)
-    Image* image = context.controlledImage();
-    if (!image)
-        return;
-    
-    setImage(image);
+    if (auto* image = context.controlledImage())
+        setImage(*image);
+#endif
+#if ENABLE(CONTEXT_MENU_QR_CODE_DETECTION)
+    if (auto* image = context.potentialQRCodeNodeSnapshotImage())
+        setPotentialQRCodeNodeSnapshotImage(*image);
+
+    if (auto* image = context.potentialQRCodeViewportSnapshotImage())
+        setPotentialQRCodeViewportSnapshotImage(*image);
 #endif
 }
 
@@ -76,19 +81,35 @@ ContextMenuContextData::ContextMenuContextData(const WebCore::IntPoint& menuLoca
     , m_controlledImageElementContext(WTFMove(elementContext))
     , m_controlledImageMIMEType(sourceImageMIMEType)
 {
-    setImage(&image);
+    setImage(image);
 }
 
-void ContextMenuContextData::setImage(WebCore::Image* image)
+void ContextMenuContextData::setImage(WebCore::Image& image)
 {
     // FIXME: figure out the rounding strategy for ShareableBitmap.
-    m_controlledImage = ShareableBitmap::create(IntSize(image->size()), { });
-    auto graphicsContext = m_controlledImage->createGraphicsContext();
-    if (!graphicsContext)
-        return;
-    graphicsContext->drawImage(*image, IntPoint());
+    m_controlledImage = ShareableBitmap::create({ IntSize(image.size()) });
+    if (auto graphicsContext = m_controlledImage->createGraphicsContext())
+        graphicsContext->drawImage(image, IntPoint());
 }
 #endif
+
+#if ENABLE(CONTEXT_MENU_QR_CODE_DETECTION)
+
+void ContextMenuContextData::setPotentialQRCodeNodeSnapshotImage(WebCore::Image& image)
+{
+    m_potentialQRCodeNodeSnapshotImage = ShareableBitmap::create({ IntSize(image.size()) });
+    if (auto graphicsContext = m_potentialQRCodeNodeSnapshotImage->createGraphicsContext())
+        graphicsContext->drawImage(image, IntPoint());
+}
+
+void ContextMenuContextData::setPotentialQRCodeViewportSnapshotImage(WebCore::Image& image)
+{
+    m_potentialQRCodeViewportSnapshotImage = ShareableBitmap::create({ IntSize(image.size()) });
+    if (auto graphicsContext = m_potentialQRCodeViewportSnapshotImage->createGraphicsContext())
+        graphicsContext->drawImage(image, IntPoint());
+}
+
+#endif // ENABLE(CONTEXT_MENU_QR_CODE_DETECTION)
 
 void ContextMenuContextData::encode(IPC::Encoder& encoder) const
 {
@@ -97,14 +118,14 @@ void ContextMenuContextData::encode(IPC::Encoder& encoder) const
     encoder << m_menuItems;
     encoder << m_webHitTestResultData;
     encoder << m_selectedText;
+    encoder << m_hasEntireImage;
 
 #if ENABLE(SERVICE_CONTROLS)
-    ShareableBitmapHandle handle;
-    if (m_controlledImage) {
-        if (auto imageHandle = m_controlledImage->createHandle(SharedMemory::Protection::ReadOnly))
-            handle = WTFMove(*imageHandle);
-    }
-    encoder << handle;
+    std::optional<ShareableBitmap::Handle> potentialControlledImageHandle;
+    if (m_controlledImage)
+        potentialControlledImageHandle = m_controlledImage->createHandle(SharedMemory::Protection::ReadOnly);
+
+    encoder << WTFMove(potentialControlledImageHandle);
     encoder << m_controlledSelectionData;
     encoder << m_selectedTelephoneNumbers;
     encoder << m_selectionIsEditable;
@@ -112,6 +133,20 @@ void ContextMenuContextData::encode(IPC::Encoder& encoder) const
     encoder << m_controlledImageAttachmentID;
     encoder << m_controlledImageElementContext;
     encoder << m_controlledImageMIMEType;
+#endif
+
+#if ENABLE(CONTEXT_MENU_QR_CODE_DETECTION)
+    std::optional<ShareableBitmap::Handle> potentialQRCodeNodeSnapshotImageHandle;
+    if (m_potentialQRCodeNodeSnapshotImage) {
+        potentialQRCodeNodeSnapshotImageHandle = m_potentialQRCodeNodeSnapshotImage->createHandle(SharedMemory::Protection::ReadOnly);
+    }
+    encoder << WTFMove(potentialQRCodeNodeSnapshotImageHandle);
+
+    std::optional<ShareableBitmap::Handle> potentialQRCodeViewportSnapshotImageHandle;
+    if (m_potentialQRCodeViewportSnapshotImage) {
+        potentialQRCodeViewportSnapshotImageHandle = m_potentialQRCodeViewportSnapshotImage->createHandle(SharedMemory::Protection::ReadOnly);
+    }
+    encoder << WTFMove(potentialQRCodeViewportSnapshotImageHandle);
 #endif
 }
 
@@ -132,13 +167,15 @@ bool ContextMenuContextData::decode(IPC::Decoder& decoder, ContextMenuContextDat
     if (!decoder.decode(result.m_selectedText))
         return false;
 
-#if ENABLE(SERVICE_CONTROLS)
-    ShareableBitmapHandle handle;
-    if (!decoder.decode(handle))
+    if (!decoder.decode(result.m_hasEntireImage))
         return false;
 
-    if (!handle.isNull())
-        result.m_controlledImage = ShareableBitmap::create(handle, SharedMemory::Protection::ReadOnly);
+#if ENABLE(SERVICE_CONTROLS)
+    auto potentialControlledImageHandle = decoder.decode<std::optional<ShareableBitmap::Handle>>();
+    if (UNLIKELY(!decoder.isValid()))
+        return false;
+    if (*potentialControlledImageHandle)
+        result.m_controlledImage = ShareableBitmap::create(WTFMove(**potentialControlledImageHandle), SharedMemory::Protection::ReadOnly);
 
     if (!decoder.decode(result.m_controlledSelectionData))
         return false;
@@ -154,6 +191,17 @@ bool ContextMenuContextData::decode(IPC::Decoder& decoder, ContextMenuContextDat
         return false;
     if (!decoder.decode(result.m_controlledImageMIMEType))
         return false;
+#endif
+
+#if ENABLE(CONTEXT_MENU_QR_CODE_DETECTION)
+    auto potentialQRCodeNodeSnapshotImageHandle = decoder.decode<std::optional<ShareableBitmap::Handle>>();
+    auto potentialQRCodeViewportSnapshotImageHandle = decoder.decode<std::optional<ShareableBitmap::Handle>>();
+    if (UNLIKELY(!decoder.isValid()))
+        return false;
+    if (*potentialQRCodeNodeSnapshotImageHandle)
+        result.m_potentialQRCodeNodeSnapshotImage = ShareableBitmap::create(WTFMove(**potentialQRCodeNodeSnapshotImageHandle), SharedMemory::Protection::ReadOnly);
+    if (*potentialQRCodeViewportSnapshotImageHandle)
+        result.m_potentialQRCodeViewportSnapshotImage = ShareableBitmap::create(WTFMove(**potentialQRCodeViewportSnapshotImageHandle), SharedMemory::Protection::ReadOnly);
 #endif
 
     return true;

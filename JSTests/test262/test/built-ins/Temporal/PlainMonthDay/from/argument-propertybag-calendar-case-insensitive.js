@@ -12,4 +12,4 @@ const calendar = "IsO8601";
 
 const arg = { monthCode: "M11", day: 18, calendar };
 const result = Temporal.PlainMonthDay.from(arg);
-TemporalHelpers.assertPlainMonthDay(result, "M11", 18, `Calendar created from string "${calendar}"`);
+TemporalHelpers.assertPlainMonthDay(result, "M11", 18, "Calendar is case-insensitive");

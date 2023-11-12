@@ -78,3 +78,15 @@ function waitForVideoFrameUntil(video, time, cb) {
         p.then(cb);
     return p;
 }
+
+function timeRangesToString(timeRanges) {
+    if (!timeRanges?.length)
+        return "[]";
+
+    const ranges = [];
+    for (let i = 0; i < timeRanges?.length; i++) {
+      const range = "[" + [timeRanges.start(i)  + ", " + timeRanges.end(i)] + ")";
+      ranges.push(range);
+    }
+    return ranges.toString();
+}

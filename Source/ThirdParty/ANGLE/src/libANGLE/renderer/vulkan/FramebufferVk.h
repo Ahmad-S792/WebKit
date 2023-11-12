@@ -103,13 +103,16 @@ class FramebufferVk : public FramebufferImpl
     gl::Rectangle getNonRotatedCompleteRenderArea() const;
     gl::Rectangle getRotatedCompleteRenderArea(ContextVk *contextVk) const;
     gl::Rectangle getRotatedScissoredRenderArea(ContextVk *contextVk) const;
+    // Returns render area with deferred clears in consideration. When deferred clear is used
+    // in the render pass, the render area must cover the whole framebuffer.
+    gl::Rectangle getRenderArea(ContextVk *contextVk) const;
 
     const gl::DrawBufferMask &getEmulatedAlphaAttachmentMask() const;
-    RenderTargetVk *getColorDrawRenderTarget(size_t colorIndex) const;
+    RenderTargetVk *getColorDrawRenderTarget(size_t colorIndexGL) const;
     RenderTargetVk *getColorReadRenderTarget() const;
 
     angle::Result startNewRenderPass(ContextVk *contextVk,
-                                     const gl::Rectangle &scissoredRenderArea,
+                                     const gl::Rectangle &renderArea,
                                      vk::RenderPassCommandBuffer **commandBufferOut,
                                      bool *renderPassDescChangedOut);
 
@@ -129,22 +132,10 @@ class FramebufferVk : public FramebufferImpl
 
     bool hasDeferredClears() const { return !mDeferredClears.empty(); }
     angle::Result flushDeferredClears(ContextVk *contextVk);
-    void setReadOnlyDepthFeedbackLoopMode(bool readOnlyDepthFeedbackModeEnabled)
-    {
-        mReadOnlyDepthFeedbackLoopMode = readOnlyDepthFeedbackModeEnabled;
-    }
-    void setReadOnlyStencilFeedbackLoopMode(bool readOnlyStencilFeedbackModeEnabled)
-    {
-        mReadOnlyStencilFeedbackLoopMode = readOnlyStencilFeedbackModeEnabled;
-    }
-    bool isReadOnlyDepthFeedbackLoopMode() const { return mReadOnlyDepthFeedbackLoopMode; }
-    bool isReadOnlyStencilFeedbackLoopMode() const { return mReadOnlyStencilFeedbackLoopMode; }
-    void updateRenderPassDepthReadOnlyMode(ContextVk *contextVk,
-                                           vk::RenderPassCommandBufferHelper *renderPass);
-    void updateRenderPassStencilReadOnlyMode(ContextVk *contextVk,
-                                             vk::RenderPassCommandBufferHelper *renderPass);
 
     void switchToFramebufferFetchMode(ContextVk *contextVk, bool hasFramebufferFetch);
+
+    bool updateLegacyDither(ContextVk *contextVk);
 
     void removeColorResolveAttachment(uint32_t colorIndexGL);
 
@@ -223,11 +214,12 @@ class FramebufferVk : public FramebufferImpl
                             const VkClearColorValue &clearColorValue,
                             const VkClearDepthStencilValue &clearDepthStencilValue);
 
-    void mergeClearsWithDeferredClears(gl::DrawBufferMask clearColorBuffers,
-                                       bool clearDepth,
-                                       bool clearStencil,
-                                       const VkClearColorValue &clearColorValue,
-                                       const VkClearDepthStencilValue &clearDepthStencilValue);
+    void mergeClearsWithDeferredClears(
+        gl::DrawBufferMask clearColorBuffers,
+        bool clearDepth,
+        bool clearStencil,
+        const gl::DrawBuffersArray<VkClearColorValue> &clearColorValues,
+        const VkClearDepthStencilValue &clearDepthStencilValue);
     angle::Result clearWithDraw(ContextVk *contextVk,
                                 const gl::Rectangle &clearArea,
                                 gl::DrawBufferMask clearColorBuffers,
@@ -235,11 +227,11 @@ class FramebufferVk : public FramebufferImpl
                                 bool clearStencil,
                                 gl::BlendStateExt::ColorMaskStorage::Type colorMasks,
                                 uint8_t stencilMask,
-                                const VkClearColorValue &clearColorValue,
+                                const gl::DrawBuffersArray<VkClearColorValue> &clearColorValues,
                                 const VkClearDepthStencilValue &clearDepthStencilValue);
-    void redeferClears(ContextVk *contextVk);
-    void redeferClearsForReadFramebuffer(ContextVk *contextVk);
-    void redeferClearsImpl(ContextVk *contextVk);
+    void restageDeferredClears(ContextVk *contextVk);
+    void restageDeferredClearsForReadFramebuffer(ContextVk *contextVk);
+    void restageDeferredClearsImpl(ContextVk *contextVk);
     void clearWithCommand(ContextVk *contextVk,
                           const gl::Rectangle &scissoredRenderArea,
                           ClearWithCommand behavior,
@@ -262,10 +254,6 @@ class FramebufferVk : public FramebufferImpl
 
     RenderTargetVk *getReadPixelsRenderTarget(GLenum format) const;
     VkImageAspectFlagBits getReadPixelsAspectFlags(GLenum format) const;
-
-    void updateRenderPassDepthStencilReadOnlyMode(ContextVk *contextVk,
-                                                  VkImageAspectFlags dsAspectFlags,
-                                                  vk::RenderPassCommandBufferHelper *renderPass);
 
     VkClearValue getCorrectedColorClearValue(size_t colorIndexGL,
                                              const VkClearColorValue &clearColor) const;
@@ -301,12 +289,6 @@ class FramebufferVk : public FramebufferImpl
 
     vk::ClearValuesArray mDeferredClears;
 
-    // Tracks if we are in depth/stencil *read-only* feedback loop.  This is specially allowed as
-    // both usages (attachment and texture) are read-only.  When switching away from read-only
-    // feedback loop, the render pass is broken is to accommodate the new writable layout.
-    bool mReadOnlyDepthFeedbackLoopMode;
-    bool mReadOnlyStencilFeedbackLoopMode;
-
     // Whether any of the color attachments are an external image such as dmabuf, AHB etc.  In such
     // cases, some optimizations are disabled such as deferred clears because the results need to be
     // made externally available.
@@ -314,6 +296,7 @@ class FramebufferVk : public FramebufferImpl
     gl::DrawBufferMask mAttachmentHasFrontBufferUsage;
 
     bool mIsCurrentFramebufferCached;
+    bool mIsYUVResolve;
 
     // Serial of the render pass this framebuffer has opened, if any.
     QueueSerial mLastRenderPassQueueSerial;

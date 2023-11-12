@@ -26,13 +26,19 @@
 #include "config.h"
 #include "Types.h"
 
+#include "ASTStructure.h"
+#include "TypeStore.h"
+#include <wtf/StdLibExtras.h>
 #include <wtf/StringPrintStream.h>
+#include <wtf/text/StringHash.h>
 
 namespace WGSL {
 
-void printInternal(PrintStream& out, const Type& type)
+using namespace Types;
+
+void Type::dump(PrintStream& out) const
 {
-    WTF::switchOn(type,
+    WTF::switchOn(*this,
         [&](const Primitive& primitive) {
             switch (primitive.kind) {
 #define PRIMITIVE_CASE(kind, name) \
@@ -56,28 +62,397 @@ void printInternal(PrintStream& out, const Type& type)
             out.print(">");
         },
         [&](const Struct& structure) {
-            out.print(structure.name);
+            out.print(structure.structure.name());
         },
-        [&](const Function&) {
-            // FIXME: implement this
-            ASSERT_NOT_REACHED();
+        [&](const PrimitiveStruct& structure) {
+            out.print(structure.name, "<");
+            switch (structure.kind) {
+            case PrimitiveStruct::FrexpResult::kind:
+                out.print(*structure.values[PrimitiveStruct::FrexpResult::fract]);
+                break;
+            }
+            out.print(">");
+        },
+        [&](const Function& function) {
+            out.print("(");
+            bool first = true;
+            for (auto* parameter : function.parameters) {
+                if (!first)
+                    out.print(", ");
+                first = false;
+                out.print(*parameter);
+            }
+            out.print(") -> ", *function.result);
+        },
+        [&](const Texture& texture) {
+            switch (texture.kind) {
+            case Texture::Kind::Texture1d:
+                out.print("texture_1d");
+                break;
+            case Texture::Kind::Texture2d:
+                out.print("texture_2d");
+                break;
+            case Texture::Kind::Texture2dArray:
+                out.print("texture_2d_array");
+                break;
+            case Texture::Kind::Texture3d:
+                out.print("texture_3d");
+                break;
+            case Texture::Kind::TextureCube:
+                out.print("texture_cube");
+                break;
+            case Texture::Kind::TextureCubeArray:
+                out.print("texture_cube_array");
+                break;
+            case Texture::Kind::TextureMultisampled2d:
+                out.print("texture_multisampled_2d");
+                break;
+            }
+            out.print("<", *texture.element, ">");
+        },
+        [&](const TextureStorage& texture) {
+            switch (texture.kind) {
+            case TextureStorage::Kind::TextureStorage1d:
+                out.print("texture_storage_1d");
+                break;
+            case TextureStorage::Kind::TextureStorage2d:
+                out.print("texture_storage_2d");
+                break;
+            case TextureStorage::Kind::TextureStorage2dArray:
+                out.print("texture_storage_2d_array");
+                break;
+            case TextureStorage::Kind::TextureStorage3d:
+                out.print("texture_storage_3d");
+                break;
+            }
+            out.print("<", texture.format, ", ", texture.access, ">");
+        },
+        [&](const TextureDepth& texture) {
+            switch (texture.kind) {
+            case TextureDepth::Kind::TextureDepth2d:
+                out.print("texture_depth_2d");
+                break;
+            case TextureDepth::Kind::TextureDepth2dArray:
+                out.print("texture_depth_2d_array");
+                break;
+            case TextureDepth::Kind::TextureDepthCube:
+                out.print("texture_depth_cube");
+                break;
+            case TextureDepth::Kind::TextureDepthCubeArray:
+                out.print("texture_depth_cube_array");
+                break;
+            case TextureDepth::Kind::TextureDepthMultisampled2d:
+                out.print("texture_depth_multisampled_2d");
+                break;
+            }
+        },
+        [&](const Reference& reference) {
+            out.print("ref<", reference.addressSpace, ", ", *reference.element, ", ", reference.accessMode, ">");
+        },
+        [&](const Pointer& reference) {
+            out.print("ptr<", reference.addressSpace, ", ", *reference.element, ", ", reference.accessMode, ">");
+        },
+        [&](const Atomic& atomic) {
+            out.print("atomic<", *atomic.element, ">");
+        },
+        [&](const TypeConstructor& constructor) {
+            out.print(constructor.name);
         },
         [&](const Bottom&) {
-#ifdef NDEBUG
-            RELEASE_ASSERT_NOT_REACHED();
-#else
             // Bottom is an implementation detail and should never leak, but we
             // keep the ability to print it in debug to help when dumping types
             out.print("⊥");
-#endif
         });
 }
 
-String toString(const Type& type)
+constexpr unsigned primitivePair(Types::Primitive::Kind first, Types::Primitive::Kind second)
+{
+    static_assert(sizeof(Types::Primitive::Kind) == 1);
+    return static_cast<unsigned>(first) << 8 | second;
+}
+
+// https://www.w3.org/TR/WGSL/#conversion-rank
+ConversionRank conversionRank(const Type* from, const Type* to)
+{
+    using namespace WGSL::Types;
+
+    if (from == to)
+        return { 0 };
+
+    if (auto* fromReference = std::get_if<Reference>(from)) {
+        if (fromReference->accessMode == AccessMode::Write)
+            return std::nullopt;
+        return conversionRank(fromReference->element, to);
+    }
+
+    if (auto* toReference = std::get_if<Reference>(to)) {
+        if (toReference->accessMode == AccessMode::Write)
+            return std::nullopt;
+        return conversionRank(from, toReference->element);
+    }
+
+    if (auto* fromPrimitive = std::get_if<Primitive>(from)) {
+        auto* toPrimitive = std::get_if<Primitive>(to);
+        if (!toPrimitive)
+            return std::nullopt;
+
+        switch (primitivePair(fromPrimitive->kind, toPrimitive->kind)) {
+        case primitivePair(Primitive::AbstractFloat, Primitive::F32):
+            return { 1 };
+        // FIXME: AbstractFloat to f16 should return 2
+        case primitivePair(Primitive::AbstractInt, Primitive::I32):
+            return { 3 };
+        case primitivePair(Primitive::AbstractInt, Primitive::U32):
+            return { 4 };
+        case primitivePair(Primitive::AbstractInt, Primitive::AbstractFloat):
+            return { 5 };
+        case primitivePair(Primitive::AbstractInt, Primitive::F32):
+            return { 6 };
+        // FIXME: AbstractInt to f16 should return 7
+        default:
+            return std::nullopt;
+        }
+    }
+
+    if (auto* fromVector = std::get_if<Vector>(from)) {
+        auto* toVector = std::get_if<Vector>(to);
+        if (!toVector)
+            return std::nullopt;
+        if (fromVector->size != toVector->size)
+            return std::nullopt;
+        return conversionRank(fromVector->element, toVector->element);
+    }
+
+    if (auto* fromMatrix = std::get_if<Matrix>(from)) {
+        auto* toMatrix = std::get_if<Matrix>(to);
+        if (!toMatrix)
+            return std::nullopt;
+        if (fromMatrix->columns != toMatrix->columns)
+            return std::nullopt;
+        if (fromMatrix->rows != toMatrix->rows)
+            return std::nullopt;
+        return conversionRank(fromMatrix->element, toMatrix->element);
+    }
+
+    if (auto* fromArray = std::get_if<Array>(from)) {
+        auto* toArray = std::get_if<Array>(to);
+        if (!toArray)
+            return std::nullopt;
+        if (fromArray->size != toArray->size)
+            return std::nullopt;
+        return conversionRank(fromArray->element, toArray->element);
+    }
+
+    if (auto* fromPrimitiveStruct = std::get_if<PrimitiveStruct>(from)) {
+        auto* toPrimitiveStruct = std::get_if<PrimitiveStruct>(to);
+        if (!toPrimitiveStruct)
+            return std::nullopt;
+        auto kind = fromPrimitiveStruct->kind;
+        if (kind != toPrimitiveStruct->kind)
+            return std::nullopt;
+        switch (kind) {
+        case PrimitiveStruct::FrexpResult::kind:
+            return conversionRank(fromPrimitiveStruct->values[PrimitiveStruct::FrexpResult::fract], toPrimitiveStruct->values[PrimitiveStruct::FrexpResult::fract]);
+        }
+    }
+
+    // FIXME: add the abstract result conversion rules
+    return std::nullopt;
+}
+
+String Type::toString() const
 {
     StringPrintStream out;
-    printInternal(out, type);
+    dump(out);
     return out.toString();
+}
+
+// https://gpuweb.github.io/gpuweb/wgsl/#alignment-and-size
+unsigned Type::size() const
+{
+    return WTF::switchOn(*this,
+        [&](const Primitive& primitive) -> unsigned {
+            switch (primitive.kind) {
+            case Types::Primitive::F32:
+            case Types::Primitive::I32:
+            case Types::Primitive::U32:
+                return 4;
+            case Types::Primitive::Bool:
+            case Types::Primitive::Void:
+            case Types::Primitive::AbstractInt:
+            case Types::Primitive::AbstractFloat:
+            case Types::Primitive::Sampler:
+            case Types::Primitive::SamplerComparison:
+            case Types::Primitive::TextureExternal:
+            case Types::Primitive::AccessMode:
+            case Types::Primitive::TexelFormat:
+            case Types::Primitive::AddressSpace:
+                RELEASE_ASSERT_NOT_REACHED();
+            }
+        },
+        [&](const Vector& vector) -> unsigned {
+            return vector.element->size() * vector.size;
+        },
+        [&](const Matrix& matrix) -> unsigned {
+            // The size of the matrix is computed as: sizeof(array<vecR<T>, C>)
+            // sizeof(vecR<T>)
+            auto rowSize = matrix.rows * matrix.element->size();
+            // sizeof(array<vecR<T>, C>)
+            auto rowAlignment = (matrix.rows == 2 ? 2 : 4) * matrix.element->alignment();
+            return matrix.columns * WTF::roundUpToMultipleOf(rowAlignment, rowSize);
+        },
+        [&](const Array& array) -> unsigned {
+            return array.size.value_or(1) * WTF::roundUpToMultipleOf(array.element->alignment(), array.element->size());
+        },
+        [&](const Struct& structure) -> unsigned {
+            return structure.structure.size();
+        },
+        [&](const PrimitiveStruct&) -> unsigned {
+            RELEASE_ASSERT_NOT_REACHED();
+        },
+        [&](const Function&) -> unsigned {
+            RELEASE_ASSERT_NOT_REACHED();
+        },
+        [&](const Texture&) -> unsigned {
+            RELEASE_ASSERT_NOT_REACHED();
+        },
+        [&](const TextureStorage&) -> unsigned {
+            RELEASE_ASSERT_NOT_REACHED();
+        },
+        [&](const TextureDepth&) -> unsigned {
+            RELEASE_ASSERT_NOT_REACHED();
+        },
+        [&](const Reference&) -> unsigned {
+            RELEASE_ASSERT_NOT_REACHED();
+        },
+        [&](const Pointer&) -> unsigned {
+            RELEASE_ASSERT_NOT_REACHED();
+        },
+        [&](const Atomic& a) -> unsigned {
+            RELEASE_ASSERT(a.element);
+            return a.element->size();
+        },
+        [&](const TypeConstructor&) -> unsigned {
+            RELEASE_ASSERT_NOT_REACHED();
+        },
+        [&](const Bottom&) -> unsigned {
+            RELEASE_ASSERT_NOT_REACHED();
+        });
+}
+
+unsigned Type::alignment() const
+{
+    return WTF::switchOn(*this,
+        [&](const Primitive& primitive) -> unsigned {
+            switch (primitive.kind) {
+            case Types::Primitive::F32:
+            case Types::Primitive::I32:
+            case Types::Primitive::U32:
+                return 4;
+            case Types::Primitive::Bool:
+            case Types::Primitive::Void:
+            case Types::Primitive::AbstractInt:
+            case Types::Primitive::AbstractFloat:
+            case Types::Primitive::Sampler:
+            case Types::Primitive::SamplerComparison:
+            case Types::Primitive::TextureExternal:
+            case Types::Primitive::AccessMode:
+            case Types::Primitive::TexelFormat:
+            case Types::Primitive::AddressSpace:
+                RELEASE_ASSERT_NOT_REACHED();
+            }
+        },
+        [&](const Vector& vector) -> unsigned {
+            auto elementAlignment = vector.element->alignment();
+            if (vector.size == 2)
+                return 2 * elementAlignment;
+            return 4 * elementAlignment;
+        },
+        [&](const Matrix& matrix) -> unsigned {
+            auto elementAlignment = matrix.element->alignment();
+            if (matrix.rows == 2)
+                return 2 * elementAlignment;
+            return 4 * elementAlignment;
+        },
+        [&](const Array& array) -> unsigned {
+            return array.element->alignment();
+        },
+        [&](const Struct& structure) -> unsigned {
+            return structure.structure.alignment();
+        },
+        [&](const PrimitiveStruct&) -> unsigned {
+            RELEASE_ASSERT_NOT_REACHED();
+        },
+        [&](const Function&) -> unsigned {
+            RELEASE_ASSERT_NOT_REACHED();
+        },
+        [&](const Texture&) -> unsigned {
+            RELEASE_ASSERT_NOT_REACHED();
+        },
+        [&](const TextureStorage&) -> unsigned {
+            RELEASE_ASSERT_NOT_REACHED();
+        },
+        [&](const TextureDepth&) -> unsigned {
+            RELEASE_ASSERT_NOT_REACHED();
+        },
+        [&](const Reference&) -> unsigned {
+            RELEASE_ASSERT_NOT_REACHED();
+        },
+        [&](const Pointer&) -> unsigned {
+            RELEASE_ASSERT_NOT_REACHED();
+        },
+        [&](const Atomic& a) -> unsigned {
+            RELEASE_ASSERT(a.element);
+            return a.element->alignment();
+        },
+        [&](const TypeConstructor&) -> unsigned {
+            RELEASE_ASSERT_NOT_REACHED();
+        },
+        [&](const Bottom&) -> unsigned {
+            RELEASE_ASSERT_NOT_REACHED();
+        });
+}
+
+bool isPrimitive(const Type* type, Primitive::Kind kind)
+{
+    auto* primitive = std::get_if<Primitive>(type);
+    if (!primitive)
+        return false;
+    return primitive->kind == kind;
+}
+
+bool isPrimitiveReference(const Type* type, Primitive::Kind kind)
+{
+    auto* reference = std::get_if<Reference>(type);
+    if (!reference)
+        return false;
+    return isPrimitive(reference->element, kind);
+}
+
+const Type* shaderTypeForTexelFormat(TexelFormat format, const TypeStore& types)
+{
+    switch (format) {
+    case TexelFormat::BGRA8unorm:
+    case TexelFormat::RGBA8unorm:
+    case TexelFormat::RGBA8snorm:
+    case TexelFormat::RGBA16float:
+    case TexelFormat::R32float:
+    case TexelFormat::RG32float:
+    case TexelFormat::RGBA32float:
+        return types.f32Type();
+    case TexelFormat::RGBA8uint:
+    case TexelFormat::RGBA16uint:
+    case TexelFormat::R32uint:
+    case TexelFormat::RG32uint:
+    case TexelFormat::RGBA32uint:
+        return types.u32Type();
+    case TexelFormat::RGBA8sint:
+    case TexelFormat::RGBA16sint:
+    case TexelFormat::R32sint:
+    case TexelFormat::RG32sint:
+    case TexelFormat::RGBA32sint:
+        return types.i32Type();
+    }
 }
 
 } // namespace WGSL

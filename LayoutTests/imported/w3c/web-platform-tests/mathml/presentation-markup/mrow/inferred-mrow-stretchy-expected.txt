@@ -8,6 +8,9 @@ PASS operator stretching inside Math
 PASS operator stretching inside Menclose
 PASS operator stretching inside Mpadded
 FAIL operator stretching inside Unknown assert_greater_than_equal: expected a number greater than or equal to 100 but got 0
+FAIL operator stretching inside Mtd assert_greater_than_equal: expected a number greater than or equal to 100 but got 10
+FAIL operator stretching inside None assert_greater_than_equal: expected a number greater than or equal to 100 but got 10
+FAIL operator stretching inside Mprescripts assert_greater_than_equal: expected a number greater than or equal to 100 but got 10
 ↨
 
 ↨
@@ -19,6 +22,10 @@ FAIL operator stretching inside Unknown assert_greater_than_equal: expected a nu
 
 ↨
 
+↨
+
+↨
+   ↨
 ↨
 
 ↨

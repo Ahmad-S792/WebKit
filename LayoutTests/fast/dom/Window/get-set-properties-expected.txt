@@ -271,10 +271,6 @@ PASS: canSet('top') should be 'false' and is.
 
 ----- tests for getting/setting string properties -----
 
-PASS: canGet('defaultStatus') should be 'true' and is.
-PASS: canSetWithTypeConversion('defaultStatus') should be 'true' and is.
-PASS: canGet('defaultstatus') should be 'true' and is.
-PASS: canSetWithTypeConversion('defaultstatus') should be 'true' and is.
 PASS: canGet('name') should be 'true' and is.
 PASS: canSetWithTypeConversion('name') should be 'true' and is.
 PASS: canGet('status') should be 'true' and is.
@@ -342,8 +338,6 @@ PASS: canGet('onresize') should be 'true' and is.
 PASS: canSet('onresize') should be 'true' and is.
 PASS: canGet('onscroll') should be 'true' and is.
 PASS: canSet('onscroll') should be 'true' and is.
-PASS: canGet('onsearch') should be 'true' and is.
-PASS: canSet('onsearch') should be 'true' and is.
 PASS: canGet('onselect') should be 'true' and is.
 PASS: canSet('onselect') should be 'true' and is.
 PASS: canGet('onsubmit') should be 'true' and is.

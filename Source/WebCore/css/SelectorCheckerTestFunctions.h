@@ -27,7 +27,6 @@
 #pragma once
 
 #include "FocusController.h"
-#include "Frame.h"
 #include "FrameSelection.h"
 #include "HTMLDialogElement.h"
 #include "HTMLFrameElement.h"
@@ -36,6 +35,7 @@
 #include "HTMLInputElement.h"
 #include "HTMLOptionElement.h"
 #include "InspectorInstrumentation.h"
+#include "LocalFrame.h"
 #include "Page.h"
 #include "SelectorChecker.h"
 #include "Settings.h"
@@ -96,7 +96,7 @@ ALWAYS_INLINE bool matchesDisabledPseudoClass(const Element& element)
 // https://html.spec.whatwg.org/multipage/scripting.html#selector-enabled
 ALWAYS_INLINE bool matchesEnabledPseudoClass(const Element& element)
 {
-    return is<HTMLElement>(element) && downcast<HTMLElement>(element).canBeActuallyDisabled() && !element.isDisabledFormControl();
+    return is<HTMLElement>(element) && downcast<HTMLElement>(element).canBeActuallyDisabled() && !downcast<HTMLElement>(element).isActuallyDisabled();
 }
 
 // https://dom.spec.whatwg.org/#concept-element-defined
@@ -206,6 +206,10 @@ ALWAYS_INLINE bool matchesLangPseudoClass(const Element& element, const FixedVec
 #if ENABLE(VIDEO)
     if (is<WebVTTElement>(element))
         language = downcast<WebVTTElement>(element).language();
+    else if (is<WebVTTRubyElement>(element))
+        language = downcast<WebVTTRubyElement>(element).language();
+    else if (is<WebVTTRubyTextElement>(element))
+        language = downcast<WebVTTRubyTextElement>(element).language();
     else
 #endif
         language = element.effectiveLang();
@@ -227,7 +231,6 @@ ALWAYS_INLINE bool matchesLangPseudoClass(const Element& element, const FixedVec
 
         unsigned rangeLength = rangeStringView.length();
         unsigned rangeSubtagsStartIndex = 0;
-        unsigned rangeSubtagsEndIndex = rangeLength;
         unsigned lastMatchedLanguageSubtagIndex = 0;
 
         bool matchedRange = true;
@@ -236,7 +239,7 @@ ALWAYS_INLINE bool matchesLangPseudoClass(const Element& element, const FixedVec
                 rangeSubtagsStartIndex += 1;
             if (rangeSubtagsStartIndex > languageLength)
                 return false;
-            rangeSubtagsEndIndex = std::min<unsigned>(rangeStringView.find('-', rangeSubtagsStartIndex), rangeLength);
+            unsigned rangeSubtagsEndIndex = std::min<unsigned>(rangeStringView.find('-', rangeSubtagsStartIndex), rangeLength);
             StringView rangeSubtag = rangeStringView.substring(rangeSubtagsStartIndex, rangeSubtagsEndIndex - rangeSubtagsStartIndex);
             if (!containslanguageSubtagMatchingRange(languageStringView, rangeSubtag, languageLength, lastMatchedLanguageSubtagIndex)) {
                 matchedRange = false;
@@ -254,9 +257,6 @@ ALWAYS_INLINE bool matchesDirPseudoClass(const Element& element, const AtomStrin
 {
     // FIXME: Add support for non-HTML elements.
     if (!is<HTMLElement>(element))
-        return false;
-
-    if (!element.document().settings().dirPseudoEnabled())
         return false;
 
     switch (element.effectiveTextDirection()) {
@@ -445,9 +445,7 @@ ALWAYS_INLINE bool matchesFullScreenDocumentPseudoClass(const Element& element)
 {
     // While a Document is in the fullscreen state, the 'full-screen-document' pseudoclass applies
     // to all elements of that Document.
-    if (!element.document().fullscreenManager().isFullscreen())
-        return false;
-    return true;
+    return element.document().fullscreenManager().fullscreenElement();
 }
 
 ALWAYS_INLINE bool matchesFullScreenControlsHiddenPseudoClass(const Element& element)
@@ -472,12 +470,24 @@ ALWAYS_INLINE bool matchesPictureInPicturePseudoClass(const Element& element)
 
 ALWAYS_INLINE bool matchesFutureCuePseudoClass(const Element& element)
 {
-    return is<WebVTTElement>(element) && !downcast<WebVTTElement>(element).isPastNode();
+    if (auto* webVTTElement = dynamicDowncast<WebVTTElement>(element))
+        return !webVTTElement->isPastNode();
+    if (auto* webVTTRubyElement = dynamicDowncast<WebVTTRubyElement>(element))
+        return !webVTTRubyElement->isPastNode();
+    if (auto* webVTTRubyTextElement = dynamicDowncast<WebVTTRubyTextElement>(element))
+        return !webVTTRubyTextElement->isPastNode();
+    return false;
 }
 
 ALWAYS_INLINE bool matchesPastCuePseudoClass(const Element& element)
 {
-    return is<WebVTTElement>(element) && downcast<WebVTTElement>(element).isPastNode();
+    if (is<WebVTTElement>(element))
+        return downcast<WebVTTElement>(element).isPastNode();
+    if (is<WebVTTRubyElement>(element))
+        return downcast<WebVTTRubyElement>(element).isPastNode();
+    if (is<WebVTTRubyTextElement>(element))
+        return downcast<WebVTTRubyTextElement>(element).isPastNode();
+    return false;
 }
 
 ALWAYS_INLINE bool matchesPlayingPseudoClass(const Element& element)
@@ -523,7 +533,7 @@ ALWAYS_INLINE bool isFrameFocused(const Element& element)
 
 ALWAYS_INLINE bool matchesLegacyDirectFocusPseudoClass(const Element& element)
 {
-    if (InspectorInstrumentation::forcePseudoState(element, CSSSelector::PseudoClassFocus))
+    if (InspectorInstrumentation::forcePseudoState(element, CSSSelector::PseudoClassType::Focus))
         return true;
 
     return element.focused() && isFrameFocused(element);
@@ -537,7 +547,7 @@ ALWAYS_INLINE bool doesShadowTreeContainFocusedElement(const Element& element)
 
 ALWAYS_INLINE bool matchesFocusPseudoClass(const Element& element)
 {
-    if (InspectorInstrumentation::forcePseudoState(element, CSSSelector::PseudoClassFocus))
+    if (InspectorInstrumentation::forcePseudoState(element, CSSSelector::PseudoClassType::Focus))
         return true;
 
     return (element.focused() || doesShadowTreeContainFocusedElement(element)) && isFrameFocused(element);
@@ -548,7 +558,7 @@ ALWAYS_INLINE bool matchesFocusVisiblePseudoClass(const Element& element)
     if (!element.document().settings().focusVisibleEnabled())
         return matchesLegacyDirectFocusPseudoClass(element);
 
-    if (InspectorInstrumentation::forcePseudoState(element, CSSSelector::PseudoClassFocusVisible))
+    if (InspectorInstrumentation::forcePseudoState(element, CSSSelector::PseudoClassType::FocusVisible))
         return true;
 
     return element.hasFocusVisible() && isFrameFocused(element);
@@ -556,10 +566,15 @@ ALWAYS_INLINE bool matchesFocusVisiblePseudoClass(const Element& element)
 
 ALWAYS_INLINE bool matchesFocusWithinPseudoClass(const Element& element)
 {
-    if (InspectorInstrumentation::forcePseudoState(element, CSSSelector::PseudoClassFocusWithin))
+    if (InspectorInstrumentation::forcePseudoState(element, CSSSelector::PseudoClassType::FocusWithin))
         return true;
 
     return element.hasFocusWithin() && isFrameFocused(element);
+}
+
+ALWAYS_INLINE bool matchesHtmlDocumentPseudoClass(const Element& element)
+{
+    return element.document().isHTMLDocument();
 }
 
 ALWAYS_INLINE bool matchesModalPseudoClass(const Element& element)
@@ -571,6 +586,11 @@ ALWAYS_INLINE bool matchesModalPseudoClass(const Element& element)
 #else
     return false;
 #endif
+}
+
+ALWAYS_INLINE bool matchesPopoverOpenPseudoClass(const Element& element)
+{
+    return element.isPopoverShowing();
 }
 
 ALWAYS_INLINE bool matchesUserInvalidPseudoClass(const Element& element)

@@ -41,7 +41,7 @@ RotateTransformOperation::RotateTransformOperation(double x, double y, double z,
     , m_z(z)
     , m_angle(angle)
 {
-    ASSERT(isRotateTransformOperationType());
+    RELEASE_ASSERT(isRotateTransformOperationType(type));
 }
 
 bool RotateTransformOperation::operator==(const TransformOperation& other) const
@@ -108,12 +108,15 @@ Ref<TransformOperation> RotateTransformOperation::blend(const TransformOperation
     
     // Extract the result as a quaternion
     TransformationMatrix::Decomposed4Type decomp;
-    toT.decompose4(decomp);
+    if (!toT.decompose4(decomp)) {
+        const RotateTransformOperation* usedOperation = context.progress > 0.5 ? this : fromOp;
+        return RotateTransformOperation::create(usedOperation->x(), usedOperation->y(), usedOperation->z(), usedOperation->angle(), TransformOperation::Type::Rotate3D);
+    }
     
     // Convert that to Axis/Angle form
-    double x = -decomp.quaternionX;
-    double y = -decomp.quaternionY;
-    double z = -decomp.quaternionZ;
+    double x = decomp.quaternion.x;
+    double y = decomp.quaternion.y;
+    double z = decomp.quaternion.z;
     double length = std::hypot(x, y, z);
     double angle = 0;
     
@@ -121,7 +124,7 @@ Ref<TransformOperation> RotateTransformOperation::blend(const TransformOperation
         x /= length;
         y /= length;
         z /= length;
-        angle = rad2deg(acos(decomp.quaternionW) * 2);
+        angle = rad2deg(acos(decomp.quaternion.w) * 2);
     } else {
         x = 0;
         y = 0;

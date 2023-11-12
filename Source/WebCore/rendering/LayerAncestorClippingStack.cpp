@@ -34,7 +34,7 @@
 namespace WebCore {
 
 LayerAncestorClippingStack::LayerAncestorClippingStack(Vector<CompositedClipData>&& clipDataStack)
-    : m_stack(WTF::map(WTFMove(clipDataStack), [](auto&& clipDataEntry) { return ClippingStackEntry { WTFMove(clipDataEntry), 0, nullptr, nullptr }; }))
+    : m_stack(WTF::map(WTFMove(clipDataStack), [](CompositedClipData&& clipDataEntry) { return ClippingStackEntry { WTFMove(clipDataEntry), 0, nullptr, nullptr }; }))
 {
 }
 
@@ -71,6 +71,7 @@ void LayerAncestorClippingStack::clear(ScrollingCoordinator* scrollingCoordinato
         }
 
         GraphicsLayer::unparentAndClear(entry.clippingLayer);
+        GraphicsLayer::unparentAndClear(entry.scrollingLayer);
     }
 }
 

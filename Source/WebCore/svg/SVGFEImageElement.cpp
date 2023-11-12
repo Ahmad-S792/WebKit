@@ -29,8 +29,8 @@
 #include "Document.h"
 #include "FEImage.h"
 #include "Image.h"
+#include "LegacyRenderSVGResource.h"
 #include "RenderObject.h"
-#include "RenderSVGResource.h"
 #include "SVGElementInlines.h"
 #include "SVGNames.h"
 #include "SVGPreserveAspectRatioValue.h"
@@ -100,12 +100,12 @@ void SVGFEImageElement::buildPendingResource()
     if (!isConnected())
         return;
 
-    auto target = SVGURIReference::targetElementFromIRIString(href(), treeScope());
+    auto target = SVGURIReference::targetElementFromIRIString(href(), treeScopeForSVGReferences());
     if (!target.element) {
         if (target.identifier.isEmpty())
             requestImageResource();
         else {
-            document().accessSVGExtensions().addPendingResource(target.identifier, *this);
+            treeScopeForSVGReferences().addPendingSVGResource(target.identifier, *this);
             ASSERT(hasPendingResources());
         }
     } else if (is<SVGElement>(*target.element))
@@ -114,15 +114,13 @@ void SVGFEImageElement::buildPendingResource()
     updateSVGRendererForElementChange();
 }
 
-void SVGFEImageElement::parseAttribute(const QualifiedName& name, const AtomString& value)
+void SVGFEImageElement::attributeChanged(const QualifiedName& name, const AtomString& oldValue, const AtomString& newValue, AttributeModificationReason attributeModificationReason)
 {
-    if (name == SVGNames::preserveAspectRatioAttr) {
-        m_preserveAspectRatio->setBaseValInternal(SVGPreserveAspectRatioValue { value });
-        return;
-    }
+    if (name == SVGNames::preserveAspectRatioAttr)
+        m_preserveAspectRatio->setBaseValInternal(SVGPreserveAspectRatioValue { newValue });
 
-    SVGFilterPrimitiveStandardAttributes::parseAttribute(name, value);
-    SVGURIReference::parseAttribute(name, value);
+    SVGURIReference::parseAttribute(name, newValue);
+    SVGFilterPrimitiveStandardAttributes::attributeChanged(name, oldValue, newValue, attributeModificationReason);
 }
 
 void SVGFEImageElement::svgAttributeChanged(const QualifiedName& attrName)
@@ -152,6 +150,7 @@ Node::InsertedIntoAncestorResult SVGFEImageElement::insertedIntoAncestor(Inserti
 
 void SVGFEImageElement::didFinishInsertingNode()
 {
+    SVGFilterPrimitiveStandardAttributes::didFinishInsertingNode();
     buildPendingResource();
 }
 
@@ -176,12 +175,12 @@ void SVGFEImageElement::notifyFinished(CachedResource&, const NetworkLoadMetrics
     if (!parentRenderer)
         return;
 
-    RenderSVGResource::markForLayoutAndParentResourceInvalidation(*parentRenderer);
+    LegacyRenderSVGResource::markForLayoutAndParentResourceInvalidation(*parentRenderer);
 }
 
 std::tuple<RefPtr<ImageBuffer>, FloatRect> SVGFEImageElement::imageBufferForEffect(const GraphicsContext& destinationContext) const
 {
-    auto target = SVGURIReference::targetElementFromIRIString(href(), treeScope());
+    auto target = SVGURIReference::targetElementFromIRIString(href(), const_cast<SVGFEImageElement&>(*this).treeScopeForSVGReferences());
     if (!is<SVGElement>(target.element))
         return { };
 

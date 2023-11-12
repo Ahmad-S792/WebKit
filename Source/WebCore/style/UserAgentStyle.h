@@ -46,7 +46,11 @@ public:
     static StyleSheetContents* mediaControlsStyleSheet;
     static StyleSheetContents* mediaQueryStyleSheet;
     static StyleSheetContents* horizontalFormControlsStyleSheet;
+    static StyleSheetContents* htmlSwitchControlStyleSheet;
     static StyleSheetContents* plugInsStyleSheet;
+    static StyleSheetContents* popoverStyleSheet;
+    static StyleSheetContents* counterStylesStyleSheet;
+    static StyleSheetContents* rubyStyleSheet;
 #if ENABLE(FULLSCREEN_API)
     static StyleSheetContents* fullscreenStyleSheet;
 #endif
@@ -64,9 +68,6 @@ public:
 #endif
 #if ENABLE(IOS_FORM_CONTROL_REFRESH)
     static StyleSheetContents* legacyFormControlsIOSStyleSheet;
-#endif
-#if ENABLE(ALTERNATE_FORM_CONTROL_DESIGN)
-    static StyleSheetContents* alternateFormControlDesignStyleSheet;
 #endif
 
     static void initDefaultStyleSheet();

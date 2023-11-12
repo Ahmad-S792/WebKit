@@ -36,6 +36,9 @@
 #include "VideoDecoderGStreamer.h"
 #endif
 
+#include <wtf/UniqueRef.h>
+#include <wtf/text/WTFString.h>
+
 namespace WebCore {
 
 VideoDecoder::CreatorFunction VideoDecoder::s_customCreator = nullptr;
@@ -72,8 +75,8 @@ void VideoDecoder::createLocalDecoder(const String& codecName, const Config& con
         return;
     }
 #elif USE(GSTREAMER)
-    if (GStreamerVideoDecoder::create(codecName, config, WTFMove(callback), WTFMove(outputCallback), WTFMove(postCallback)))
-        return;
+    GStreamerVideoDecoder::create(codecName, config, WTFMove(callback), WTFMove(outputCallback), WTFMove(postCallback));
+    return;
 #else
     UNUSED_PARAM(codecName);
     UNUSED_PARAM(config);
@@ -83,6 +86,9 @@ void VideoDecoder::createLocalDecoder(const String& codecName, const Config& con
 
     callback(makeUnexpected("Not supported"_s));
 }
+
+VideoDecoder::VideoDecoder() = default;
+VideoDecoder::~VideoDecoder() = default;
 
 }
 

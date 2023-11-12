@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2012-2021 Apple Inc. All Rights Reserved.
+ * Copyright (C) 2012-2023 Apple Inc. All Rights Reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -75,6 +75,8 @@ class CachedCodeBlock;
 
 typedef unsigned UnlinkedArrayAllocationProfile;
 typedef unsigned UnlinkedObjectAllocationProfile;
+
+DECLARE_ALLOCATOR_WITH_HEAP_IDENTIFIER(UnlinkedCodeBlock_RareData);
 
 struct UnlinkedStringJumpTable {
     struct OffsetLocation {
@@ -250,8 +252,7 @@ public:
 
     int lineNumberForBytecodeIndex(BytecodeIndex);
 
-    void expressionRangeForBytecodeIndex(BytecodeIndex, int& divot,
-        int& startOffset, int& endOffset, unsigned& line, unsigned& column) const;
+    void expressionRangeForBytecodeIndex(BytecodeIndex, unsigned& divot, unsigned& startOffset, unsigned& endOffset, unsigned& line, unsigned& column) const;
 
     bool typeProfilerExpressionInfoForBytecodeOffset(unsigned bytecodeOffset, unsigned& startDivot, unsigned& endDivot);
 
@@ -344,7 +345,7 @@ public:
 
     size_t metadataSizeInBytes()
     {
-        return m_metadata->sizeInBytes();
+        return m_metadata->sizeInBytesForGC();
     }
 
     bool loopHintsAreEligibleForFuzzingEarlyReturn()
@@ -372,10 +373,7 @@ protected:
 
     ~UnlinkedCodeBlock();
 
-    void finishCreation(VM& vm)
-    {
-        Base::finishCreation(vm);
-    }
+    DECLARE_DEFAULT_FINISH_CREATION;
 
 private:
     friend class BytecodeRewriter;
@@ -455,7 +453,7 @@ private:
 
 public:
     struct RareData {
-        WTF_MAKE_STRUCT_FAST_ALLOCATED;
+        WTF_MAKE_STRUCT_FAST_ALLOCATED_WITH_HEAP_IDENTIFIER(UnlinkedCodeBlock_RareData);
 
         size_t sizeInBytes(const AbstractLocker&) const;
 

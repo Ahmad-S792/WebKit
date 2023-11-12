@@ -89,7 +89,7 @@ struct _WebKitPrintOperationPrivate {
 
 static guint signals[LAST_SIGNAL] = { 0, };
 
-WEBKIT_DEFINE_FINAL_TYPE_IN_2022_API(WebKitPrintOperation, webkit_print_operation, G_TYPE_OBJECT)
+WEBKIT_DEFINE_FINAL_TYPE(WebKitPrintOperation, webkit_print_operation, G_TYPE_OBJECT, GObject)
 
 static void webkitPrintOperationGetProperty(GObject* object, guint propId, GValue* value, GParamSpec* paramSpec)
 {
@@ -364,7 +364,7 @@ static void webkitPrintOperationPrintPagesForFrame(WebKitPrintOperation* printOp
     page.drawPagesForPrinting(webFrame, printInfo, [printOperation = GRefPtr<WebKitPrintOperation>(printOperation)](std::optional<SharedMemory::Handle>&& data, WebCore::ResourceError&& error) mutable {
         auto* priv = printOperation->priv;
         // When running synchronously, WebPageProxy::printFrame() calls endPrinting().
-        if (priv->printMode == PrintInfo::PrintModeAsync && priv->webView)
+        if (priv->printMode == PrintInfo::PrintMode::Async && priv->webView)
             webkitWebViewGetPage(priv->webView.get()).endPrinting();
 
         if (!data || !error.isNull()) {

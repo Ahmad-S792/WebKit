@@ -140,28 +140,10 @@ bool MacApplication::isAppleMail()
     return isAppleMail;
 }
 
-bool MacApplication::isMicrosoftMessenger()
-{
-    static bool isMicrosoftMessenger = applicationBundleIsEqualTo("com.microsoft.Messenger"_s);
-    return isMicrosoftMessenger;
-}
-
 bool MacApplication::isAdobeInstaller()
 {
     static bool isAdobeInstaller = applicationBundleIsEqualTo("com.adobe.Installers.Setup"_s);
     return isAdobeInstaller;
-}
-
-bool MacApplication::isMicrosoftMyDay()
-{
-    static bool isMicrosoftMyDay = applicationBundleIsEqualTo("com.microsoft.myday"_s);
-    return isMicrosoftMyDay;
-}
-
-bool MacApplication::isMicrosoftOutlook()
-{
-    static bool isMicrosoftOutlook = applicationBundleIsEqualTo("com.microsoft.Outlook"_s);
-    return isMicrosoftOutlook;
 }
 
 bool MacApplication::isMiniBrowser()
@@ -206,6 +188,12 @@ bool MacApplication::isEpsonSoftwareUpdater()
     return isEpsonSoftwareUpdater;
 }
 
+bool MacApplication::isMimeoPhotoProject()
+{
+    static bool isMimeoPhotoProject = applicationBundleIsEqualTo("com.mimeo.Mimeo.PhotoProject"_s);
+    return isMimeoPhotoProject;
+}
+
 #endif // PLATFORM(MAC)
 
 #if PLATFORM(IOS_FAMILY)
@@ -245,6 +233,12 @@ bool IOSApplication::isIMDb()
     return isIMDb;
 }
 
+bool IOSApplication::isGmail()
+{
+    static bool isGmail = applicationBundleIsEqualTo("com.google.Gmail"_s);
+    return isGmail;
+}
+
 bool IOSApplication::isWebBookmarksD()
 {
     static bool isWebBookmarksD = applicationBundleIsEqualTo("com.apple.webbookmarksd"_s);
@@ -275,6 +269,12 @@ bool IOSApplication::isSpringBoard()
 bool IOSApplication::isWebProcess()
 {
     return isInWebProcess();
+}
+
+bool IOSApplication::isBackboneApp()
+{
+    static bool isBackboneApp = applicationBundleIsEqualTo("com.backbonelabs.backboneapp"_s);
+    return isBackboneApp;
 }
 
 bool IOSApplication::isIBooksStorytime()
@@ -311,6 +311,12 @@ bool IOSApplication::isFirefox()
 {
     static bool isFirefox = applicationBundleIsEqualTo("org.mozilla.ios.Firefox"_s);
     return isFirefox;
+}
+
+bool IOSApplication::isHoYoLAB()
+{
+    static bool isHoYoLAB = applicationBundleIsEqualTo("com.miHoYo.HoYoLAB"_s);
+    return isHoYoLAB;
 }
 
 bool IOSApplication::isAppleApplication()
@@ -443,6 +449,12 @@ bool IOSApplication::isLutron()
 {
     static bool isLutronApp = applicationBundleIsEqualTo("com.lutron.lsb"_s);
     return isLutronApp;
+}
+
+bool IOSApplication::isDOFUSTouch()
+{
+    static bool isDOFUSTouch = applicationBundleIsEqualTo("com.ankama.dofustouch"_s);
+    return isDOFUSTouch;
 }
 
 #endif

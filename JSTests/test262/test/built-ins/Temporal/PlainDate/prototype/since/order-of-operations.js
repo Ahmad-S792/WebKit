@@ -8,10 +8,30 @@ includes: [compareArray.js, temporalHelpers.js]
 features: [Temporal]
 ---*/
 
-const expected = [
+const expectedMinimal = [
   // ToTemporalDate
   "get other.calendar",
-  "has other.calendar.calendar",
+  "has other.calendar.dateAdd",
+  "has other.calendar.dateFromFields",
+  "has other.calendar.dateUntil",
+  "has other.calendar.day",
+  "has other.calendar.dayOfWeek",
+  "has other.calendar.dayOfYear",
+  "has other.calendar.daysInMonth",
+  "has other.calendar.daysInWeek",
+  "has other.calendar.daysInYear",
+  "has other.calendar.fields",
+  "has other.calendar.id",
+  "has other.calendar.inLeapYear",
+  "has other.calendar.mergeFields",
+  "has other.calendar.month",
+  "has other.calendar.monthCode",
+  "has other.calendar.monthDayFromFields",
+  "has other.calendar.monthsInYear",
+  "has other.calendar.weekOfYear",
+  "has other.calendar.year",
+  "has other.calendar.yearMonthFromFields",
+  "has other.calendar.yearOfWeek",
   "get other.calendar.fields",
   "call other.calendar.fields",
   "get other.day",
@@ -29,25 +49,8 @@ const expected = [
   "get other.calendar.dateFromFields",
   "call other.calendar.dateFromFields",
   // CalendarEquals
-  "get this.calendar[Symbol.toPrimitive]",
-  "get this.calendar.toString",
-  "call this.calendar.toString",
-  "get other.calendar[Symbol.toPrimitive]",
-  "get other.calendar.toString",
-  "call other.calendar.toString",
-  // GetDifferenceSettings
-  "get options.largestUnit",
-  "get options.largestUnit.toString",
-  "call options.largestUnit.toString",
-  "get options.roundingIncrement",
-  "get options.roundingIncrement.valueOf",
-  "call options.roundingIncrement.valueOf",
-  "get options.roundingMode",
-  "get options.roundingMode.toString",
-  "call options.roundingMode.toString",
-  "get options.smallestUnit",
-  "get options.smallestUnit.toString",
-  "call options.smallestUnit.toString",
+  "get this.calendar.id",
+  "get other.calendar.id",
   // CopyDataProperties
   "ownKeys options",
   "getOwnPropertyDescriptor options.roundingIncrement",
@@ -60,10 +63,22 @@ const expected = [
   "get options.smallestUnit",
   "getOwnPropertyDescriptor options.additional",
   "get options.additional",
+  // GetDifferenceSettings
+  "get options.largestUnit.toString",
+  "call options.largestUnit.toString",
+  "get options.roundingIncrement.valueOf",
+  "call options.roundingIncrement.valueOf",
+  "get options.roundingMode.toString",
+  "call options.roundingMode.toString",
+  "get options.smallestUnit.toString",
+  "call options.smallestUnit.toString",
+];
+
+const expected = expectedMinimal.concat([
   // CalendarDateUntil
   "get this.calendar.dateUntil",
   "call this.calendar.dateUntil",
-];
+]);
 const actual = [];
 
 const ownCalendar = TemporalHelpers.calendarObserver(actual, "this.calendar");
@@ -71,8 +86,8 @@ const instance = new Temporal.PlainDate(2000, 5, 2, ownCalendar);
 
 const otherDatePropertyBag = TemporalHelpers.propertyBagObserver(actual, {
   year: 2001,
-  month: 5,
-  monthCode: 'M05',
+  month: 6,
+  monthCode: "M06",
   day: 2,
   calendar: TemporalHelpers.calendarObserver(actual, "other.calendar"),
 }, "other");
@@ -92,24 +107,53 @@ function createOptionsObserver({ smallestUnit = "days", largestUnit = "auto", ro
 // clear any observable things that happened while constructing the objects
 actual.splice(0);
 
-// basic order of observable operations, without rounding:
-instance.since(otherDatePropertyBag, createOptionsObserver());
+// basic order of observable operations with calendar call, without rounding:
+instance.since(otherDatePropertyBag, createOptionsObserver({ largestUnit: "years" }));
 assert.compareArray(actual, expected, "order of operations");
+actual.splice(0); // clear
+
+// short-circuit for identical objects:
+const identicalPropertyBag = TemporalHelpers.propertyBagObserver(actual, {
+  year: 2000,
+  month: 5,
+  monthCode: "M05",
+  day: 2,
+  calendar: TemporalHelpers.calendarObserver(actual, "other.calendar"),
+}, "other");
+
+instance.since(identicalPropertyBag, createOptionsObserver());
+assert.compareArray(actual, expectedMinimal, "order of operations with identical dates");
 actual.splice(0); // clear
 
 // code path through RoundDuration that rounds to the nearest year:
 const expectedOpsForYearRounding = expected.concat([
-  "get this.calendar.dateAdd",     // 9.b
-  "call this.calendar.dateAdd",    // 9.c
-  "call this.calendar.dateAdd",    // 9.e
-  "call this.calendar.dateAdd",    // 9.j
-  "get this.calendar.dateUntil",   // 9.m
-  "call this.calendar.dateUntil",  // 9.m
-  "call this.calendar.dateAdd",    // 9.r
-  "call this.calendar.dateAdd",    // 9.w MoveRelativeDate
-]);
+  "get this.calendar.dateAdd",     // 7.c.i
+  "call this.calendar.dateAdd",    // 7.e
+  "call this.calendar.dateAdd",    // 7.g
+  "get this.calendar.dateUntil",   // 7.o
+  "call this.calendar.dateUntil",  // 7.o
+  "call this.calendar.dateAdd",    // 7.y MoveRelativeDate
+]);  // (7.s not called because other units can't add up to >1 year at this point)
 instance.since(otherDatePropertyBag, createOptionsObserver({ smallestUnit: "years" }));
 assert.compareArray(actual, expectedOpsForYearRounding, "order of operations with smallestUnit = years");
+actual.splice(0); // clear
+
+// code path through RoundDuration that rounds to the nearest year and skips a DateUntil call:
+const otherDatePropertyBagSameMonth = TemporalHelpers.propertyBagObserver(actual, {
+  year: 2001,
+  month: 5,
+  monthCode: "M05",
+  day: 2,
+  calendar: TemporalHelpers.calendarObserver(actual, "other.calendar"),
+}, "other");
+const expectedOpsForYearRoundingSameMonth = expected.concat([
+  "get this.calendar.dateAdd",     // 7.c.i
+  "call this.calendar.dateAdd",    // 7.e
+  "call this.calendar.dateAdd",    // 7.g
+  "call this.calendar.dateAdd",    // 7.y MoveRelativeDate
+]);  // (7.o not called because months and weeks == 0)
+instance.since(otherDatePropertyBagSameMonth, createOptionsObserver({ smallestUnit: "years" }));
+assert.compareArray(actual, expectedOpsForYearRoundingSameMonth, "order of operations with smallestUnit = years and no excess months/weeks");
 actual.splice(0); // clear
 
 // code path through RoundDuration that rounds to the nearest month:

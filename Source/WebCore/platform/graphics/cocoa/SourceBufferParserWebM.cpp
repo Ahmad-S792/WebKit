@@ -32,6 +32,7 @@
 #include "CMUtilities.h"
 #include "ContentType.h"
 #include "InbandTextTrackPrivate.h"
+#include "LibWebRTCMacros.h"
 #include "Logging.h"
 #include "MediaDescription.h"
 #include "MediaSampleAVFObjC.h"
@@ -492,7 +493,7 @@ private:
     webm::TrackEntry m_track;
 };
 
-Span<const ASCIILiteral> SourceBufferParserWebM::supportedMIMETypes()
+std::span<const ASCIILiteral> SourceBufferParserWebM::supportedMIMETypes()
 {
 #if !(ENABLE(VP9) || ENABLE(VORBIS) || ENABLE(OPUS))
     return { };
@@ -568,7 +569,7 @@ void WebMParser::createByteRangeSamples()
 ExceptionOr<int> WebMParser::parse(SourceBufferParser::Segment&& segment)
 {
     if (!m_parser)
-        return Exception { InvalidStateError };
+        return Exception { ExceptionCode::InvalidStateError };
 
     m_reader->appendSegment(WTFMove(segment));
 
@@ -761,6 +762,10 @@ Status WebMParser::OnEbml(const ElementMetadata&, const Ebml& ebml)
     // to immediately abort it. We do it this way mostly to avoid getting into a rabbit hole
     // of ensuring that libwebm does something sane with rubbish input.
     m_initializationSegmentProcessed = false;
+
+    // Reset the tracks as new tracks _must_ replace old ones. Otherwise, new samples may refer to old
+    // track information.
+    m_tracks.clear();
 
     return Status(Status::kOkCompleted);
 }
@@ -1105,7 +1110,13 @@ webm::Status WebMParser::VideoTrackData::consumeFrameData(webm::Reader& reader, 
 
     processPendingMediaSamples(presentationTime);
 
-    m_pendingMediaSamples.append({ presentationTime, presentationTime, MediaTime::indefiniteTime(), WTFMove(m_completeFrameData), isKey ? MediaSample::SampleFlags::IsSync : MediaSample::SampleFlags::None });
+    if (formatDescription() && (!m_trackInfo || *formatDescription() != *m_trackInfo)) {
+        m_trackInfo = formatDescription();
+        m_processedMediaSamples.setInfo(formatDescription());
+        parser().formatDescriptionChangedForTrackData(*this);
+    }
+
+    m_pendingMediaSamples.append({ presentationTime, presentationTime, MediaTime::indefiniteTime(), MediaTime::zeroTime(), WTFMove(m_completeFrameData), isKey ? MediaSample::SampleFlags::IsSync : MediaSample::SampleFlags::None });
 
     ASSERT(!*bytesRemaining);
     return webm::Status(webm::Status::kOkCompleted);
@@ -1176,6 +1187,24 @@ void WebMParser::VideoTrackData::flushPendingSamples()
     m_lastPresentationTime.reset();
 }
 
+WebMParser::AudioTrackData::AudioTrackData(CodecType codecType, const webm::TrackEntry& trackEntry, WebMParser& parser)
+    : TrackData { codecType, trackEntry, TrackInfo::TrackType::Audio, parser }
+{
+    // https://wiki.xiph.org/MatroskaOpus#Element_Additions
+    // CodecDelay is a new unsigned integer element added to the TrackEntry element.
+    // The value is the number of nanoseconds that must be discarded, for that stream, from the
+    // start of that stream. The value is also the number of nanoseconds that all encoded
+    // timestamps for that stream must be shifted to get the presentation timestamp.
+    // (This will fix Vorbis encoding as well.)
+    if (trackEntry.codec_delay.is_present()) {
+        constexpr uint32_t k_us_in_seconds = 1000000000;
+        m_remainingTrimDuration = MediaTime(trackEntry.codec_delay.value(), k_us_in_seconds);
+        m_presentationTimeShift = -m_remainingTrimDuration;
+    }
+}
+
+WebMParser::AudioTrackData::~AudioTrackData() = default;
+
 void WebMParser::AudioTrackData::resetCompletedFramesState()
 {
     mNumFramesInCompleteBlock = 0;
@@ -1205,16 +1234,18 @@ webm::Status WebMParser::AudioTrackData::consumeFrameData(webm::Reader& reader, 
                 return Skip(&reader, bytesRemaining);
             }
             OpusCookieContents cookieContents;
-            if (!parseOpusPrivateData(privateData.size(), privateData.data(), contiguousBuffer->size(), contiguousBuffer->data(), cookieContents)) {
+            if (!parseOpusPrivateData(privateData.size(), privateData.data(), *contiguousBuffer, cookieContents)) {
                 PARSER_LOG_ERROR_IF_POSSIBLE("Failed to parse Opus private data");
                 return Skip(&reader, bytesRemaining);
             }
+#if !HAVE(AUDIOFORMATPROPERTY_VARIABLEPACKET_SUPPORTED)
             if (!cookieContents.framesPerPacket) {
                 PARSER_LOG_ERROR_IF_POSSIBLE("Opus private data indicates 0 frames per packet; bailing");
                 return Skip(&reader, bytesRemaining);
             }
             m_framesPerPacket = cookieContents.framesPerPacket;
             m_frameDuration = cookieContents.frameDuration;
+#endif
             formatDescription = createOpusAudioInfo(cookieContents);
         }
 
@@ -1223,12 +1254,17 @@ webm::Status WebMParser::AudioTrackData::consumeFrameData(webm::Reader& reader, 
             return Skip(&reader, bytesRemaining);
         }
 
-        m_packetDuration = MediaTime(formatDescription->framesPerPacket, formatDescription->rate);
-
+        m_packetDurationParser = makeUnique<PacketDurationParser>(*formatDescription);
+        if (!m_packetDurationParser->isValid()) {
+            PARSER_LOG_ERROR_IF_POSSIBLE("Failed to create PacketDurationParser from audio track header");
+            return Skip(&reader, bytesRemaining);
+        }
         setFormatDescription(formatDescription.releaseNonNull());
-    } else if (codec() == CodecType::Opus) {
+    }
+#if !HAVE(AUDIOFORMATPROPERTY_VARIABLEPACKET_SUPPORTED)
+    else if (codec() == CodecType::Opus) {
         // Opus technically allows the frame duration and frames-per-packet values to change from packet to packet.
-        // CoreAudio doesn't support ASBD values like these to change on a per-packet basis, so throw an error when
+        // Prior rdar://71347713 CoreMedia opus decoder didn't support those, so throw an error when
         // that kind of variability is encountered.
         OpusCookieContents cookieContents;
         auto& privateData = track().codec_private.value();
@@ -1237,20 +1273,66 @@ webm::Status WebMParser::AudioTrackData::consumeFrameData(webm::Reader& reader, 
             PARSER_LOG_ERROR_IF_POSSIBLE("AudioTrackData::consumeFrameData: unable to create contiguous data block");
             return Skip(&reader, bytesRemaining);
         }
-        if (!parseOpusPrivateData(privateData.size(), privateData.data(), contiguousBuffer->size(), contiguousBuffer->data(), cookieContents)
+        if (!parseOpusPrivateData(privateData.size(), privateData.data(), *contiguousBuffer, cookieContents)
             || cookieContents.framesPerPacket != m_framesPerPacket
             || cookieContents.frameDuration != m_frameDuration) {
             PARSER_LOG_ERROR_IF_POSSIBLE("Opus frames-per-packet changed within a track; error");
             return Status(Status::Code(ErrorCode::VariableFrameDuration));
         }
     }
+#endif
 
-    if (!m_processedMediaSamples.info())
+    auto contiguousBuffer = contiguousCompleteBlockBuffer(0, codec() == CodecType::Opus ? kOpusMinimumFrameDataSize : kVorbisMinimumFrameDataSize);
+    if (!contiguousBuffer) {
+        PARSER_LOG_ERROR_IF_POSSIBLE("AudioTrackData::consumeFrameData: unable to create contiguous data block");
+        return Skip(&reader, bytesRemaining);
+    }
+
+    bool shouldDrain = !!m_processedMediaSamples.info();
+    if (formatDescription() && (!m_trackInfo || *formatDescription() != *m_trackInfo)) {
+        if (shouldDrain)
+            drainPendingSamples();
+        m_trackInfo = formatDescription();
         m_processedMediaSamples.setInfo(formatDescription());
-    else if (formatDescription() && *formatDescription() != *m_processedMediaSamples.info())
-        drainPendingSamples();
+        parser().formatDescriptionChangedForTrackData(*this);
+    }
 
-    m_processedMediaSamples.append({ presentationTime, MediaTime::invalidTime(), m_packetDuration, WTFMove(m_completeFrameData), MediaSample::SampleFlags::IsSync });
+    MediaTime packetDuration = MediaTime(m_packetDurationParser->framesInPacket(*contiguousBuffer), downcast<AudioInfo>(formatDescription())->rate);
+    auto trimDuration = MediaTime::zeroTime();
+    MediaTime localPresentationTime = presentationTime;
+    if (m_remainingTrimDuration.isFinite() && m_remainingTrimDuration > MediaTime::zeroTime()) {
+        if (m_remainingTrimDuration < packetDuration)
+            std::swap(trimDuration, m_remainingTrimDuration);
+        else {
+            m_remainingTrimDuration -= packetDuration;
+            trimDuration = packetDuration;
+        }
+    }
+
+    ASSERT(m_presentationTimeShift.isFinite());
+    if (m_presentationTimeShift != MediaTime::zeroTime())
+        localPresentationTime += m_presentationTimeShift;
+
+    if (m_lastPresentationEndTime.isValid()) {
+        MediaTime discontinuityGap = localPresentationTime - m_lastPresentationEndTime;
+        // ATSC IS-191: Relative Timing of Sound and Vision for Broadcast Operations
+        // "The sound program should never lead the video program by more than
+        // 15 milliseconds, and should never lag the video program by more than
+        // 45 milliseconds."
+        // By collapsing gaps between samples, we effectively advance the timing
+        // of the subsequent samples, which may result in the sound content leading
+        // the video content. With a reasonable assumption that the media file starts
+        // with A/V content in perfect sync, we can advance samples up to 15 ms.
+        // Any gaps larger than that amount must have a discontiuity in order to bring
+        // the audio and video presenatations into sync.
+        constexpr MediaTime maximumAllowableDiscontinuity = MediaTime(15, 1000);
+        if (discontinuityGap > MediaTime::zeroTime() && discontinuityGap < maximumAllowableDiscontinuity)
+            localPresentationTime -= discontinuityGap;
+    }
+
+    m_lastPresentationEndTime = localPresentationTime + packetDuration;
+
+    m_processedMediaSamples.append({ localPresentationTime, MediaTime::invalidTime(), packetDuration, trimDuration, WTFMove(m_completeFrameData), MediaSample::SampleFlags::IsSync });
 
     drainPendingSamples();
 
@@ -1372,16 +1454,25 @@ MediaPlayerEnums::SupportsType SourceBufferParserWebM::isContentTypeSupported(co
 #endif // ENABLE(VP9) || ENABLE(VORBIS) || ENABLE(OPUS)
 }
 
-RefPtr<SourceBufferParserWebM> SourceBufferParserWebM::create(const ContentType& type)
+bool SourceBufferParserWebM::isAvailable()
 {
-    if (isContentTypeSupported(type) != MediaPlayerEnums::SupportsType::IsNotSupported)
-        return adoptRef(new SourceBufferParserWebM());
-    return nullptr;
+    return isWebmParserAvailable();
+}
+
+RefPtr<SourceBufferParserWebM> SourceBufferParserWebM::create()
+{
+    return isAvailable() ? adoptRef(new SourceBufferParserWebM()) : nullptr;
 }
 
 void WebMParser::provideMediaData(MediaSamplesBlock&& samples)
 {
     m_callback.parsedMediaData(WTFMove(samples));
+}
+
+void WebMParser::formatDescriptionChangedForTrackData(TrackData& trackData)
+{
+    if (auto formatDescription = trackData.formatDescription())
+        m_callback.formatDescriptionChangedForTrackID(*formatDescription, trackData.track().track_uid.value());
 }
 
 void SourceBufferParserWebM::parsedInitializationData(InitializationSegment&& initializationSegment)
@@ -1470,6 +1561,14 @@ void SourceBufferParserWebM::contentKeyRequestInitializationDataForTrackID(Ref<S
         m_didProvideContentKeyRequestInitializationDataForTrackIDCallback(WTFMove(keyID), trackID);
 }
 
+void SourceBufferParserWebM::formatDescriptionChangedForTrackID(Ref<TrackInfo>&& formatDescription, uint64_t trackID)
+{
+    m_callOnClientThreadCallback([this, protectedThis = Ref { *this }, formatDescription = WTFMove(formatDescription), trackID]() mutable {
+        if (m_didUpdateFormatDescriptionForTrackIDCallback)
+            m_didUpdateFormatDescriptionForTrackIDCallback(WTFMove(formatDescription), trackID);
+    });
+}
+
 void SourceBufferParserWebM::flushPendingAudioSamples()
 {
     if (!m_audioFormatDescription)
@@ -1542,7 +1641,7 @@ void SourceBufferParserWebM::setLogger(const Logger& newLogger, const void* newL
     m_logger = &newLogger;
     m_logIdentifier = newLogIdentifier;
     ALWAYS_LOG(LOGIDENTIFIER);
-    
+
     m_parser.setLogger(newLogger, newLogIdentifier);
 }
 

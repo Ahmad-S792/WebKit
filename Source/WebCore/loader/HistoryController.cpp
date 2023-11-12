@@ -36,14 +36,14 @@
 #include "CachedPage.h"
 #include "Document.h"
 #include "DocumentLoader.h"
-#include "Frame.h"
 #include "FrameLoader.h"
-#include "FrameLoaderClient.h"
 #include "FrameLoaderStateMachine.h"
 #include "FrameTree.h"
-#include "FrameView.h"
 #include "HTMLObjectElement.h"
 #include "HistoryItem.h"
+#include "LocalFrame.h"
+#include "LocalFrameLoaderClient.h"
+#include "LocalFrameView.h"
 #include "Logging.h"
 #include "Page.h"
 #include "ScrollingCoordinator.h"
@@ -60,7 +60,7 @@ static inline void addVisitedLink(Page& page, const URL& url)
     page.visitedLinkStore().addVisitedLink(page, computeSharedStringHash(url.string()));
 }
 
-FrameLoader::HistoryController::HistoryController(Frame& frame)
+FrameLoader::HistoryController::HistoryController(LocalFrame& frame)
     : m_frame(frame)
     , m_frameLoadComplete(true)
     , m_defersLoading(false)
@@ -71,21 +71,25 @@ FrameLoader::HistoryController::~HistoryController() = default;
 
 void FrameLoader::HistoryController::saveScrollPositionAndViewStateToItem(HistoryItem* item)
 {
-    FrameView* frameView = m_frame.view();
+    auto* frameView = m_frame.view();
     if (!item || !frameView)
         return;
 
-    if (m_frame.document()->backForwardCacheState() != Document::NotInBackForwardCache)
+    if (m_frame.document()->backForwardCacheState() != Document::NotInBackForwardCache) {
         item->setScrollPosition(frameView->cachedScrollPosition());
-    else
-        item->setScrollPosition(frameView->scrollPosition());
-
 #if PLATFORM(IOS_FAMILY)
-    item->setExposedContentRect(frameView->exposedContentRect());
-    item->setUnobscuredContentRect(frameView->unobscuredContentRect());
+        item->setUnobscuredContentRect(frameView->cachedUnobscuredContentRect());
+        item->setExposedContentRect(frameView->cachedExposedContentRect());
 #endif
+    } else {
+        item->setScrollPosition(frameView->scrollPosition());
+#if PLATFORM(IOS_FAMILY)
+        item->setUnobscuredContentRect(frameView->unobscuredContentRect());
+        item->setExposedContentRect(frameView->exposedContentRect());
+#endif
+    }
 
-    Page* page = m_frame.page();
+    auto* page = m_frame.page();
     if (page && m_frame.isMainFrame()) {
         item->setPageScaleFactor(page->pageScaleFactor() / page->viewScaleFactor());
 #if PLATFORM(IOS_FAMILY)
@@ -122,17 +126,7 @@ void FrameLoader::HistoryController::clearScrollPositionAndViewState()
 */
 void FrameLoader::HistoryController::restoreScrollPositionAndViewState()
 {
-    if (!m_frame.loader().stateMachine().committedFirstRealDocumentLoad())
-        return;
-
-    ASSERT(m_currentItem);
-    
-    // FIXME: As the ASSERT attests, it seems we should always have a currentItem here.
-    // One counterexample is <rdar://problem/4917290>
-    // For now, to cover this issue in release builds, there is no technical harm to returning
-    // early and from a user standpoint - as in the above radar - the previous page load failed 
-    // so there *is* no scroll or view state to restore!
-    if (!m_currentItem)
+    if (!m_currentItem || !m_frame.loader().stateMachine().committedFirstRealDocumentLoad())
         return;
 
     RefPtr view = m_frame.view();
@@ -155,7 +149,7 @@ void FrameLoader::HistoryController::restoreScrollPositionAndViewState()
     m_frame.loader().client().restoreViewState();
 
 #if !PLATFORM(IOS_FAMILY)
-    // Don't restore scroll point on iOS as FrameLoaderClient::restoreViewState() does that.
+    // Don't restore scroll point on iOS as LocalFrameLoaderClient::restoreViewState() does that.
     if (view && !view->wasScrolledByUser()) {
         view->scrollToFocusedElementImmediatelyIfNeeded();
 
@@ -220,7 +214,7 @@ void FrameLoader::HistoryController::saveDocumentState()
 // history item.
 void FrameLoader::HistoryController::saveDocumentAndScrollState()
 {
-    for (AbstractFrame* frame = &m_frame; frame; frame = frame->tree().traverseNext(&m_frame)) {
+    for (Frame* frame = &m_frame; frame; frame = frame->tree().traverseNext(&m_frame)) {
         auto* localFrame = dynamicDowncast<LocalFrame>(frame);
         if (!localFrame)
             continue;
@@ -435,9 +429,10 @@ void FrameLoader::HistoryController::updateForRedirectWithLockedBackForwardList(
         // The client redirect replaces the current history item.
         updateCurrentItem();
     } else {
+        auto* page = m_frame.page();
         auto* parentFrame = dynamicDowncast<LocalFrame>(m_frame.tree().parent());
-        if (parentFrame && parentFrame->loader().history().currentItem())
-            parentFrame->loader().history().currentItem()->setChildItem(createItem());
+        if (page && parentFrame && parentFrame->loader().history().currentItem())
+            parentFrame->loader().history().currentItem()->setChildItem(createItem(page->historyItemClient()));
     }
 
     if (!historyURL.isEmpty() && !usesEphemeralSession) {
@@ -495,7 +490,8 @@ void FrameLoader::HistoryController::updateForCommit()
         // Tell all other frames in the tree to commit their provisional items and
         // restore their scroll position.  We'll avoid this frame (which has already
         // committed) and its children (which will be replaced).
-        m_frame.mainFrame().loader().history().recursiveUpdateForCommit();
+        if (auto* localFrame = dynamicDowncast<LocalFrame>(m_frame.mainFrame()))
+            localFrame->loader().history().recursiveUpdateForCommit();
     }
 }
 
@@ -526,7 +522,7 @@ void FrameLoader::HistoryController::recursiveUpdateForCommit()
         saveDocumentState();
         saveScrollPositionAndViewStateToItem(m_currentItem.get());
 
-        if (FrameView* view = m_frame.view())
+        if (auto* view = m_frame.view())
             view->setWasScrolledByUser(false);
 
         // Now commit the provisional item
@@ -563,7 +559,8 @@ void FrameLoader::HistoryController::updateForSameDocumentNavigation()
     if (!usesEphemeralSession)
         addVisitedLink(*page, m_frame.document()->url());
 
-    m_frame.mainFrame().loader().history().recursiveUpdateForSameDocumentNavigation();
+    if (auto *localFrame = dynamicDowncast<LocalFrame>(m_frame.mainFrame()))
+        localFrame->loader().history().recursiveUpdateForSameDocumentNavigation();
 
     if (m_currentItem) {
         m_currentItem->setURL(m_frame.document()->url());
@@ -690,9 +687,9 @@ void FrameLoader::HistoryController::initializeItem(HistoryItem& item)
     item.setFormInfoFromRequest(documentLoader->request());
 }
 
-Ref<HistoryItem> FrameLoader::HistoryController::createItem()
+Ref<HistoryItem> FrameLoader::HistoryController::createItem(HistoryItemClient& client)
 {
-    Ref<HistoryItem> item = HistoryItem::create();
+    Ref<HistoryItem> item = HistoryItem::create(client);
     initializeItem(item);
     
     // Set the item for which we will save document state
@@ -701,9 +698,9 @@ Ref<HistoryItem> FrameLoader::HistoryController::createItem()
     return item;
 }
 
-Ref<HistoryItem> FrameLoader::HistoryController::createItemTree(Frame& targetFrame, bool clipAtTarget)
+Ref<HistoryItem> FrameLoader::HistoryController::createItemTree(HistoryItemClient& client, LocalFrame& targetFrame, bool clipAtTarget)
 {
-    Ref<HistoryItem> bfItem = createItem();
+    Ref<HistoryItem> bfItem = createItem(client);
     if (!m_frameLoadComplete)
         saveScrollPositionAndViewStateToItem(m_previousItem.get());
 
@@ -733,7 +730,7 @@ Ref<HistoryItem> FrameLoader::HistoryController::createItemTree(Frame& targetFra
             // to be ignored on reload.
             
             if (!(!hasChildLoaded && localChild->ownerElement() && is<HTMLObjectElement>(localChild->ownerElement())))
-                bfItem->addChildItem(childLoader.history().createItemTree(targetFrame, clipAtTarget));
+                bfItem->addChildItem(childLoader.history().createItemTree(client, targetFrame, clipAtTarget));
         }
     }
     // FIXME: Eliminate the isTargetItem flag in favor of itemSequenceNumber.
@@ -761,7 +758,7 @@ void FrameLoader::HistoryController::recursiveSetProvisionalItem(HistoryItem& it
         if (!fromChildItem)
             continue;
 
-        if (auto* childFrame = dynamicDowncast<LocalFrame>(m_frame.tree().child(childFrameName)))
+        if (auto* childFrame = dynamicDowncast<LocalFrame>(m_frame.tree().childByUniqueName(childFrameName)))
             childFrame->loader().history().recursiveSetProvisionalItem(childItem, fromChildItem);
     }
 }
@@ -783,7 +780,7 @@ void FrameLoader::HistoryController::recursiveGoToItem(HistoryItem& item, Histor
         if (!fromChildItem)
             continue;
 
-        if (auto* childFrame = dynamicDowncast<LocalFrame>(m_frame.tree().child(childFrameName)))
+        if (auto* childFrame = dynamicDowncast<LocalFrame>(m_frame.tree().childByUniqueName(childFrameName)))
             childFrame->loader().history().recursiveGoToItem(childItem, fromChildItem, type, shouldTreatAsContinuingLoad);
     }
 }
@@ -814,7 +811,7 @@ bool FrameLoader::HistoryController::currentFramesMatchItem(HistoryItem& item) c
         return false;
     
     for (auto& item : childItems) {
-        if (!m_frame.tree().child(item->target()))
+        if (!m_frame.tree().childByUniqueName(item->target()))
             return false;
     }
     
@@ -835,9 +832,13 @@ void FrameLoader::HistoryController::updateBackForwardListClippedAtTarget(bool d
     if (m_frame.loader().documentLoader()->urlForHistory().isEmpty())
         return;
 
-    FrameLoader& frameLoader = m_frame.mainFrame().loader();
+    auto* localFrame = dynamicDowncast<LocalFrame>(m_frame.mainFrame());
+    if (!localFrame)
+        return;
 
-    Ref<HistoryItem> topItem = frameLoader.history().createItemTree(m_frame, doClip);
+    FrameLoader& frameLoader = localFrame->loader();
+
+    Ref<HistoryItem> topItem = frameLoader.history().createItemTree(page->historyItemClient(), m_frame, doClip);
     LOG(History, "HistoryController %p updateBackForwardListClippedAtTarget: Adding backforward item %p in frame %p (main frame %d) %s", this, topItem.ptr(), &m_frame, m_frame.isMainFrame(), m_frame.loader().documentLoader()->url().string().utf8().data());
 
     page->backForward().addItem(WTFMove(topItem));
@@ -849,8 +850,7 @@ void FrameLoader::HistoryController::updateCurrentItem()
         return;
 
     DocumentLoader* documentLoader = m_frame.loader().documentLoader();
-
-    if (!documentLoader->unreachableURL().isEmpty())
+    if (!documentLoader || !documentLoader->unreachableURL().isEmpty())
         return;
 
     if (m_currentItem->url() != documentLoader->url()) {
@@ -873,18 +873,25 @@ void FrameLoader::HistoryController::pushState(RefPtr<SerializedScriptValue>&& s
     if (!m_currentItem)
         return;
 
-    Page* page = m_frame.page();
-    ASSERT(page);
+    auto* page = m_frame.page();
+    if (!page) {
+        ASSERT_NOT_REACHED();
+        return;
+    }
 
     bool shouldRestoreScrollPosition = m_currentItem->shouldRestoreScrollPosition();
 
     // Get a HistoryItem tree for the current frame tree.
-    Ref<HistoryItem> topItem = m_frame.mainFrame().loader().history().createItemTree(m_frame, false);
+    auto* localFrame = dynamicDowncast<LocalFrame>(m_frame.mainFrame());
+    if (!localFrame)
+        return;
+
+    Ref<HistoryItem> topItem = localFrame->loader().history().createItemTree(page->historyItemClient(), m_frame, false);
 
     auto* document = m_frame.document();
     if (document && !document->hasRecentUserInteractionForNavigationFromJS())
-        m_currentItem->setWasCreatedByJSWithoutUserInteraction(true);
-    
+        topItem->setWasCreatedByJSWithoutUserInteraction(true);
+
     // Override data in the current item (created by createItemTree) to reflect
     // the pushState() arguments.
     m_currentItem->setTitle(title);
@@ -935,6 +942,16 @@ void FrameLoader::HistoryController::replaceCurrentItem(HistoryItem* item)
         m_provisionalItem = item;
     else
         m_currentItem = item;
+}
+
+RefPtr<HistoryItem> FrameLoader::HistoryController::protectedCurrentItem() const
+{
+    return m_currentItem;
+}
+
+RefPtr<HistoryItem> FrameLoader::HistoryController::protectedProvisionalItem() const
+{
+    return m_provisionalItem;
 }
 
 } // namespace WebCore

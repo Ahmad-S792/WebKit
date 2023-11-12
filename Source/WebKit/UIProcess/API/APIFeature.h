@@ -34,23 +34,46 @@ namespace API {
 class Feature final : public ObjectImpl<Object::Type::Feature> {
 public:
 
-    static Ref<Feature> create(const WTF::String& name, const WTF::String& key, FeatureStatus, const WTF::String& details, bool defaultValue, bool hidden);
+    template <FeatureStatus Status, bool DefaultValue>
+    static Ref<Feature> create(const WTF::String& name, const WTF::String& key, FeatureConstant<Status> status, FeatureCategory category, const WTF::String& details, std::bool_constant<DefaultValue> defaultValue, bool hidden)
+    {
+#if ENABLE(FEATURE_DEFAULT_VALIDATION)
+        constexpr auto impliedDefaultValue = API::defaultValueForFeatureStatus(Status);
+        if constexpr (impliedDefaultValue && *impliedDefaultValue)
+            static_assert(defaultValue, "Feature's status implies it should be on by default");
+        else if constexpr (impliedDefaultValue && !*impliedDefaultValue)
+            static_assert(!defaultValue, "Feature's status implies it should be off by default");
+#endif
+
+        return uncheckedCreate(name, key, status, category, details, defaultValue, hidden);
+    }
+
+    template <FeatureStatus Status>
+    static Ref<Feature> create(const WTF::String& name, const WTF::String& key, FeatureConstant<Status> status, FeatureCategory category, const WTF::String& details, bool defaultValue, bool hidden)
+    {
+        return uncheckedCreate(name, key, status, category, details, defaultValue, hidden);
+    }
+
     virtual ~Feature() = default;
 
     WTF::String name() const { return m_name; }
     WTF::String key() const { return m_key; }
     FeatureStatus status() const { return m_status; }
+    FeatureCategory category() const { return m_category; }
     WTF::String details() const { return m_details; }
     bool defaultValue() const { return m_defaultValue; }
     bool isHidden() const { return m_hidden; }
     
 private:
-    explicit Feature(const WTF::String& name, const WTF::String& key, FeatureStatus, const WTF::String& details, bool defaultValue, bool hidden);
+    explicit Feature(const WTF::String& name, const WTF::String& key, FeatureStatus, FeatureCategory, const WTF::String& details, bool defaultValue, bool hidden);
+
+    static Ref<Feature> uncheckedCreate(const WTF::String& name, const WTF::String& key, FeatureStatus, FeatureCategory, const WTF::String& details, bool defaultValue, bool hidden);
 
     WTF::String m_name;
     WTF::String m_key;
-    FeatureStatus m_status;
     WTF::String m_details;
+    FeatureStatus m_status;
+    FeatureCategory m_category;
     bool m_defaultValue;
     bool m_hidden;
 };

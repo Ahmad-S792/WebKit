@@ -13,9 +13,10 @@ describe('/api/manifest', function () {
 
     it("should generate an empty manifest when database is empty", () => {
         return TestServer.remoteAPI().getJSON('/api/manifest').then((manifest) => {
-            assert.deepStrictEqual(Object.keys(manifest).sort(), ['all', 'bugTrackers', 'builders', 'dashboard', 'dashboards',
-                'fileUploadSizeLimit', 'maxRootReuseAgeInDays', 'metrics', 'platformGroups', 'repositories', 'siteTitle',
-                'status', 'summaryPages', 'testAgeToleranceInHours', 'tests', 'triggerables']);
+            assert.deepStrictEqual(Object.keys(manifest).sort(), ['all', 'bugTrackers', 'builders',
+                'dashboard', 'dashboards', 'fileUploadSizeLimit', 'maxRootReuseAgeInDays',
+                'metrics', 'platformGroups', 'repositories', 'siteTitle', 'status', 'summaryPages',
+                'testAgeToleranceInHours', 'testParameters', 'tests', 'triggerables']);
 
             assert.deepStrictEqual(manifest, {
                 siteTitle: TestServer.testConfig().siteTitle,
@@ -29,6 +30,7 @@ describe('/api/manifest', function () {
                 metrics: {},
                 platformGroups: {},
                 repositories: {},
+                testParameters: {},
                 testAgeToleranceInHours: null,
                 tests: {},
                 triggerables: {},
@@ -190,7 +192,7 @@ describe('/api/manifest', function () {
             db.insert('test_metrics', {id: 9, test: 4, name: 'Time'}),
             db.insert('platform_groups', {id: 1, name: 'ios'}),
             db.insert('platform_groups', {id: 2, name: 'mac'}),
-            db.insert('platforms', {id: 23, name: 'iOS 9 iPhone 5s', group: 1}),
+            db.insert('platforms', {id: 23, name: 'iOS 9 iPhone 5s', label: 'iOS 9 iPhone 5s (2013)', group: 1}),
             db.insert('platforms', {id: 46, name: 'Trunk Mavericks', group: 2}),
             db.insert('test_configurations', {id: 101, metric: 5, platform: 46, type: 'current'}),
             db.insert('test_configurations', {id: 102, metric: 6, platform: 46, type: 'current'}),
@@ -203,10 +205,10 @@ describe('/api/manifest', function () {
             return TestServer.remoteAPI().getJSON('/api/manifest');
         }).then((content) => {
             assert.deepStrictEqual(content.tests, {
-                "1": {"name": "SomeTest", "parentId": null, "url": null},
-                "2": {"name": "SomeOtherTest", "parentId": null, "url": null},
-                "3": {"name": "ChildTest", "parentId": "1", "url": null},
-                "4": {"name": "GrandChild", "parentId": "3", "url": null},
+                "1": {"name": "SomeTest", "parentId": null, "url": null, hidden: false},
+                "2": {"name": "SomeOtherTest", "parentId": null, "url": null, hidden: false},
+                "3": {"name": "ChildTest", "parentId": "1", "url": null, hidden: false},
+                "4": {"name": "GrandChild", "parentId": "3", "url": null, hidden: false},
             });
 
             assert.deepStrictEqual(content.metrics, {
@@ -245,6 +247,7 @@ describe('/api/manifest', function () {
             assert(macGroup);
 
             assert.strictEqual(mavericks.name(), 'Trunk Mavericks');
+            assert.strictEqual(mavericks.label(), 'Trunk Mavericks');
             assert(mavericks.hasTest(someTest));
             assert(mavericks.hasTest(someOtherTest));
             assert(mavericks.hasTest(childTest));
@@ -256,6 +259,7 @@ describe('/api/manifest', function () {
             assert.strictEqual(mavericks.group(), macGroup);
 
             assert.strictEqual(ios9iphone5s.name(), 'iOS 9 iPhone 5s');
+            assert.strictEqual(ios9iphone5s.label(), 'iOS 9 iPhone 5s (2013)');
             assert(ios9iphone5s.hasTest(someTest));
             assert(!ios9iphone5s.hasTest(someOtherTest));
             assert(!ios9iphone5s.hasTest(childTest));
@@ -324,6 +328,64 @@ describe('/api/manifest', function () {
         });
     });
 
+    it("should generate manifest with platforms and tests hidden field", async () => {
+        let db = TestServer.database();
+        await Promise.all([
+            db.insert('tests', {id: 1, name: 'SomeTest', hidden: true}),
+            db.insert('tests', {id: 2, name: 'SomeOtherTest'}),
+            db.insert('tests', {id: 3, name: 'ChildTest', parent: 1, hidden: true}),
+            db.insert('tests', {id: 4, name: 'GrandChild', parent: 3, hidden: true}),
+            db.insert('aggregators', {id: 200, name: 'Total'}),
+            db.insert('test_metrics', {id: 5, test: 1, name: 'Time'}),
+            db.insert('test_metrics', {id: 6, test: 2, name: 'Time', aggregator: 200}),
+            db.insert('test_metrics', {id: 7, test: 2, name: 'Malloc', aggregator: 200}),
+            db.insert('test_metrics', {id: 8, test: 3, name: 'Time'}),
+            db.insert('test_metrics', {id: 9, test: 4, name: 'Time'}),
+            db.insert('platform_groups', {id: 1, name: 'ios'}),
+            db.insert('platform_groups', {id: 2, name: 'mac'}),
+            db.insert('platforms', {id: 23, name: 'iOS 9 iPhone 5s', group: 1, hidden: true}),
+            db.insert('platforms', {id: 46, name: 'Trunk Mavericks', group: 2}),
+            db.insert('test_configurations', {id: 101, metric: 5, platform: 46, type: 'current'}),
+            db.insert('test_configurations', {id: 102, metric: 6, platform: 46, type: 'current'}),
+            db.insert('test_configurations', {id: 103, metric: 7, platform: 46, type: 'current'}),
+            db.insert('test_configurations', {id: 104, metric: 8, platform: 46, type: 'current'}),
+            db.insert('test_configurations', {id: 105, metric: 9, platform: 46, type: 'current'}),
+            db.insert('test_configurations', {id: 106, metric: 5, platform: 23, type: 'current'}),
+            db.insert('test_configurations', {id: 107, metric: 5, platform: 23, type: 'baseline'}),
+        ]);
+        const content = await TestServer.remoteAPI().getJSON('/api/manifest');
+        Manifest._didFetchManifest(content);
+        const ios9iphone5s = Platform.findById(23);
+        const mavericks = Platform.findById(46);
+        assert(ios9iphone5s);
+        assert(mavericks);
+        assert(ios9iphone5s.isHidden());
+        assert(!mavericks.isHidden());
+
+        const someTest = Test.findById(1);
+        const someOtherTest = Test.findById(2);
+        const childTest = Test.findById(3);
+        const grandChildTest = Test.findById(4);
+        assert(someTest.isHidden());
+        assert(childTest.isHidden());
+        assert(grandChildTest.isHidden());
+        assert(!someOtherTest.isHidden());
+    });
+
+    it('should generate manifest with test parameters', async () => {
+        const db = TestServer.database();
+        await db.insert('test_parameters', {id: 1, name: 'diagnose', disabled: false, type: 'test',
+            description: 'Run test in diagnostic mode.', has_value: true, has_file: false});
+        const content = await TestServer.remoteAPI().getJSON('/api/manifest')
+        Manifest._didFetchManifest(content);
+        const diagnose = TestParameter.findById(1);
+        assert(diagnose);
+        assert.strictEqual(diagnose.name(), 'diagnose');
+        assert.strictEqual(diagnose.disabled, false);
+        assert.strictEqual(diagnose.type, 'test');
+        assert.strictEqual(diagnose.description, 'Run test in diagnostic mode.')
+    })
+
     it("should generate manifest with triggerables", () => {
         let db = TestServer.database();
         return Promise.all([
@@ -364,18 +426,24 @@ describe('/api/manifest', function () {
             db.insert('triggerable_repositories', {group: 302, repository: 9}),
             db.insert('triggerable_repositories', {group: 303, repository: 9}),
             db.insert('triggerable_repositories', {group: 304, repository: 16}),
+            db.insert('test_parameters', {id: 1, name: 'diagnose', disabled: false, type: 'test', has_value: true, has_file: false}),
+            db.insert('test_parameters', {id: 2, name: 'Custom SDK', disabled: false, type: 'build', has_value: true, has_file: false}),
             db.insert('triggerable_configurations', {id: 1, triggerable: 200, test: 1, platform: 46}),
             db.insert('triggerable_configuration_repetition_types', {config: 1, type: 'alternating'}),
             db.insert('triggerable_configuration_repetition_types', {config: 1, type: 'sequential'}),
+            db.insert('triggerable_configuration_test_parameters', {config: 1, parameter: 1}),
+            db.insert('triggerable_configuration_test_parameters', {config: 1, parameter: 2}),
             db.insert('triggerable_configurations', {id: 2, triggerable: 200, test: 2, platform: 46}),
             db.insert('triggerable_configuration_repetition_types', {config: 2, type: 'alternating'}),
             db.insert('triggerable_configuration_repetition_types', {config: 2, type: 'sequential'}),
+            db.insert('triggerable_configuration_test_parameters', {config: 2, parameter: 1}),
             db.insert('triggerable_configurations', {id: 3, triggerable: 201, test: 1, platform: 23}),
             db.insert('triggerable_configuration_repetition_types', {config: 3, type: 'alternating'}),
             db.insert('triggerable_configuration_repetition_types', {config: 3, type: 'sequential'}),
             db.insert('triggerable_configurations', {id: 4, triggerable: 201, test: 2, platform: 23}),
             db.insert('triggerable_configuration_repetition_types', {config: 4, type: 'alternating'}),
             db.insert('triggerable_configuration_repetition_types', {config: 4, type: 'sequential'}),
+            db.insert('triggerable_configuration_test_parameters', {config: 4, parameter: 2}),
             db.insert('triggerable_configurations', {id: 5, triggerable: 202, test: 1, platform: 104}),
             db.insert('triggerable_configuration_repetition_types', {config: 5, type: 'alternating'}),
             db.insert('triggerable_configuration_repetition_types', {config: 5, type: 'sequential'}),
@@ -422,13 +490,29 @@ describe('/api/manifest', function () {
 
             const macosTriggerable = Triggerable.findByTestConfiguration(someTest, mavericks);
             assert.strictEqual(macosTriggerable.name(), 'build.webkit.org');
+            const someTestOnMavericksConfig = TriggerableConfiguration.findByTestAndPlatform(someTest, mavericks);
+            const someTestOnMavericksTestParameters = someTestOnMavericksConfig.testParameters;
+            assert.strictEqual(someTestOnMavericksConfig.triggerable, macosTriggerable);
+            assert.strictEqual(someTestOnMavericksTestParameters.length, 2);
+            assert.strictEqual(someTestOnMavericksTestParameters[0], TestParameter.findById(1));
+            assert.strictEqual(someTestOnMavericksTestParameters[1], TestParameter.findById(2));
 
             assert.strictEqual(Triggerable.findByTestConfiguration(someOtherTest, mavericks), macosTriggerable);
             assert.strictEqual(Triggerable.findByTestConfiguration(childTest, mavericks), macosTriggerable);
+            const otherTestOnMavericksConfig = TriggerableConfiguration.findByTestAndPlatform(someOtherTest, mavericks);
+            const otherTestOnMavericksTestParameters = otherTestOnMavericksConfig.testParameters;
+            assert.strictEqual(otherTestOnMavericksConfig.triggerable, macosTriggerable);
+            assert.strictEqual(otherTestOnMavericksTestParameters.length, 1);
+            assert.strictEqual(otherTestOnMavericksTestParameters[0], TestParameter.findById(1));
 
             const iosTriggerable = Triggerable.findByTestConfiguration(someOtherTest, ios9iphone5s);
             assert.notStrictEqual(iosTriggerable, macosTriggerable);
             assert.strictEqual(iosTriggerable.name(), 'ios-build.webkit.org');
+            const otherTestOniOSConfig = TriggerableConfiguration.findByTestAndPlatform(someOtherTest, ios9iphone5s);
+            const otherTestOniOSTestParameters = otherTestOniOSConfig.testParameters;
+            assert.strictEqual(otherTestOniOSConfig.triggerable, iosTriggerable);
+            assert.strictEqual(otherTestOniOSTestParameters.length, 1);
+            assert.strictEqual(otherTestOniOSTestParameters[0], TestParameter.findById(2));
 
             assert.strictEqual(Triggerable.findByTestConfiguration(someOtherTest, ios9iphone5s), iosTriggerable);
             assert.strictEqual(Triggerable.findByTestConfiguration(childTest, ios9iphone5s), iosTriggerable);

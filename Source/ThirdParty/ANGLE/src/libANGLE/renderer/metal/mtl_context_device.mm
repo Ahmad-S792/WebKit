@@ -114,6 +114,12 @@ AutoObjCPtr<id<MTLLibrary>> ContextDevice::newLibraryWithSource(
     return adoptObjCObj([get() newLibraryWithSource:source options:options error:error]);
 }
 
+AutoObjCPtr<id<MTLLibrary>> ContextDevice::newLibraryWithData(dispatch_data_t data,
+                                                              __autoreleasing NSError **error) const
+{
+    return adoptObjCObj([get() newLibraryWithData:data error:error]);
+}
+
 AutoObjCPtr<id<MTLDepthStencilState>> ContextDevice::newDepthStencilStateWithDescriptor(
     MTLDepthStencilDescriptor *descriptor) const
 {
@@ -134,7 +140,12 @@ void ContextDevice::setOwnerWithIdentity(id<MTLResource> resource) const
 
 bool ContextDevice::hasUnifiedMemory() const
 {
-    return [get() hasUnifiedMemory];
+    if (@available(iOS 13.0, macOS 10.15, macCatalyst 13.1, tvOS 13.0, *))
+    {
+        return [get() hasUnifiedMemory];
+    }
+
+    return false;
 }
 
 }  // namespace mtl

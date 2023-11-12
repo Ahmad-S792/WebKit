@@ -34,6 +34,7 @@
 #include <wtf/IsoMallocInlines.h>
 #include <wtf/StdLibExtras.h>
 #include <wtf/spi/cocoa/IOSurfaceSPI.h>
+#include <wtf/text/TextStream.h>
 
 namespace WebKit {
 using namespace WebCore;
@@ -46,17 +47,19 @@ std::unique_ptr<ImageBufferShareableMappedIOSurfaceBackend> ImageBufferShareable
     if (backendSize.isEmpty())
         return nullptr;
 
-    auto surface = IOSurface::create(creationContext.surfacePool, backendSize, parameters.colorSpace, IOSurface::formatForPixelFormat(parameters.pixelFormat));
+    auto surface = IOSurface::create(creationContext.surfacePool, backendSize, parameters.colorSpace, IOSurface::nameForRenderingPurpose(parameters.purpose), IOSurface::formatForPixelFormat(parameters.pixelFormat));
     if (!surface)
         return nullptr;
+    if (creationContext.resourceOwner)
+        surface->setOwnershipIdentity(creationContext.resourceOwner);
 
-    RetainPtr<CGContextRef> cgContext = surface->ensurePlatformContext();
+    RetainPtr<CGContextRef> cgContext = surface->createPlatformContext();
     if (!cgContext)
         return nullptr;
 
     CGContextClearRect(cgContext.get(), FloatRect(FloatPoint::zero(), backendSize));
 
-    return makeUnique<ImageBufferShareableMappedIOSurfaceBackend>(parameters, WTFMove(surface), creationContext.surfacePool);
+    return std::unique_ptr<ImageBufferShareableMappedIOSurfaceBackend> { new ImageBufferShareableMappedIOSurfaceBackend { parameters, WTFMove(surface), WTFMove(cgContext), 0, creationContext.surfacePool } };
 }
 
 std::unique_ptr<ImageBufferShareableMappedIOSurfaceBackend> ImageBufferShareableMappedIOSurfaceBackend::create(const Parameters& parameters, ImageBufferBackendHandle handle)
@@ -69,31 +72,24 @@ std::unique_ptr<ImageBufferShareableMappedIOSurfaceBackend> ImageBufferShareable
     auto surface = IOSurface::createFromSendRight(WTFMove(std::get<MachSendRight>(handle)));
     if (!surface)
         return nullptr;
+    auto cgContext = surface->createPlatformContext();
+    if (!cgContext)
+        return nullptr;
 
     ASSERT(surface->colorSpace() == parameters.colorSpace);
-    return makeUnique<ImageBufferShareableMappedIOSurfaceBackend>(parameters, WTFMove(surface), nullptr);
+    return std::unique_ptr<ImageBufferShareableMappedIOSurfaceBackend> { new ImageBufferShareableMappedIOSurfaceBackend { parameters, WTFMove(surface), WTFMove(cgContext), 0, nullptr } };
 }
 
-ImageBufferBackendHandle ImageBufferShareableMappedIOSurfaceBackend::createBackendHandle(SharedMemory::Protection) const
+std::optional<ImageBufferBackendHandle> ImageBufferShareableMappedIOSurfaceBackend::createBackendHandle(SharedMemory::Protection) const
 {
     return ImageBufferBackendHandle(m_surface->createSendRight());
 }
 
-void ImageBufferShareableMappedIOSurfaceBackend::setOwnershipIdentity(const WebCore::ProcessIdentity& resourceOwner)
+String ImageBufferShareableMappedIOSurfaceBackend::debugDescription() const
 {
-    m_surface->setOwnershipIdentity(resourceOwner);
-}
-
-RefPtr<NativeImage> ImageBufferShareableMappedIOSurfaceBackend::copyNativeImage(BackingStoreCopy copyBehavior) const
-{
-    auto currentSeed = m_surface->seed();
-
-    // Invalidate the cached image before getting a new one because GPUProcess might
-    // have drawn something to the IOSurface since last time this function was called.
-    if (std::exchange(m_lastSeedWhenCopyingImage, currentSeed) != currentSeed)
-        invalidateCachedNativeImage();
-
-    return ImageBufferIOSurfaceBackend::copyNativeImage(copyBehavior);
+    TextStream stream;
+    stream << "ImageBufferShareableMappedIOSurfaceBackend " << this << " " << ValueOrNull(m_surface.get());
+    return stream.release();
 }
 
 } // namespace WebKit

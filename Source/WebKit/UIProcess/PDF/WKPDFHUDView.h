@@ -23,7 +23,9 @@
  * THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#if ENABLE(UI_PROCESS_PDF_HUD)
+#pragma once
+
+#if ENABLE(PDF_HUD)
 
 #import "PDFPluginIdentifier.h"
 
@@ -42,4 +44,4 @@ class WebPageProxy;
 
 @end
 
-#endif // ENABLE(UI_PROCESS_PDF_HUD)
+#endif // ENABLE(PDF_HUD)

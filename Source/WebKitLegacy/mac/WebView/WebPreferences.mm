@@ -1106,7 +1106,6 @@ public:
     [self _setBoolValue:flag forKey:WebKitAuthorAndUserStylesEnabledPreferenceKey];
 }
 
-// FIXME: applicationChromeMode is no longer needed by ToT, but is still used in Safari 8.
 - (BOOL)applicationChromeModeEnabled
 {
     return NO;
@@ -1114,6 +1113,7 @@ public:
 
 - (void)setApplicationChromeModeEnabled:(BOOL)flag
 {
+    // This is still called. See rdar://106306112
 }
 
 - (BOOL)domTimersThrottlingEnabled
@@ -1733,16 +1733,6 @@ static RetainPtr<NSString>& classIBCreatorID()
     [self _setBoolValue:enabled forKey:WebKitAcceleratedDrawingEnabledPreferenceKey];
 }
 
-- (BOOL)displayListDrawingEnabled
-{
-    return [self _boolValueForKey:WebKitDisplayListDrawingEnabledPreferenceKey];
-}
-
-- (void)setDisplayListDrawingEnabled:(BOOL)enabled
-{
-    [self _setBoolValue:enabled forKey:WebKitDisplayListDrawingEnabledPreferenceKey];
-}
-
 - (BOOL)resourceLoadStatisticsEnabled
 {
     return [self _boolValueForKey:WebKitResourceLoadStatisticsEnabledPreferenceKey];
@@ -1853,27 +1843,6 @@ static RetainPtr<NSString>& classIBCreatorID()
     [self _setBoolValue:forceLowPower forKey:WebKitForceWebGLUsesLowPowerPreferenceKey];
 }
 
-- (BOOL)isFrameFlatteningEnabled
-{
-    return [self _unsignedIntValueForKey:WebKitFrameFlatteningPreferenceKey] != WebKitFrameFlatteningDisabled;
-}
-
-- (void)setFrameFlatteningEnabled:(BOOL)flattening
-{
-    WebKitFrameFlattening value = flattening ? WebKitFrameFlatteningFullyEnabled : WebKitFrameFlatteningDisabled;
-    [self _setUnsignedIntValue:value forKey:WebKitFrameFlatteningPreferenceKey];
-}
-
-- (WebKitFrameFlattening)frameFlattening
-{
-    return static_cast<WebKitFrameFlattening>([self _unsignedIntValueForKey:WebKitFrameFlatteningPreferenceKey]);
-}
-
-- (void)setFrameFlattening:(WebKitFrameFlattening)flattening
-{
-    [self _setUnsignedIntValue:flattening forKey:WebKitFrameFlatteningPreferenceKey];
-}
-
 - (BOOL)asyncFrameScrollingEnabled
 {
     return [self _boolValueForKey:WebKitAsyncFrameScrollingEnabledPreferenceKey];
@@ -1952,16 +1921,6 @@ static RetainPtr<NSString>& classIBCreatorID()
 + (void)setWebKitLinkTimeVersion:(int)version
 {
     setWebKitLinkTimeVersion(version);
-}
-
-- (void)setLoadsSiteIconsIgnoringImageLoadingPreference: (BOOL)flag
-{
-    [self _setBoolValue: flag forKey: WebKitLoadSiteIconsKey];
-}
-
-- (BOOL)loadsSiteIconsIgnoringImageLoadingPreference
-{
-    return [self _boolValueForKey: WebKitLoadSiteIconsKey];
 }
 
 - (void)setAVFoundationEnabled:(BOOL)flag
@@ -2382,16 +2341,6 @@ static RetainPtr<NSString>& classIBCreatorID()
     [self _setBoolValue:enabled forKey:WebKitLowPowerVideoAudioBufferSizeEnabledPreferenceKey];
 }
 
-- (BOOL)useLegacyTextAlignPositionedElementBehavior
-{
-    return [self _boolValueForKey:WebKitUseLegacyTextAlignPositionedElementBehaviorPreferenceKey];
-}
-
-- (void)setUseLegacyTextAlignPositionedElementBehavior:(BOOL)enabled
-{
-    [self _setBoolValue:enabled forKey:WebKitUseLegacyTextAlignPositionedElementBehaviorPreferenceKey];
-}
-
 - (BOOL)mediaSourceEnabled
 {
     return [self _boolValueForKey:WebKitMediaSourceEnabledPreferenceKey];
@@ -2684,16 +2633,6 @@ static RetainPtr<NSString>& classIBCreatorID()
     [self _setBoolValue:flag forKey:WebKitCSSOMViewScrollingAPIEnabledPreferenceKey];
 }
 
-- (BOOL)menuItemElementEnabled
-{
-    return [self _boolValueForKey:WebKitMenuItemElementEnabledPreferenceKey];
-}
-
-- (void)setMenuItemElementEnabled:(BOOL)flag
-{
-    [self _setBoolValue:flag forKey:WebKitMenuItemElementEnabledPreferenceKey];
-}
-
 - (BOOL)mediaUserGestureInheritsFromDocument
 {
     return [self _boolValueForKey:WebKitMediaUserGestureInheritsFromDocument];
@@ -2977,16 +2916,6 @@ static RetainPtr<NSString>& classIBCreatorID()
     [self _setBoolValue:flag forKey:WebKitContactPickerAPIEnabledPreferenceKey];
 }
 
-- (BOOL)intersectionObserverEnabled
-{
-    return [self _boolValueForKey:WebKitIntersectionObserverEnabledPreferenceKey];
-}
-
-- (void)setIntersectionObserverEnabled:(BOOL)flag
-{
-    [self _setBoolValue:flag forKey:WebKitIntersectionObserverEnabledPreferenceKey];
-}
-
 - (BOOL)visualViewportAPIEnabled
 {
     return [self _boolValueForKey:WebKitVisualViewportAPIEnabledPreferenceKey];
@@ -3067,16 +2996,6 @@ static RetainPtr<NSString>& classIBCreatorID()
     [self _setBoolValue:flag forKey:WebKitCSSCustomPropertiesAndValuesEnabledPreferenceKey];
 }
 
-- (BOOL)resizeObserverEnabled
-{
-    return [self _boolValueForKey:WebKitResizeObserverEnabledPreferenceKey];
-}
-
-- (void)setResizeObserverEnabled:(BOOL)flag
-{
-    [self _setBoolValue:flag forKey:WebKitResizeObserverEnabledPreferenceKey];
-}
-
 - (BOOL)privateClickMeasurementEnabled
 {
     return [self _boolValueForKey:WebKitPrivateClickMeasurementEnabledPreferenceKey];
@@ -3087,16 +3006,6 @@ static RetainPtr<NSString>& classIBCreatorID()
     [self _setBoolValue:flag forKey:WebKitPrivateClickMeasurementEnabledPreferenceKey];
 }
 
-- (BOOL)fetchAPIKeepAliveEnabled
-{
-    return [self _boolValueForKey:WebKitFetchAPIEnabledPreferenceKey];
-}
-
-- (void)setFetchAPIKeepAliveEnabled:(BOOL)flag
-{
-    [self _setBoolValue:flag forKey:WebKitFetchAPIEnabledPreferenceKey];
-}
-
 - (BOOL)genericCueAPIEnabled
 {
     return [self _boolValueForKey:WebKitGenericCueAPIEnabledKey];
@@ -3105,26 +3014,6 @@ static RetainPtr<NSString>& classIBCreatorID()
 - (void)setGenericCueAPIEnabled:(BOOL)flag
 {
     [self _setBoolValue:flag forKey:WebKitGenericCueAPIEnabledKey];
-}
-
-- (BOOL)aspectRatioOfImgFromWidthAndHeightEnabled
-{
-    return [self _boolValueForKey:WebKitAspectRatioOfImgFromWidthAndHeightEnabledPreferenceKey];
-}
-
-- (void)setAspectRatioOfImgFromWidthAndHeightEnabled:(BOOL)flag
-{
-    [self _setBoolValue:flag forKey:WebKitAspectRatioOfImgFromWidthAndHeightEnabledPreferenceKey];
-}
-
-- (BOOL)referrerPolicyAttributeEnabled
-{
-    return [self _boolValueForKey:WebKitReferrerPolicyAttributeEnabledPreferenceKey];
-}
-
-- (void)setReferrerPolicyAttributeEnabled:(BOOL)flag
-{
-    [self _setBoolValue:flag forKey:WebKitReferrerPolicyAttributeEnabledPreferenceKey];
 }
 
 - (BOOL)coreMathMLEnabled
@@ -3165,16 +3054,6 @@ static RetainPtr<NSString>& classIBCreatorID()
 - (void)setReadableByteStreamAPIEnabled:(BOOL)flag
 {
     [self _setBoolValue:flag forKey:WebKitReadableByteStreamAPIEnabledPreferenceKey];
-}
-
-- (BOOL)transformStreamAPIEnabled
-{
-    return [self _boolValueForKey:WebKitTransformStreamAPIEnabledPreferenceKey];
-}
-
-- (void)setTransformStreamAPIEnabled:(BOOL)flag
-{
-    [self _setBoolValue:flag forKey:WebKitTransformStreamAPIEnabledPreferenceKey];
 }
 
 - (BOOL)_mediaRecorderEnabled
@@ -3233,6 +3112,24 @@ static RetainPtr<NSString>& classIBCreatorID()
 
 // The preferences in this category are deprecated and have no effect. They should
 // be removed when it is considered safe to do so.
+
+- (BOOL)aspectRatioOfImgFromWidthAndHeightEnabled
+{
+    return YES;
+}
+
+- (void)setAspectRatioOfImgFromWidthAndHeightEnabled:(BOOL)flag
+{
+}
+
+- (BOOL)resizeObserverEnabled
+{
+    return YES;
+}
+
+- (void)setResizeObserverEnabled:(BOOL)flag
+{
+}
 
 - (void)setSubpixelCSSOMElementMetricsEnabled:(BOOL)enabled
 {
@@ -3296,6 +3193,24 @@ static RetainPtr<NSString>& classIBCreatorID()
 - (BOOL)fetchAPIEnabled
 {
     return YES;
+}
+
+- (void)setFetchAPIKeepAliveEnabled:(BOOL)flag
+{
+}
+
+- (BOOL)fetchAPIKeepAliveEnabled
+{
+    return YES;
+}
+
+- (BOOL)intersectionObserverEnabled
+{
+    return YES;
+}
+
+- (void)setIntersectionObserverEnabled:(BOOL)flag
+{
 }
 
 - (void)setShadowDOMEnabled:(BOOL)flag
@@ -3398,6 +3313,33 @@ static RetainPtr<NSString>& classIBCreatorID()
 }
 
 - (void)setWebGL2Enabled:(BOOL)enabled
+{
+}
+
+- (void)setLoadsSiteIconsIgnoringImageLoadingPreference: (BOOL)flag
+{
+}
+
+- (BOOL)loadsSiteIconsIgnoringImageLoadingPreference
+{
+    return NO;
+}
+
+- (BOOL)displayListDrawingEnabled
+{
+    return NO;
+}
+
+- (void)setDisplayListDrawingEnabled:(BOOL)enabled
+{
+}
+
+- (BOOL)transformStreamAPIEnabled
+{
+    return YES;
+}
+
+- (void)setTransformStreamAPIEnabled:(BOOL)flag
 {
 }
 

@@ -1,6 +1,6 @@
 /*
  * Copyright (C) 2012 Adobe Systems Incorporated. All rights reserved.
- * Copyright (C) 2013-2022 Apple Inc. All rights reserved.
+ * Copyright (C) 2013-2023 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -37,6 +37,7 @@
 #include "FilterTargetSwitcher.h"
 #include "Logging.h"
 #include "RenderSVGResourceFilter.h"
+#include "RenderStyleInlines.h"
 #include <wtf/NeverDestroyed.h>
 
 namespace WebCore {
@@ -59,6 +60,11 @@ bool RenderLayerFilters::hasFilterThatMovesPixels() const
 bool RenderLayerFilters::hasFilterThatShouldBeRestrictedBySecurityOrigin() const
 {
     return m_filter && m_filter->hasFilterThatShouldBeRestrictedBySecurityOrigin();
+}
+
+bool RenderLayerFilters::hasSourceImage() const
+{
+    return m_targetSwitcher && m_targetSwitcher->hasSourceImage();
 }
 
 void RenderLayerFilters::notifyFinished(CachedResource&, const NetworkLoadMetrics&)
@@ -86,14 +92,14 @@ void RenderLayerFilters::updateReferenceFilterClients(const FilterOperations& op
             m_externalSVGReferences.append(cachedSVGDocument);
         } else {
             // Reference is internal; add layer as a client so we can trigger filter repaint on SVG attribute change.
-            auto* filterElement = m_layer.renderer().document().getElementById(referenceOperation.fragment());
+            RefPtr filterElement = m_layer.renderer().document().getElementById(referenceOperation.fragment());
             if (!filterElement)
                 continue;
-            auto* renderer = filterElement->renderer();
-            if (!is<RenderSVGResourceFilter>(renderer))
+            CheckedPtr renderer = dynamicDowncast<RenderSVGResourceFilter>(filterElement->renderer());
+            if (!renderer)
                 continue;
-            downcast<RenderSVGResourceFilter>(*renderer).addClientRenderLayer(&m_layer);
-            m_internalSVGReferences.append(filterElement);
+            renderer->addClientRenderLayer(m_layer);
+            m_internalSVGReferences.append(WTFMove(filterElement));
         }
     }
 }
@@ -107,7 +113,7 @@ void RenderLayerFilters::removeReferenceFilterClients()
 
     for (auto& filterElement : m_internalSVGReferences) {
         if (auto* renderer = filterElement->renderer())
-            downcast<RenderSVGResourceContainer>(*renderer).removeClientRenderLayer(&m_layer);
+            downcast<LegacyRenderSVGResourceContainer>(*renderer).removeClientRenderLayer(m_layer);
     }
     m_internalSVGReferences.clear();
 }
@@ -147,7 +153,7 @@ GraphicsContext* RenderLayerFilters::beginFilterEffect(RenderElement& renderer, 
     if (!m_filter || m_targetBoundingBox != targetBoundingBox) {
         m_targetBoundingBox = targetBoundingBox;
         // FIXME: This rebuilds the entire effects chain even if the filter style didn't change.
-        m_filter = CSSFilter::create(renderer, renderer.style().filter(), m_preferredFilterRenderingModes, m_filterScale, Filter::ClipOperation::Unite, m_targetBoundingBox, context);
+        m_filter = CSSFilter::create(renderer, renderer.style().filter(), m_preferredFilterRenderingModes, m_filterScale, m_targetBoundingBox, context);
     }
 
     if (!m_filter)
@@ -172,7 +178,7 @@ GraphicsContext* RenderLayerFilters::beginFilterEffect(RenderElement& renderer, 
 
     if (!filter.hasFilterThatMovesPixels())
         m_repaintRect = dirtyRect;
-    else if (hasUpdatedBackingStore)
+    else if (hasUpdatedBackingStore || !hasSourceImage())
         m_repaintRect = filterRegion;
     else {
         m_repaintRect = dirtyRect;
@@ -184,7 +190,7 @@ GraphicsContext* RenderLayerFilters::beginFilterEffect(RenderElement& renderer, 
     filter.setFilterRegion(m_filterRegion);
 
     if (!m_targetSwitcher || hasUpdatedBackingStore)
-        m_targetSwitcher = FilterTargetSwitcher::create(context, filter, filterRegion, DestinationColorSpace::SRGB());
+        m_targetSwitcher = FilterTargetSwitcher::create(context, filter, m_targetBoundingBox, DestinationColorSpace::SRGB());
 
     if (!m_targetSwitcher)
         return nullptr;

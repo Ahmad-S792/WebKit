@@ -19,8 +19,10 @@
 
 #pragma once
 
-#include "DOMWindowProperty.h"
+#include "LocalDOMWindowProperty.h"
 #include "NavigatorBase.h"
+#include "PushManager.h"
+#include "PushSubscriptionOwner.h"
 #include "ScriptWrappable.h"
 #include "ShareData.h"
 #include "Supplementable.h"
@@ -34,10 +36,18 @@ class DOMMimeTypeArray;
 class DOMPluginArray;
 class ShareDataReader;
 
-class Navigator final : public NavigatorBase, public ScriptWrappable, public DOMWindowProperty, public Supplementable<Navigator> {
+class Navigator final
+    : public NavigatorBase
+    , public ScriptWrappable
+    , public LocalDOMWindowProperty
+    , public Supplementable<Navigator>
+#if ENABLE(DECLARATIVE_WEB_PUSH)
+    , public PushSubscriptionOwner
+#endif
+{
     WTF_MAKE_ISO_ALLOCATED(Navigator);
 public:
-    static Ref<Navigator> create(ScriptExecutionContext* context, DOMWindow& window) { return adoptRef(*new Navigator(context, window)); }
+    static Ref<Navigator> create(ScriptExecutionContext* context, LocalDOMWindow& window) { return adoptRef(*new Navigator(context, window)); }
     virtual ~Navigator();
 
     String appVersion() const;
@@ -53,7 +63,7 @@ public:
     bool canShare(Document&, const ShareData&);
     void share(Document&, const ShareData&, Ref<DeferredPromise>&&);
     
-#if PLATFORM(IOS_FAMILY)
+#if ENABLE(NAVIGATOR_STANDALONE)
     bool standalone() const;
 #endif
 
@@ -75,9 +85,15 @@ public:
     void clearClientBadge(Ref<DeferredPromise>&&);
 #endif
 
+#if ENABLE(DECLARATIVE_WEB_PUSH)
+    void ref() const final { RefCounted::ref(); }
+    void deref() const final { RefCounted::deref(); }
+    PushManager& pushManager();
+#endif
+
 private:
     void showShareData(ExceptionOr<ShareDataWithParsedURL&>, Ref<DeferredPromise>&&);
-    explicit Navigator(ScriptExecutionContext*, DOMWindow&);
+    explicit Navigator(ScriptExecutionContext*, LocalDOMWindow&);
 
     void initializePluginAndMimeTypeArrays();
 
@@ -89,5 +105,16 @@ private:
     mutable String m_userAgent;
     mutable String m_platform;
     RefPtr<GPU> m_gpuForWebGPU;
+
+#if ENABLE(DECLARATIVE_WEB_PUSH)
+    bool isActive() const final { return true; }
+
+    void subscribeToPushService(const Vector<uint8_t>& applicationServerKey, DOMPromiseDeferred<IDLInterface<PushSubscription>>&&) final;
+    void unsubscribeFromPushService(PushSubscriptionIdentifier, DOMPromiseDeferred<IDLBoolean>&&) final;
+    void getPushSubscription(DOMPromiseDeferred<IDLNullable<IDLInterface<PushSubscription>>>&&) final;
+    void getPushPermissionState(DOMPromiseDeferred<IDLEnumeration<PushPermissionState>>&&) final;
+
+    PushManager m_pushManager;
+#endif
 };
 }

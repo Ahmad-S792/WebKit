@@ -28,7 +28,9 @@
 #if ENABLE(APPLE_PAY)
 
 #include "ApplePayAutomaticReloadPaymentRequest.h"
+#include "ApplePayDeferredPaymentRequest.h"
 #include "ApplePayError.h"
+#include "ApplePayLaterAvailability.h"
 #include "ApplePayLineItem.h"
 #include "ApplePayPaymentTokenContext.h"
 #include "ApplePayRecurringPaymentRequest.h"
@@ -36,12 +38,18 @@
 #include "ApplePayShippingMethod.h"
 #include "PaymentContact.h"
 #include "PaymentInstallmentConfigurationWebCore.h"
-#include <wtf/EnumTraits.h>
 #include <wtf/RefPtr.h>
 #include <wtf/Vector.h>
 #include <wtf/text/WTFString.h>
 
 namespace WebCore {
+
+enum class ApplePaySessionPaymentRequestShippingType : uint8_t {
+    Shipping,
+    Delivery,
+    StorePickup,
+    ServicePickup,
+};
 
 class ApplePaySessionPaymentRequest {
 public:
@@ -90,12 +98,7 @@ public:
     const MerchantCapabilities& merchantCapabilities() const { return m_merchantCapabilities; }
     void setMerchantCapabilities(const MerchantCapabilities& merchantCapabilities) { m_merchantCapabilities = merchantCapabilities; }
 
-    enum class ShippingType {
-        Shipping,
-        Delivery,
-        StorePickup,
-        ServicePickup,
-    };
+    using ShippingType = ApplePaySessionPaymentRequestShippingType;
     ShippingType shippingType() const { return m_shippingType; }
     void setShippingType(ShippingType shippingType) { m_shippingType = shippingType; }
 
@@ -155,6 +158,16 @@ public:
     void setMultiTokenContexts(std::optional<Vector<ApplePayPaymentTokenContext>>&& multiTokenContexts) { m_multiTokenContexts = WTFMove(multiTokenContexts); }
 #endif
 
+#if ENABLE(APPLE_PAY_DEFERRED_PAYMENTS)
+    const std::optional<ApplePayDeferredPaymentRequest>& deferredPaymentRequest() const { return m_deferredPaymentRequest; }
+    void setDeferredPaymentRequest(std::optional<ApplePayDeferredPaymentRequest>&& deferredPaymentRequest) { m_deferredPaymentRequest = WTFMove(deferredPaymentRequest); }
+#endif
+
+#if ENABLE(APPLE_PAY_LATER_AVAILABILITY)
+    const std::optional<ApplePayLaterAvailability>& applePayLaterAvailability() const { return m_applePayLaterAvailability; }
+    void setApplePayLaterAvailability(const std::optional<ApplePayLaterAvailability>& applePayLaterAvailability) { m_applePayLaterAvailability = applePayLaterAvailability; }
+#endif
+    
 private:
     unsigned m_version { 0 };
 
@@ -195,32 +208,26 @@ private:
 #endif
 
 #if ENABLE(APPLE_PAY_RECURRING_PAYMENTS)
-    std::optional<ApplePayAutomaticReloadPaymentRequest> m_automaticReloadPaymentRequest;
+    std::optional<ApplePayRecurringPaymentRequest> m_recurringPaymentRequest;
 #endif
 
 #if ENABLE(APPLE_PAY_AUTOMATIC_RELOAD_PAYMENTS)
-    std::optional<ApplePayRecurringPaymentRequest> m_recurringPaymentRequest;
+    std::optional<ApplePayAutomaticReloadPaymentRequest> m_automaticReloadPaymentRequest;
 #endif
 
 #if ENABLE(APPLE_PAY_MULTI_MERCHANT_PAYMENTS)
     std::optional<Vector<ApplePayPaymentTokenContext>> m_multiTokenContexts;
 #endif
+
+#if ENABLE(APPLE_PAY_DEFERRED_PAYMENTS)
+    std::optional<ApplePayDeferredPaymentRequest> m_deferredPaymentRequest;
+#endif
+
+#if ENABLE(APPLE_PAY_LATER_AVAILABILITY)
+    std::optional<ApplePayLaterAvailability> m_applePayLaterAvailability;
+#endif
 };
 
 } // namespace WebCore
-
-namespace WTF {
-
-template<> struct EnumTraits<WebCore::ApplePaySessionPaymentRequest::ShippingType> {
-    using values = EnumValues<
-        WebCore::ApplePaySessionPaymentRequest::ShippingType,
-        WebCore::ApplePaySessionPaymentRequest::ShippingType::Shipping,
-        WebCore::ApplePaySessionPaymentRequest::ShippingType::Delivery,
-        WebCore::ApplePaySessionPaymentRequest::ShippingType::StorePickup,
-        WebCore::ApplePaySessionPaymentRequest::ShippingType::ServicePickup
-    >;
-};
-
-} // namespace WTF
 
 #endif

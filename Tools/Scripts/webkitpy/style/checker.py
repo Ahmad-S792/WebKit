@@ -38,6 +38,7 @@ import re
 from webkitpy.common.host import Host
 from webkitpy.common.system.logutils import configure_logging as _configure_logging
 from webkitpy.port.config import apple_additions
+from webkitpy.style.checkers.basexcconfig import BaseXcconfigChecker
 from webkitpy.style.checkers.common import categories as CommonCategories
 from webkitpy.style.checkers.common import CarriageReturnChecker
 from webkitpy.style.checkers.contributors import ContributorsChecker
@@ -50,6 +51,7 @@ from webkitpy.style.checkers.jsonchecker import JSONChecker
 from webkitpy.style.checkers.jsonchecker import JSONContributorsChecker
 from webkitpy.style.checkers.jsonchecker import JSONFeaturesChecker
 from webkitpy.style.checkers.jsonchecker import JSONCSSPropertiesChecker
+from webkitpy.style.checkers.jsonchecker import JSONImportExpectationsChecker
 from webkitpy.style.checkers.jstest import JSTestChecker
 from webkitpy.style.checkers.messagesin import MessagesInChecker
 from webkitpy.style.checkers.png import PNGChecker
@@ -106,7 +108,6 @@ _BASE_FILTER_RULES = [
     '-runtime/threadsafe_fn',
     '-runtime/rtti',
     '-whitespace/blank_line',
-    '-whitespace/end_of_line',
     # List Python pep8 categories last.
     #
     # Because much of WebKit's Python code base does not abide by the
@@ -192,6 +193,12 @@ _PATH_RULES_SPECIFIER = [
      ["-build/include_order"]),
 
     ([
+     # GRefPtr.h must be included earlier than gst/gst.h, otherwise forward
+     # declaration in the former will cause compilation error
+     os.path.join('Source', 'WebCore', 'platform', 'graphics', 'gstreamer', 'GRefPtrGStreamer.h')],
+     ["-build/include_order"]),
+
+    ([
       # Header files in ForwardingHeaders have no header guards or
       # exceptional header guards (e.g., WebCore_FWD_Debugger_h).
       os.path.join(os.path.sep, 'ForwardingHeaders')],
@@ -228,8 +235,8 @@ _PATH_RULES_SPECIFIER = [
     ([
       # These files define GObjects, which implies some definitions of
       # variables and functions containing underscores.
-      os.path.join('Source', 'WebCore', 'platform', 'graphics', 'gstreamer', 'AppSinkWorkaround.cpp'),
-      os.path.join('Source', 'WebCore', 'platform', 'graphics', 'gstreamer', 'AppSinkWorkaround.h'),
+      os.path.join('Source', 'WebCore', 'platform', 'graphics', 'gstreamer', 'GStreamerSinksWorkarounds.cpp'),
+      os.path.join('Source', 'WebCore', 'platform', 'graphics', 'gstreamer', 'GStreamerSinksWorkarounds.h'),
       os.path.join('Source', 'WebCore', 'platform', 'graphics', 'gstreamer', 'GLVideoSinkGStreamer.cpp'),
       os.path.join('Source', 'WebCore', 'platform', 'graphics', 'gstreamer', 'GLVideoSinkGStreamer.h'),
       os.path.join('Source', 'WebCore', 'platform', 'graphics', 'gstreamer', 'DMABufVideoSinkGStreamer.cpp'),
@@ -252,6 +259,10 @@ _PATH_RULES_SPECIFIER = [
       os.path.join('Source', 'WebCore', 'platform', 'gstreamer', 'WebKitFliteSourceGStreamer.h'),
       os.path.join('Source', 'WebCore', 'platform', 'mediastream', 'gstreamer', 'GStreamerMediaStreamSource.h'),
       os.path.join('Source', 'WebCore', 'platform', 'mediastream', 'gstreamer', 'GStreamerMediaStreamSource.cpp'),
+      os.path.join('Source', 'WebCore', 'platform', 'mediastream', 'gstreamer', 'GStreamerMockDevice.h'),
+      os.path.join('Source', 'WebCore', 'platform', 'mediastream', 'gstreamer', 'GStreamerMockDevice.cpp'),
+      os.path.join('Source', 'WebCore', 'platform', 'mediastream', 'gstreamer', 'GStreamerMockDeviceProvider.h'),
+      os.path.join('Source', 'WebCore', 'platform', 'mediastream', 'gstreamer', 'GStreamerMockDeviceProvider.cpp'),
       os.path.join('Source', 'WebCore', 'platform', 'network', 'soup', 'ProxyResolverSoup.cpp'),
       os.path.join('Source', 'WebCore', 'platform', 'network', 'soup', 'ProxyResolverSoup.h'),
       os.path.join('Source', 'WebCore', 'platform', 'network', 'soup', 'WebKitAutoconfigProxyResolver.cpp'),
@@ -317,10 +328,28 @@ _PATH_RULES_SPECIFIER = [
      ["-readability/naming/underscores",
       "-whitespace/tab"]),
 
+    ([  # The GTK/WPE MiniBrowser uses public API and GLib-style conventions and indentation.
+     os.path.join('Tools', 'MiniBrowser', 'gtk'),
+     os.path.join('Tools', 'MiniBrowser', 'wpe')],
+     ["-readability/enum_casing",
+      "-readability/naming/underscores",
+      "-whitespace/indent"]),
+
     ([  # MiniBrowser doesn't use WTF, but only public WebKit API.
      os.path.join('Tools', 'MiniBrowser')],
      ["-runtime/wtf_make_unique",
       "-runtime/wtf_move"]),
+
+    ([  # Ignore formatting and whitespace issues in gmock.
+     os.path.join('Source', 'ThirdParty', 'gmock')],
+     ["-build",
+      "-legal/copyright",
+      "-list",
+      "-pep8",
+      "-readability",
+      "-runtime/unsigned",
+      "-runtime/wtf_move",
+      "-whitespace"]),
 
 ]
 
@@ -393,6 +422,7 @@ _NEVER_SKIPPED_FILES = _NEVER_SKIPPED_JS_FILES + [
     re.compile('.*TestExpectations.json$'),
     # Avoid imported WebDriverTests python machinery
     re.compile('(?!WebDriverTests).{0,14}.*.py$'),
+    re.compile('^' + re.escape(os.path.join('LayoutTests', 'imported', 'w3c', 'resources', 'import-expectations.json')) + r'$'),
 ]
 
 # Files to skip that are less obvious.
@@ -418,11 +448,12 @@ _SKIPPED_FILES_WITH_WARNING = [
 
     os.path.join('Source', 'JavaScriptCore', 'API', 'glib', 'jsc.h'),
     os.path.join('Source', 'WebCore', 'platform', 'gtk', 'GtkVersioning.h'),
+    os.path.join('Source', 'WebCore', 'platform', 'graphics', 'gbm', 'GBMVersioning.h'),
     os.path.join('Source', 'WebKit', 'UIProcess', 'API', 'gtk', 'webkit2.h'),
     os.path.join('Source', 'WebKit', 'UIProcess', 'API', 'gtk', 'webkit.h'),
     os.path.join('Source', 'WebKit', 'UIProcess', 'API', 'wpe', 'webkit.h'),
-    os.path.join('Source', 'WebKit', 'WebProcess', 'InjectedBundle', 'API', 'gtk', 'webkit-web-extension.h'),
-    os.path.join('Source', 'WebKit', 'WebProcess', 'InjectedBundle', 'API', 'wpe', 'webkit-web-extension.h'),
+    os.path.join('Source', 'WebKit', 'WebProcess', 'InjectedBundle', 'API', 'gtk', 'webkit-web-process-extension.h'),
+    os.path.join('Source', 'WebKit', 'WebProcess', 'InjectedBundle', 'API', 'wpe', 'webkit-web-process-extension.h'),
     os.path.join('Source', 'WebKit', 'WebProcess', 'InjectedBundle', 'API', 'wpe', 'DOM', 'webkitdom.h'),
     os.path.join('Source', 'WebGPU', 'WebGPU', 'WebGPU.h'),
     os.path.join('Source', 'WebGPU', 'WebGPU', 'WebGPUExt.h'),
@@ -469,6 +500,7 @@ def _all_categories():
     """Return the set of all categories used by check-webkit-style."""
     # Take the union across all checkers.
     categories = CommonCategories.union(CppChecker.categories)
+    categories = categories.union(CMakeChecker.categories)
     categories = categories.union(JSChecker.categories)
     categories = categories.union(JSONChecker.categories)
     categories = categories.union(JSTestChecker.categories)
@@ -476,6 +508,7 @@ def _all_categories():
     categories = categories.union(ChangeLogChecker.categories)
     categories = categories.union(PNGChecker.categories)
     categories = categories.union(FeatureDefinesChecker.categories)
+    categories = categories.union(BaseXcconfigChecker.categories)
     categories = categories.union(XcodeSchemeChecker.categories)
 
     # FIXME: Consider adding all of the pep8 categories.  Since they
@@ -630,7 +663,7 @@ class FileType:
     XCODEPROJ = 10
     CMAKE = 11
     FEATUREDEFINES = 12
-    SDKVARIANT = 13
+    BASE_XCCONFIG = 13
     XCSCHEME = 14
 
 
@@ -731,6 +764,10 @@ class CheckerDispatcher(object):
             return FileType.TEXT
         elif os.path.basename(file_path) == "FeatureDefines.xcconfig":
             return FileType.FEATUREDEFINES
+        elif os.path.basename(file_path) == "Base.xcconfig":
+            return FileType.BASE_XCCONFIG
+        elif os.path.basename(file_path) == "General.xcconfig":  # gtest is different.
+            return FileType.BASE_XCCONFIG
         else:
             return FileType.NONE
 
@@ -768,6 +805,8 @@ class CheckerDispatcher(object):
                 checker = JSONFeaturesChecker(file_path, handle_style_error)
             elif basename == 'CSSProperties.json':
                 checker = JSONCSSPropertiesChecker(file_path, handle_style_error)
+            elif basename == 'import-expectations.json':
+                checker = JSONImportExpectationsChecker(file_path, handle_style_error)
             else:
                 checker = JSONChecker(file_path, handle_style_error)
         elif file_type == FileType.PYTHON:
@@ -804,6 +843,8 @@ class CheckerDispatcher(object):
             checker = WatchListChecker(file_path, handle_style_error)
         elif file_type == FileType.FEATUREDEFINES:
             checker = FeatureDefinesChecker(file_path, handle_style_error)
+        elif file_type == FileType.BASE_XCCONFIG:
+            checker = BaseXcconfigChecker(file_path, handle_style_error)
         else:
             raise ValueError('Invalid file type "%(file_type)s": the only valid file types '
                              "are %(NONE)s, %(CPP)s, and %(TEXT)s."

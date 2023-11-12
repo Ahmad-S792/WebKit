@@ -40,7 +40,6 @@
 #include "CommonAtomStrings.h"
 #include "DocumentInlines.h"
 #include "ElementInlines.h"
-#include "Frame.h"
 #include "HTMLFrameOwnerElement.h"
 #include "HTMLHeadElement.h"
 #include "HTMLImageElement.h"
@@ -52,6 +51,7 @@
 #include "HTMLStyleElement.h"
 #include "HTTPParsers.h"
 #include "Image.h"
+#include "LocalFrame.h"
 #include "MarkupAccumulator.h"
 #include "Page.h"
 #include "RenderElement.h"
@@ -100,7 +100,7 @@ static const QualifiedName& frameOwnerURLAttributeName(const HTMLFrameOwnerEleme
 
 class PageSerializer::SerializerMarkupAccumulator final : public MarkupAccumulator {
 public:
-    SerializerMarkupAccumulator(PageSerializer&, Document&, Vector<Node*>*);
+    SerializerMarkupAccumulator(PageSerializer&, Document&, Vector<Ref<Node>>*);
 
 private:
     PageSerializer& m_serializer;
@@ -112,8 +112,8 @@ private:
     void appendEndTag(StringBuilder&, const Element&) override;
 };
 
-PageSerializer::SerializerMarkupAccumulator::SerializerMarkupAccumulator(PageSerializer& serializer, Document& document, Vector<Node*>* nodes)
-    : MarkupAccumulator(nodes, ResolveURLs::Yes)
+PageSerializer::SerializerMarkupAccumulator::SerializerMarkupAccumulator(PageSerializer& serializer, Document& document, Vector<Ref<Node>>* nodes)
+    : MarkupAccumulator(nodes, ResolveURLs::Yes, document.isHTMLDocument() ? SerializationSyntax::HTML : SerializationSyntax::XML)
     , m_serializer(serializer)
     , m_document(document)
 {
@@ -172,10 +172,11 @@ PageSerializer::PageSerializer(Vector<PageSerializer::Resource>& resources)
 
 void PageSerializer::serialize(Page& page)
 {
-    serializeFrame(&page.mainFrame());
+    if (auto* localMainFrame = dynamicDowncast<LocalFrame>(page.mainFrame()))
+        serializeFrame(localMainFrame);
 }
 
-void PageSerializer::serializeFrame(Frame* frame)
+void PageSerializer::serializeFrame(LocalFrame* frame)
 {
     Document* document = frame->document();
     URL url = document->url();
@@ -197,40 +198,39 @@ void PageSerializer::serializeFrame(Frame* frame)
         return;
     }
 
-    Vector<Node*> serializedNodes;
+    Vector<Ref<Node>> serializedNodes;
     SerializerMarkupAccumulator accumulator(*this, *document, &serializedNodes);
     String text = accumulator.serializeNodes(*document->documentElement(), SerializedNodes::SubtreeIncludingNode);
     m_resources.append({ url, document->suggestedMIMEType(), SharedBuffer::create(textEncoding.encode(text, PAL::UnencodableHandling::Entities)) });
     m_resourceURLs.add(url);
 
-    for (auto& node : serializedNodes) {
-        if (!is<Element>(*node))
+    for (auto&& node : WTFMove(serializedNodes)) {
+        RefPtr element = dynamicDowncast<Element>(WTFMove(node));
+        if (!element)
             continue;
-
-        Element& element = downcast<Element>(*node);
         // We have to process in-line style as it might contain some resources (typically background images).
-        if (is<StyledElement>(element))
-            retrieveResourcesForProperties(downcast<StyledElement>(element).inlineStyle(), document);
+        if (is<StyledElement>(*element))
+            retrieveResourcesForProperties(downcast<StyledElement>(*element).inlineStyle(), document);
 
-        if (is<HTMLImageElement>(element)) {
-            HTMLImageElement& imageElement = downcast<HTMLImageElement>(element);
-            URL url = document->completeURL(imageElement.attributeWithoutSynchronization(HTMLNames::srcAttr));
-            CachedImage* cachedImage = imageElement.cachedImage();
-            addImageToResources(cachedImage, imageElement.renderer(), url);
+        if (is<HTMLImageElement>(*element)) {
+            Ref imageElement = downcast<HTMLImageElement>(element.releaseNonNull());
+            URL url = document->completeURL(imageElement->attributeWithoutSynchronization(HTMLNames::srcAttr));
+            CachedImage* cachedImage = imageElement->cachedImage();
+            addImageToResources(cachedImage, imageElement->renderer(), url);
         } else if (is<HTMLLinkElement>(element)) {
-            HTMLLinkElement& linkElement = downcast<HTMLLinkElement>(element);
-            if (CSSStyleSheet* sheet = linkElement.sheet()) {
-                URL url = document->completeURL(linkElement.attributeWithoutSynchronization(HTMLNames::hrefAttr));
-                serializeCSSStyleSheet(sheet, url);
+            Ref linkElement = downcast<HTMLLinkElement>(element.releaseNonNull());
+            if (RefPtr sheet = linkElement->sheet()) {
+                URL url = document->completeURL(linkElement->attributeWithoutSynchronization(HTMLNames::hrefAttr));
+                serializeCSSStyleSheet(sheet.get(), url);
                 ASSERT(m_resourceURLs.contains(url));
             }
         } else if (is<HTMLStyleElement>(element)) {
-            if (CSSStyleSheet* sheet = downcast<HTMLStyleElement>(element).sheet())
-                serializeCSSStyleSheet(sheet, URL());
+            if (RefPtr sheet = downcast<HTMLStyleElement>(*element).sheet())
+                serializeCSSStyleSheet(sheet.get(), URL());
         }
     }
 
-    for (AbstractFrame* childFrame = frame->tree().firstChild(); childFrame; childFrame = childFrame->tree().nextSibling()) {
+    for (auto* childFrame = frame->tree().firstChild(); childFrame; childFrame = childFrame->tree().nextSibling()) {
         auto* localFrame = dynamicDowncast<LocalFrame>(childFrame);
         if (!localFrame)
             continue;
@@ -320,7 +320,7 @@ void PageSerializer::retrieveResourcesForProperties(const StyleProperties* style
     }
 }
 
-URL PageSerializer::urlForBlankFrame(Frame* frame)
+URL PageSerializer::urlForBlankFrame(LocalFrame* frame)
 {
     auto iterator = m_blankFrameURLs.find(frame);
     if (iterator != m_blankFrameURLs.end())

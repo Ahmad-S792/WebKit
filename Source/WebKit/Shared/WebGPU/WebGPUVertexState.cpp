@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2021 Apple Inc. All rights reserved.
+ * Copyright (C) 2021-2023 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -30,13 +30,13 @@
 
 #include "WebGPUConvertFromBackingContext.h"
 #include "WebGPUConvertToBackingContext.h"
-#include <pal/graphics/WebGPU/WebGPUVertexState.h>
+#include <WebCore/WebGPUVertexState.h>
 
 namespace WebKit::WebGPU {
 
-std::optional<VertexState> ConvertToBackingContext::convertToBacking(const PAL::WebGPU::VertexState& vertexState)
+std::optional<VertexState> ConvertToBackingContext::convertToBacking(const WebCore::WebGPU::VertexState& vertexState)
 {
-    auto base = convertToBacking(static_cast<const PAL::WebGPU::ProgrammableStage&>(vertexState));
+    auto base = convertToBacking(static_cast<const WebCore::WebGPU::ProgrammableStage&>(vertexState));
     if (!base)
         return std::nullopt;
 
@@ -47,30 +47,30 @@ std::optional<VertexState> ConvertToBackingContext::convertToBacking(const PAL::
             auto convertedBuffer = convertToBacking(*buffer);
             if (!convertedBuffer)
                 return std::nullopt;
-            buffers.uncheckedAppend(WTFMove(convertedBuffer));
+            buffers.append(WTFMove(convertedBuffer));
         } else
-            buffers.uncheckedAppend(std::nullopt);
+            buffers.append(std::nullopt);
     }
 
     return { { WTFMove(*base), WTFMove(buffers) } };
 }
 
-std::optional<PAL::WebGPU::VertexState> ConvertFromBackingContext::convertFromBacking(const VertexState& vertexState)
+std::optional<WebCore::WebGPU::VertexState> ConvertFromBackingContext::convertFromBacking(const VertexState& vertexState)
 {
     auto base = convertFromBacking(static_cast<const ProgrammableStage&>(vertexState));
     if (!base)
         return std::nullopt;
 
-    Vector<std::optional<PAL::WebGPU::VertexBufferLayout>> buffers;
+    Vector<std::optional<WebCore::WebGPU::VertexBufferLayout>> buffers;
     buffers.reserveInitialCapacity(vertexState.buffers.size());
     for (const auto& backingBuffer : vertexState.buffers) {
         if (backingBuffer) {
             auto buffer = convertFromBacking(*backingBuffer);
             if (!buffer)
                 return std::nullopt;
-            buffers.uncheckedAppend(WTFMove(*buffer));
+            buffers.append(WTFMove(*buffer));
         } else
-            buffers.uncheckedAppend(std::nullopt);
+            buffers.append(std::nullopt);
     }
 
     return { { WTFMove(*base), WTFMove(buffers) } };

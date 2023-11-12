@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2009-2021 Apple Inc. All rights reserved.
+ * Copyright (C) 2009-2023 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -32,12 +32,17 @@
 #include "GraphicsContext.h"
 #include "GraphicsLayerContentsDisplayDelegate.h"
 #include "LayoutRect.h"
+#include "MediaPlayerEnums.h"
 #include "RotateTransformOperation.h"
 #include <wtf/HashMap.h>
 #include <wtf/NeverDestroyed.h>
 #include <wtf/text/CString.h>
 #include <wtf/text/TextStream.h>
 #include <wtf/text/WTFString.h>
+
+#if ENABLE(THREADED_ANIMATION_RESOLUTION)
+#include "AcceleratedEffectStack.h"
+#endif
 
 #ifndef NDEBUG
 #include <stdio.h>
@@ -131,9 +136,11 @@ GraphicsLayer::GraphicsLayer(Type type, GraphicsLayerClient& layerClient)
     , m_showDebugBorder(false)
     , m_showRepaintCounter(false)
     , m_isMaskLayer(false)
+    , m_isBackdropRoot(false)
     , m_isTrackingDisplayListReplay(false)
     , m_userInteractionEnabled(true)
     , m_canDetachBackingStore(true)
+    , m_shouldPaintUsingCompositeCopy(false)
 #if HAVE(CORE_ANIMATION_SEPARATED_LAYERS)
     , m_isSeparated(false)
 #if HAVE(CORE_ANIMATION_SEPARATED_PORTALS)
@@ -315,12 +322,15 @@ bool GraphicsLayer::replaceChild(GraphicsLayer* oldChild, Ref<GraphicsLayer>&& n
 
 void GraphicsLayer::removeAllChildren()
 {
-    while (m_children.size()) {
-        GraphicsLayer* curLayer = m_children[0].ptr();
-        ASSERT(curLayer->parent());
-        curLayer->removeFromParent();
-        // curLayer may be destroyed here.
-    }
+    if (m_children.isEmpty())
+        return;
+
+    willModifyChildren();
+
+    for (auto& child : m_children)
+        child->setParent(nullptr);
+
+    m_children.clear();
 }
 
 void GraphicsLayer::removeFromParentInternal()
@@ -394,6 +404,9 @@ void GraphicsLayer::setOpacity(float opacity)
 
 void GraphicsLayer::removeFromParent()
 {
+    if (m_parent)
+        m_parent->willModifyChildren();
+
     // removeFromParentInternal is nonvirtual, for use in willBeDestroyed,
     // which is called from destructors.
     removeFromParentInternal();
@@ -414,6 +427,24 @@ void GraphicsLayer::setMaskLayer(RefPtr<GraphicsLayer>&& layer)
     }
     
     m_maskLayer = WTFMove(layer);
+}
+
+MediaPlayerVideoGravity GraphicsLayer::videoGravity() const
+{
+#if USE(CA)
+    return m_videoGravity;
+#else
+    return MediaPlayerVideoGravity::ResizeAspect;
+#endif
+}
+
+void GraphicsLayer::setVideoGravity(MediaPlayerVideoGravity gravity)
+{
+#if USE(CA)
+    m_videoGravity = gravity;
+#else
+    UNUSED_PARAM(gravity);
+#endif
 }
 
 Path GraphicsLayer::shapeLayerPath() const
@@ -541,7 +572,7 @@ void GraphicsLayer::setPaintingPhase(OptionSet<GraphicsLayerPaintingPhase> phase
     m_paintingPhase = phase;
 }
 
-void GraphicsLayer::paintGraphicsLayerContents(GraphicsContext& context, const FloatRect& clip, GraphicsLayerPaintBehavior layerPaintBehavior)
+void GraphicsLayer::paintGraphicsLayerContents(GraphicsContext& context, const FloatRect& clip, OptionSet<GraphicsLayerPaintBehavior> layerPaintBehavior)
 {
     auto offset = offsetFromRenderer() - toFloatSize(scrollOffset());
     auto clipRect = clip;
@@ -630,7 +661,7 @@ void GraphicsLayer::setContentsDisplayDelegate(RefPtr<GraphicsLayerContentsDispl
 {
 }
 
-RefPtr<GraphicsLayerAsyncContentsDisplayDelegate> GraphicsLayer::createAsyncContentsDisplayDelegate()
+RefPtr<GraphicsLayerAsyncContentsDisplayDelegate> GraphicsLayer::createAsyncContentsDisplayDelegate(GraphicsLayerAsyncContentsDisplayDelegate*)
 {
     return nullptr;
 }
@@ -728,6 +759,22 @@ int GraphicsLayer::validateFilterOperations(const KeyframeValueList& valueList)
     return firstIndex;
 }
 
+#if ENABLE(THREADED_ANIMATION_RESOLUTION)
+void GraphicsLayer::setAcceleratedEffectsAndBaseValues(AcceleratedEffects&& effects, AcceleratedEffectValues&& baseValues)
+{
+    if (effects.isEmpty()) {
+        m_effectStack = nullptr;
+        return;
+    }
+
+    if (!m_effectStack)
+        m_effectStack = makeUnique<AcceleratedEffectStack>();
+
+    m_effectStack->setEffects(WTFMove(effects));
+    m_effectStack->setBaseValues(WTFMove(baseValues));
+}
+#endif
+
 double GraphicsLayer::backingStoreMemoryEstimate() const
 {
     if (!drawsContent())
@@ -749,13 +796,8 @@ void GraphicsLayer::addRepaintRect(const FloatRect& repaintRect)
 
     FloatRect largestRepaintRect(FloatPoint(), m_size);
     largestRepaintRect.intersect(repaintRect);
-    RepaintMap::iterator repaintIt = repaintRectMap().find(this);
-    if (repaintIt == repaintRectMap().end())
-        repaintRectMap().set(this, Vector { WTFMove(largestRepaintRect) });
-    else {
-        Vector<FloatRect>& repaintRects = repaintIt->value;
-        repaintRects.append(largestRepaintRect);
-    }
+
+    repaintRectMap().add(this, Vector<FloatRect>()).iterator->value.append(WTFMove(largestRepaintRect));
 }
 
 void GraphicsLayer::traverse(GraphicsLayer& layer, const Function<void(GraphicsLayer&)>& traversalFunc)
@@ -963,7 +1005,7 @@ void GraphicsLayer::dumpProperties(TextStream& ts, OptionSet<LayerTreeAsTextOpti
     }
 }
 
-TextStream& operator<<(TextStream& ts, const Vector<GraphicsLayer::PlatformLayerID>& layers)
+TextStream& operator<<(TextStream& ts, const Vector<PlatformLayerIdentifier>& layers)
 {
     for (size_t i = 0; i < layers.size(); ++i) {
         if (i)
@@ -993,7 +1035,6 @@ TextStream& operator<<(TextStream& ts, const GraphicsLayer::CustomAppearance& cu
 {
     switch (customAppearance) {
     case GraphicsLayer::CustomAppearance::None: ts << "none"; break;
-    case GraphicsLayer::CustomAppearance::ScrollingOverhang: ts << "scrolling-overhang"; break;
     case GraphicsLayer::CustomAppearance::ScrollingShadow: ts << "scrolling-shadow"; break;
     }
     return ts;

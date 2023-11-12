@@ -25,6 +25,7 @@
 
 #include "config.h"
 #include "SpeechRecognitionRemoteRealtimeMediaSourceManager.h"
+#include "MessageSenderInlines.h"
 
 #if ENABLE(MEDIA_STREAM)
 
@@ -38,31 +39,11 @@ SpeechRecognitionRemoteRealtimeMediaSourceManager::SpeechRecognitionRemoteRealti
 {
 }
 
-SpeechRecognitionRemoteRealtimeMediaSourceManager::~SpeechRecognitionRemoteRealtimeMediaSourceManager()
-{
-}
-
 void SpeechRecognitionRemoteRealtimeMediaSourceManager::addSource(SpeechRecognitionRemoteRealtimeMediaSource& source, const WebCore::CaptureDevice& captureDevice)
 {
     auto identifier = source.identifier();
     ASSERT(!m_sources.contains(identifier));
     m_sources.add(identifier, source);
-
-#if ENABLE(SANDBOX_EXTENSIONS)
-    if (!captureDevice.isMockDevice()) {
-        m_sourcesNeedingSandboxExtension.add(identifier);
-        if (m_sourcesNeedingSandboxExtension.size() == 1) {
-            auto machBootstrapHandle = SandboxExtension::createHandleForMachBootstrapExtension();
-            SandboxExtension::Handle handleForTCCD;
-            if (auto handle = SandboxExtension::createHandleForMachLookup("com.apple.tccd"_s, m_connection->getAuditToken()))
-                handleForTCCD = WTFMove(*handle);
-            SandboxExtension::Handle handleForMicrophone;
-            if (auto handle = SandboxExtension::createHandleForGenericExtension("com.apple.webkit.microphone"_s))
-                handleForMicrophone = WTFMove(*handle);
-            send(Messages::SpeechRecognitionRealtimeMediaSourceManager::GrantSandboxExtensions(machBootstrapHandle, handleForTCCD, handleForMicrophone));
-        }
-    }
-#endif
 
     send(Messages::SpeechRecognitionRealtimeMediaSourceManager::CreateSource(identifier, captureDevice, source.pageIdentifier()));
 }
@@ -70,34 +51,27 @@ void SpeechRecognitionRemoteRealtimeMediaSourceManager::addSource(SpeechRecognit
 void SpeechRecognitionRemoteRealtimeMediaSourceManager::removeSource(SpeechRecognitionRemoteRealtimeMediaSource& source)
 {
     auto identifier = source.identifier();
-    ASSERT(m_sources.get(identifier) == &source);
+    ASSERT(!m_sources.get(identifier).get().get() || m_sources.get(identifier).get().get() == &source);
     m_sources.remove(identifier);
-
-#if ENABLE(SANDBOX_EXTENSIONS)
-    if (m_sourcesNeedingSandboxExtension.remove(identifier)) {
-        if (m_sourcesNeedingSandboxExtension.isEmpty())
-            send(Messages::SpeechRecognitionRealtimeMediaSourceManager::RevokeSandboxExtensions());
-    }
-#endif
 
     send(Messages::SpeechRecognitionRealtimeMediaSourceManager::DeleteSource(identifier));
 }
 
 void SpeechRecognitionRemoteRealtimeMediaSourceManager::remoteAudioSamplesAvailable(WebCore::RealtimeMediaSourceIdentifier identifier, const WTF::MediaTime& time, uint64_t numberOfFrames)
 {
-    if (auto source = m_sources.get(identifier))
+    if (auto source = m_sources.get(identifier).get())
         source->remoteAudioSamplesAvailable(time, numberOfFrames);
 }
 
 void SpeechRecognitionRemoteRealtimeMediaSourceManager::remoteCaptureFailed(WebCore::RealtimeMediaSourceIdentifier identifier)
 {
-    if (auto source = m_sources.get(identifier))
+    if (auto source = m_sources.get(identifier).get())
         source->remoteCaptureFailed();
 }
 
 void SpeechRecognitionRemoteRealtimeMediaSourceManager::remoteSourceStopped(WebCore::RealtimeMediaSourceIdentifier identifier)
 {
-    if (auto source = m_sources.get(identifier))
+    if (auto source = m_sources.get(identifier).get())
         source->remoteSourceStopped();
 }
 
@@ -115,7 +89,7 @@ uint64_t SpeechRecognitionRemoteRealtimeMediaSourceManager::messageSenderDestina
 
 void SpeechRecognitionRemoteRealtimeMediaSourceManager::setStorage(WebCore::RealtimeMediaSourceIdentifier identifier, ConsumerSharedCARingBuffer::Handle&& handle, const WebCore::CAAudioStreamDescription& description)
 {
-    if (auto source = m_sources.get(identifier))
+    if (auto source = m_sources.get(identifier).get())
         source->setStorage(WTFMove(handle), description);
 }
 

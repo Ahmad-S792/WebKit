@@ -31,6 +31,8 @@
 #include "SandboxExtension.h"
 #include "UserData.h"
 #include "WebsitePoliciesData.h"
+#include <WebCore/AdvancedPrivacyProtections.h>
+#include <WebCore/FrameIdentifier.h>
 #include <WebCore/FrameLoaderTypes.h>
 #include <WebCore/ResourceRequest.h>
 #include <WebCore/ShouldTreatAsContinuingLoad.h>
@@ -50,13 +52,19 @@ typedef int SandboxFlags;
 namespace WebKit {
 
 struct LoadParameters {
-    void encode(IPC::Encoder&) const;
+    void encode(IPC::Encoder&) &&;
     static WARN_UNUSED_RETURN bool decode(IPC::Decoder&, LoadParameters&);
 
     void platformEncode(IPC::Encoder&) const;
     static WARN_UNUSED_RETURN bool platformDecode(IPC::Decoder&, LoadParameters&);
 
+#if ENABLE(PUBLIC_SUFFIX_LIST)
+    String topPrivatelyControlledDomain;
+    String host;
+#endif
+
     uint64_t navigationID { 0 };
+    std::optional<WebCore::FrameIdentifier> frameIdentifier;
 
     WebCore::ResourceRequest request;
     SandboxExtension::Handle sandboxExtensionHandle;
@@ -84,18 +92,10 @@ struct LoadParameters {
     bool isServiceWorkerLoad { false };
 
 #if PLATFORM(COCOA)
-    RetainPtr<NSDictionary> dataDetectionContext;
-#if !ENABLE(CONTENT_FILTERING_IN_NETWORKING_PROCESS)
-    Vector<SandboxExtension::Handle> networkExtensionSandboxExtensionHandles;
-#if PLATFORM(IOS)
-    std::optional<SandboxExtension::Handle> contentFilterExtensionHandle;
-    std::optional<SandboxExtension::Handle> frontboardServiceExtensionHandle;
-#endif // PLATFORM(IOS)
-#endif // !ENABLE(CONTENT_FILTERING_IN_NETWORKING_PROCESS)
+    std::optional<double> dataDetectionReferenceDate;
 #endif
-#if ENABLE(PUBLIC_SUFFIX_LIST)
-    String topPrivatelyControlledDomain;
-#endif
+
+    OptionSet<WebCore::AdvancedPrivacyProtections> advancedPrivacyProtections;
 };
 
 } // namespace WebKit

@@ -29,18 +29,11 @@
 
 #include <optional>
 
-namespace IPC {
-class Decoder;
-class Encoder;
-}
-
 namespace WebKit {
 
 class WebPreferences;
 
 struct GPUProcessPreferences {
-    GPUProcessPreferences();
-    GPUProcessPreferences(const WebPreferences&);
     void copyEnabledWebPreferences(const WebPreferences&);
     
 #if ENABLE(OPUS)
@@ -71,8 +64,9 @@ struct GPUProcessPreferences {
     std::optional<bool> alternateWebMPlayerEnabled;
 #endif
 
-    void encode(IPC::Encoder&) const;
-    static WARN_UNUSED_RETURN bool decode(IPC::Decoder&, GPUProcessPreferences&);
+#if HAVE(SC_CONTENT_SHARING_PICKER)
+    std::optional<bool> useSCContentSharingPicker;
+#endif
 };
 
 } // namespace WebKit

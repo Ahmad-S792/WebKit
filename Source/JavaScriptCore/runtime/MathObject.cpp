@@ -126,7 +126,7 @@ void MathObject::finishCreation(VM& vm, JSGlobalObject* globalObject)
 
 JSC_DEFINE_HOST_FUNCTION(mathProtoFuncAbs, (JSGlobalObject* globalObject, CallFrame* callFrame))
 {
-    return JSValue::encode(jsNumber(fabs(callFrame->argument(0).toNumber(globalObject))));
+    return JSValue::encode(jsNumber(std::abs(callFrame->argument(0).toNumber(globalObject))));
 }
 
 JSC_DEFINE_HOST_FUNCTION(mathProtoFuncACos, (JSGlobalObject* globalObject, CallFrame* callFrame))
@@ -195,14 +195,14 @@ JSC_DEFINE_HOST_FUNCTION(mathProtoFuncHypot, (JSGlobalObject* globalObject, Call
     for (unsigned i = 0; i < argsCount; ++i) {
         double argument = callFrame->uncheckedArgument(i).toNumber(globalObject);
         RETURN_IF_EXCEPTION(scope, { });
-        args.uncheckedAppend(argument);
+        args.unsafeAppendWithoutCapacityCheck(argument);
     }
 
     double max = 0;
     for (double argument : args) {
         if (std::isinf(argument))
             return JSValue::encode(jsDoubleNumber(+std::numeric_limits<double>::infinity()));
-        max = std::max(fabs(argument), max);
+        max = std::max(std::abs(argument), max);
     }
 
     if (!max)

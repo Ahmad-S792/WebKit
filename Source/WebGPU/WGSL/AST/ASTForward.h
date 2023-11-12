@@ -34,11 +34,13 @@ class AlignAttribute;
 class BindingAttribute;
 class BuiltinAttribute;
 class ConstAttribute;
+class DiagnosticAttribute;
 class GroupAttribute;
 class IdAttribute;
 class InterpolateAttribute;
 class InvariantAttribute;
 class LocationAttribute;
+class MustUseAttribute;
 class SizeAttribute;
 class StageAttribute;
 class WorkgroupSizeAttribute;
@@ -61,12 +63,14 @@ class UnaryExpression;
 class Unsigned32Literal;
 
 class Function;
+class Parameter;
 
 class Identifier;
 
 class Statement;
 class AssignmentStatement;
 class BreakStatement;
+class CallStatement;
 class CompoundAssignmentStatement;
 class CompoundStatement;
 class ContinueStatement;
@@ -87,25 +91,19 @@ class StructureMember;
 
 class TypeAlias;
 
-class TypeName;
-class ArrayTypeName;
-class NamedTypeName;
-class ParameterizedTypeName;
-class StructTypeName;
-class ReferenceTypeName;
-
-class Value;
-class ConstantValue;
-class OverrideValue;
-class LetValue;
-class ParameterValue;
+class ArrayTypeExpression;
+class ElaboratedTypeExpression;
+class ReferenceTypeExpression;
 
 class Variable;
 class VariableQualifier;
 
-enum class AccessMode : uint8_t;
+struct SwitchClause;
+
+enum class BinaryOperation : uint8_t;
 enum class ParameterRole : uint8_t;
-enum class StorageClass : uint8_t;
 enum class StructureRole : uint8_t;
+enum class UnaryOperation : uint8_t;
+enum class VariableFlavor : uint8_t;
 
 } // namespace WGSL::AST

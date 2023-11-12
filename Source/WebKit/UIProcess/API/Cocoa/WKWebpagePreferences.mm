@@ -194,32 +194,26 @@ private:
 
 - (void)_setContentBlockersEnabled:(BOOL)contentBlockersEnabled
 {
-    _websitePolicies->setContentBlockersEnabled(contentBlockersEnabled);
+    auto defaultEnablement = contentBlockersEnabled ? WebCore::ContentExtensionDefaultEnablement::Enabled : WebCore::ContentExtensionDefaultEnablement::Disabled;
+    _websitePolicies->setContentExtensionEnablement({ defaultEnablement, { } });
 }
 
 - (BOOL)_contentBlockersEnabled
 {
-    return _websitePolicies->contentBlockersEnabled();
+    // Note that this only reports default state, and ignores exceptions. This should be turned into a no-op and
+    // eventually removed, once no more internal clients rely on it.
+    return _websitePolicies->contentExtensionEnablement().first == WebCore::ContentExtensionDefaultEnablement::Enabled;
 }
 
-- (void)_setDisabledContentRuleListIdentifiers:(NSSet<NSString *> *)identifiers
+- (void)_setContentRuleListsEnabled:(BOOL)enabled exceptions:(NSSet<NSString *> *)identifiers
 {
-    _websitePolicies->setDisabledContentRuleListIdentifiers([&] {
-        HashSet<String> result;
-        result.reserveInitialCapacity(identifiers.count);
-        for (NSString *identifier in identifiers)
-            result.add(identifier);
-        return result;
-    }());
-}
+    HashSet<String> exceptions;
+    exceptions.reserveInitialCapacity(identifiers.count);
+    for (NSString *identifier in identifiers)
+        exceptions.add(identifier);
 
-- (NSSet<NSString *> *)_disabledContentRuleListIdentifiers
-{
-    auto identifiers = _websitePolicies->disabledContentRuleListIdentifiers();
-    auto result = adoptNS([[NSMutableSet alloc] initWithCapacity:identifiers.size()]);
-    for (auto& identifier : identifiers)
-        [result addObject:identifier];
-    return result.get();
+    auto defaultEnablement = enabled ? WebCore::ContentExtensionDefaultEnablement::Enabled : WebCore::ContentExtensionDefaultEnablement::Disabled;
+    _websitePolicies->setContentExtensionEnablement({ defaultEnablement, WTFMove(exceptions) });
 }
 
 - (void)_setActiveContentRuleListActionPatterns:(NSDictionary<NSString *, NSSet<NSString *> *> *)patterns
@@ -229,7 +223,7 @@ private:
         Vector<String> vector;
         vector.reserveInitialCapacity(value.count);
         for (NSString *pattern in value)
-            vector.uncheckedAppend(pattern);
+            vector.append(pattern);
         map.add(key, WTFMove(vector));
     }];
     _websitePolicies->setActiveContentRuleListActionPatterns(WTFMove(map));
@@ -400,10 +394,10 @@ static _WKWebsiteDeviceOrientationAndMotionAccessPolicy toWKWebsiteDeviceOrienta
 
 - (void)_setCustomHeaderFields:(NSArray<_WKCustomHeaderFields *> *)fields
 {
-    Vector<WebCore::CustomHeaderFields> vector;
-    vector.reserveInitialCapacity(fields.count);
-    for (_WKCustomHeaderFields *element in fields)
-        vector.uncheckedAppend(static_cast<API::CustomHeaderFields&>([element _apiObject]).coreFields());
+    Vector<WebCore::CustomHeaderFields> vector(fields.count, [fields](size_t i) {
+        _WKCustomHeaderFields *element = fields[i];
+        return static_cast<API::CustomHeaderFields&>([element _apiObject]).coreFields();
+    });
     _websitePolicies->setCustomHeaderFields(WTFMove(vector));
 }
 
@@ -608,71 +602,91 @@ static _WKWebsiteDeviceOrientationAndMotionAccessPolicy toWKWebsiteDeviceOrienta
 
 - (BOOL)_networkConnectionIntegrityEnabled
 {
-    return _websitePolicies->networkConnectionIntegrityPolicy().contains(WebCore::NetworkConnectionIntegrity::Enabled);
+    return _websitePolicies->advancedPrivacyProtections().containsAll({
+        WebCore::AdvancedPrivacyProtections::BaselineProtections,
+        WebCore::AdvancedPrivacyProtections::FingerprintingProtections,
+        WebCore::AdvancedPrivacyProtections::EnhancedNetworkPrivacy,
+        WebCore::AdvancedPrivacyProtections::LinkDecorationFiltering,
+    });
 }
 
 - (void)_setNetworkConnectionIntegrityEnabled:(BOOL)enabled
 {
-    auto webCorePolicy = _websitePolicies->networkConnectionIntegrityPolicy();
-    webCorePolicy.set(WebCore::NetworkConnectionIntegrity::Enabled, enabled);
-    _websitePolicies->setNetworkConnectionIntegrityPolicy(webCorePolicy);
+    auto webCorePolicy = _websitePolicies->advancedPrivacyProtections();
+    webCorePolicy.set(WebCore::AdvancedPrivacyProtections::BaselineProtections, enabled);
+    webCorePolicy.set(WebCore::AdvancedPrivacyProtections::FingerprintingProtections, enabled);
+    webCorePolicy.set(WebCore::AdvancedPrivacyProtections::EnhancedNetworkPrivacy, enabled);
+    webCorePolicy.set(WebCore::AdvancedPrivacyProtections::LinkDecorationFiltering, enabled);
+    _websitePolicies->setAdvancedPrivacyProtections(webCorePolicy);
 }
 
 - (_WKWebsiteNetworkConnectionIntegrityPolicy)_networkConnectionIntegrityPolicy
 {
     _WKWebsiteNetworkConnectionIntegrityPolicy policy = _WKWebsiteNetworkConnectionIntegrityPolicyNone;
-    auto webCorePolicy = _websitePolicies->networkConnectionIntegrityPolicy();
+    auto webCorePolicy = _websitePolicies->advancedPrivacyProtections();
 
-    if (webCorePolicy.contains(WebCore::NetworkConnectionIntegrity::Enabled))
+    if (webCorePolicy.contains(WebCore::AdvancedPrivacyProtections::BaselineProtections))
         policy |= _WKWebsiteNetworkConnectionIntegrityPolicyEnabled;
 
-    if (webCorePolicy.contains(WebCore::NetworkConnectionIntegrity::HTTPSFirst))
+    if (webCorePolicy.contains(WebCore::AdvancedPrivacyProtections::HTTPSFirst))
         policy |= _WKWebsiteNetworkConnectionIntegrityPolicyHTTPSFirst;
 
-    if (webCorePolicy.contains(WebCore::NetworkConnectionIntegrity::HTTPSOnly))
+    if (webCorePolicy.contains(WebCore::AdvancedPrivacyProtections::HTTPSOnly))
         policy |= _WKWebsiteNetworkConnectionIntegrityPolicyHTTPSOnly;
 
-    if (webCorePolicy.contains(WebCore::NetworkConnectionIntegrity::HTTPSOnlyExplicitlyBypassedForDomain))
+    if (webCorePolicy.contains(WebCore::AdvancedPrivacyProtections::HTTPSOnlyExplicitlyBypassedForDomain))
         policy |= _WKWebsiteNetworkConnectionIntegrityPolicyHTTPSOnlyExplicitlyBypassedForDomain;
 
-    if (webCorePolicy.contains(WebCore::NetworkConnectionIntegrity::FailClosed))
+    if (webCorePolicy.contains(WebCore::AdvancedPrivacyProtections::FailClosed))
         policy |= _WKWebsiteNetworkConnectionIntegrityPolicyFailClosed;
 
-    if (webCorePolicy.contains(WebCore::NetworkConnectionIntegrity::WebSearchContent))
+    if (webCorePolicy.contains(WebCore::AdvancedPrivacyProtections::WebSearchContent))
         policy |= _WKWebsiteNetworkConnectionIntegrityPolicyWebSearchContent;
 
-    if (webCorePolicy.contains(WebCore::NetworkConnectionIntegrity::EnhancedTelemetry))
+    if (webCorePolicy.contains(WebCore::AdvancedPrivacyProtections::FingerprintingProtections))
         policy |= _WKWebsiteNetworkConnectionIntegrityPolicyEnhancedTelemetry;
+
+    if (webCorePolicy.contains(WebCore::AdvancedPrivacyProtections::EnhancedNetworkPrivacy))
+        policy |= _WKWebsiteNetworkConnectionIntegrityPolicyRequestValidation;
+
+    if (webCorePolicy.contains(WebCore::AdvancedPrivacyProtections::LinkDecorationFiltering))
+        policy |= _WKWebsiteNetworkConnectionIntegrityPolicySanitizeLookalikeCharacters;
 
     return policy;
 }
 
-- (void)_setNetworkConnectionIntegrityPolicy:(_WKWebsiteNetworkConnectionIntegrityPolicy)networkConnectionIntegrityPolicy
+- (void)_setNetworkConnectionIntegrityPolicy:(_WKWebsiteNetworkConnectionIntegrityPolicy)advancedPrivacyProtections
 {
-    OptionSet<WebCore::NetworkConnectionIntegrity> webCorePolicy;
+    OptionSet<WebCore::AdvancedPrivacyProtections> webCorePolicy;
 
-    if (networkConnectionIntegrityPolicy & _WKWebsiteNetworkConnectionIntegrityPolicyEnabled)
-        webCorePolicy.add(WebCore::NetworkConnectionIntegrity::Enabled);
+    if (advancedPrivacyProtections & _WKWebsiteNetworkConnectionIntegrityPolicyEnabled)
+        webCorePolicy.add(WebCore::AdvancedPrivacyProtections::BaselineProtections);
 
-    if (networkConnectionIntegrityPolicy & _WKWebsiteNetworkConnectionIntegrityPolicyHTTPSFirst)
-        webCorePolicy.add(WebCore::NetworkConnectionIntegrity::HTTPSFirst);
+    if (advancedPrivacyProtections & _WKWebsiteNetworkConnectionIntegrityPolicyHTTPSFirst)
+        webCorePolicy.add(WebCore::AdvancedPrivacyProtections::HTTPSFirst);
 
-    if (networkConnectionIntegrityPolicy & _WKWebsiteNetworkConnectionIntegrityPolicyHTTPSOnly)
-        webCorePolicy.add(WebCore::NetworkConnectionIntegrity::HTTPSOnly);
+    if (advancedPrivacyProtections & _WKWebsiteNetworkConnectionIntegrityPolicyHTTPSOnly)
+        webCorePolicy.add(WebCore::AdvancedPrivacyProtections::HTTPSOnly);
 
-    if (networkConnectionIntegrityPolicy & _WKWebsiteNetworkConnectionIntegrityPolicyHTTPSOnlyExplicitlyBypassedForDomain)
-        webCorePolicy.add(WebCore::NetworkConnectionIntegrity::HTTPSOnlyExplicitlyBypassedForDomain);
+    if (advancedPrivacyProtections & _WKWebsiteNetworkConnectionIntegrityPolicyHTTPSOnlyExplicitlyBypassedForDomain)
+        webCorePolicy.add(WebCore::AdvancedPrivacyProtections::HTTPSOnlyExplicitlyBypassedForDomain);
 
-    if (networkConnectionIntegrityPolicy & _WKWebsiteNetworkConnectionIntegrityPolicyFailClosed)
-        webCorePolicy.add(WebCore::NetworkConnectionIntegrity::FailClosed);
+    if (advancedPrivacyProtections & _WKWebsiteNetworkConnectionIntegrityPolicyFailClosed)
+        webCorePolicy.add(WebCore::AdvancedPrivacyProtections::FailClosed);
 
-    if (networkConnectionIntegrityPolicy & _WKWebsiteNetworkConnectionIntegrityPolicyWebSearchContent)
-        webCorePolicy.add(WebCore::NetworkConnectionIntegrity::WebSearchContent);
+    if (advancedPrivacyProtections & _WKWebsiteNetworkConnectionIntegrityPolicyWebSearchContent)
+        webCorePolicy.add(WebCore::AdvancedPrivacyProtections::WebSearchContent);
 
-    if (networkConnectionIntegrityPolicy & _WKWebsiteNetworkConnectionIntegrityPolicyEnhancedTelemetry)
-        webCorePolicy.add(WebCore::NetworkConnectionIntegrity::EnhancedTelemetry);
+    if (advancedPrivacyProtections & _WKWebsiteNetworkConnectionIntegrityPolicyEnhancedTelemetry)
+        webCorePolicy.add(WebCore::AdvancedPrivacyProtections::FingerprintingProtections);
 
-    _websitePolicies->setNetworkConnectionIntegrityPolicy(webCorePolicy);
+    if (advancedPrivacyProtections & _WKWebsiteNetworkConnectionIntegrityPolicyRequestValidation)
+        webCorePolicy.add(WebCore::AdvancedPrivacyProtections::EnhancedNetworkPrivacy);
+
+    if (advancedPrivacyProtections & _WKWebsiteNetworkConnectionIntegrityPolicySanitizeLookalikeCharacters)
+        webCorePolicy.add(WebCore::AdvancedPrivacyProtections::LinkDecorationFiltering);
+
+    _websitePolicies->setAdvancedPrivacyProtections(webCorePolicy);
 }
 
 @end

@@ -31,6 +31,7 @@
 #include "PaintInfo.h"
 #include "RenderBox.h"
 #include "RenderInline.h"
+#include "RenderStyleInlines.h"
 #include "TextBoxPainter.h"
 
 namespace WebCore {
@@ -88,7 +89,7 @@ void InlineContentPainter::paintDisplayBox(const InlineDisplay::Box& box)
     }
 
     if (box.isText()) {
-        auto hasVisibleDamage = box.text()->length() && box.isVisible() && hasDamage(box); 
+        auto hasVisibleDamage = box.text().length() && box.isVisible() && hasDamage(box); 
         if (!hasVisibleDamage)
             return;
 
@@ -139,8 +140,8 @@ void InlineContentPainter::paint()
     if (lastBoxLineIndex)
         paintEllipsis(*lastBoxLineIndex);
 
-    for (auto* renderInline : m_outlineObjects)
-        renderInline->paintOutline(m_paintInfo, m_paintOffset);
+    for (auto& renderInline : m_outlineObjects)
+        renderInline.paintOutline(m_paintInfo, m_paintOffset);
 }
 
 LayoutPoint InlineContentPainter::flippedContentOffsetIfNeeded(const RenderBox& childRenderer) const

@@ -2411,6 +2411,18 @@ class GenerationContext:
         to.write(f"}}")
         to.newline()
 
+    def generate_property_id_bit_set(self, *, to, name, iterable, mapping_to_property=lambda p: p):
+        to.write(f"const WTF::BitSet<numCSSProperties> {name} = ([]() -> WTF::BitSet<numCSSProperties> {{")
+
+        with to.indent():
+            to.write(f"WTF::BitSet<numCSSProperties> result;")
+
+            for item in iterable:
+                to.write(f"result.set({mapping_to_property(item).id});")
+
+            to.write(f"return result;")
+        to.write(f"}})();")
+        to.newline()
 
 # Generates `CSSPropertyNames.h` and `CSSPropertyNames.cpp`.
 class GenerateCSSPropertyNames:
@@ -2756,12 +2768,12 @@ class GenerateCSSPropertyNames:
         to.newline()
 
     def _generate_css_property_settings_hasher(self, *, to):
-        first, *middle, last = (f"settings.{flag} << {i}" for (i, flag) in enumerate(self.properties_and_descriptors.settings_flags))
+        first, *middle, last = (f'{"(uint64_t) " if i >= 32 else ""}settings.{flag} << {i}' for (i, flag) in enumerate(self.properties_and_descriptors.settings_flags))
 
         to.write(f"void add(Hasher& hasher, const CSSPropertySettings& settings)")
         to.write(f"{{")
         with to.indent():
-            to.write(f"unsigned bits = {first}")
+            to.write(f"uint64_t bits = {first}")
             with to.indent():
                 to.write_lines((f"| {expression}" for expression in middle))
                 to.write(f"| {last};")
@@ -2839,10 +2851,23 @@ class GenerateCSSPropertyNames:
                 default="return { };"
             )
 
-            self.generation_context.generate_property_id_switch_function_bool(
+            self.generation_context.generate_property_id_bit_set(
                 to=writer,
-                signature="bool CSSProperty::isColorProperty(CSSPropertyID id)",
+                name="CSSProperty::colorProperties",
                 iterable=(p for p in self.properties_and_descriptors.style_properties.all if p.codegen_properties.color_property)
+            )
+
+            physical_properties = []
+            for _, property_group in sorted(self.generation_context.properties_and_descriptors.style_properties.logical_property_groups.items(), key=lambda x: x[0]):
+                kind = property_group["kind"]
+                destinations = LogicalPropertyGroup.logical_property_group_resolvers["physical"][kind]
+                for property in [property_group["physical"][a_destination] for a_destination in destinations]:
+                    physical_properties.append(property)
+
+            self.generation_context.generate_property_id_bit_set(
+                to=writer,
+                name="CSSProperty::physicalProperties",
+                iterable=sorted(list(set(physical_properties)), key=lambda x: x.id)
             )
 
             self.generation_context.generate_property_id_switch_function(
@@ -3003,7 +3028,6 @@ class GenerateCSSPropertyNames:
         to.newline()
 
         to.write(f"bool operator==(const CSSPropertySettings&, const CSSPropertySettings&);")
-        to.write(f"inline bool operator!=(const CSSPropertySettings& a, const CSSPropertySettings& b) {{ return !(a == b); }}")
         to.write(f"void add(Hasher&, const CSSPropertySettings&);")
         to.newline()
 
@@ -3029,7 +3053,6 @@ class GenerateCSSPropertyNames:
                     constexpr CSSPropertyID operator*() const { return static_cast<CSSPropertyID>(index); }
                     constexpr Iterator& operator++() { ++index; return *this; }
                     constexpr bool operator==(std::nullptr_t) const { return index > static_cast<uint16_t>(last); }
-                    constexpr bool operator!=(std::nullptr_t) const { return index <= static_cast<uint16_t>(last); }
                 };
                 static constexpr Iterator begin() { return { }; }
                 static constexpr std::nullptr_t end() { return nullptr; }
@@ -3174,7 +3197,7 @@ class GenerateCSSStyleDeclarationPropertyNames:
             if property.codegen_properties.settings_flag:
                 extended_attributes_values += [f"EnabledBySetting={property.codegen_properties.settings_flag}"]
 
-            to.write(f"[CEReactions, {', '.join(extended_attributes_values)}] attribute [LegacyNullToEmptyString] CSSOMString {idl_attribute_name};")
+            to.write(f"[CEReactions=Needed, {', '.join(extended_attributes_values)}] attribute [LegacyNullToEmptyString] CSSOMString {idl_attribute_name};")
 
     def generate_css_style_declaration_property_names_idl(self):
         with open('CSSStyleDeclaration+PropertyNames.idl', 'w') as output_file:
@@ -3288,10 +3311,14 @@ class GenerateStyleBuilderGenerated:
     # Color property setters.
 
     def _generate_color_property_initial_value_setter(self, to, property):
+        if property.codegen_properties.initial == "currentColor":
+            initial_function = "StyleColor::currentColor"
+        else:
+            initial_function = "RenderStyle::" + property.codegen_properties.initial
         to.write(f"if (builderState.applyPropertyToRegularStyle())")
-        to.write(f"    builderState.style().{property.codegen_properties.setter}(RenderStyle::{property.codegen_properties.initial}());")
+        to.write(f"    builderState.style().{property.codegen_properties.setter}({initial_function}());")
         to.write(f"if (builderState.applyPropertyToVisitedLinkStyle())")
-        to.write(f"    builderState.style().setVisitedLink{property.name_for_methods}(RenderStyle::{property.codegen_properties.initial}());")
+        to.write(f"    builderState.style().setVisitedLink{property.name_for_methods}({initial_function}());")
 
     def _generate_color_property_inherit_value_setter(self, to, property):
         to.write(f"if (builderState.applyPropertyToRegularStyle())")
@@ -3401,7 +3428,7 @@ class GenerateStyleBuilderGenerated:
     def _generate_fill_layer_property_value_setter(self, to, property):
         to.write(f"auto* child = &builderState.style().{property.method_name_for_ensure_layers}();")
         to.write(f"FillLayer* previousChild = nullptr;")
-        to.write(f"if (is<CSSValueList>(value) && !is<CSSImageSetValue>(value)) {{")
+        to.write(f"if (is<CSSValueList>(value)) {{")
         to.write(f"    // Walk each value and put it into a layer, creating new layers as needed.")
         to.write(f"    for (auto& item : downcast<CSSValueList>(value)) {{")
         to.write(f"        if (!child) {{")
@@ -3521,14 +3548,14 @@ class GenerateStyleBuilderGenerated:
                     return "fromCSSValueDeducingType(value)"
 
             if property in self.style_properties.all_by_name["font"].codegen_properties.longhands and "Initial" not in property.codegen_properties.custom and not property.codegen_properties.converter:
-                to.write(f"if (is<CSSPrimitiveValue>(value) && CSSPropertyParserHelpers::isSystemFontShorthand(downcast<CSSPrimitiveValue>(value).valueID())) {{")
+                to.write(f"if (CSSPropertyParserHelpers::isSystemFontShorthand(value.valueID())) {{")
                 with to.indent():
                     to.write(f"applyInitial{property.id_without_prefix}(builderState);")
                     to.write(f"return;")
                 to.write(f"}}")
 
             if property.codegen_properties.auto_functions:
-                to.write(f"if (downcast<CSSPrimitiveValue>(value).valueID() == CSSValueAuto) {{")
+                to.write(f"if (value.valueID() == CSSValueAuto) {{")
                 with to.indent():
                     to.write(f"builderState.style().setHasAuto{property.name_for_methods}();")
                     to.write(f"return;")
@@ -3672,7 +3699,7 @@ class GenerateStyleBuilderGenerated:
                 headers=[
                     "CSSPrimitiveValueMappings.h",
                     "CSSProperty.h",
-                    "RenderStyle.h",
+                    "RenderStyleSetters.h",
                     "StyleBuilderConverter.h",
                     "StyleBuilderCustom.h",
                     "StyleBuilderState.h",
@@ -6105,7 +6132,7 @@ def main():
     parser.add_argument('--check-unused-grammars-values', action='store_true')
     args = parser.parse_args()
 
-    with open(args.properties, "r") as properties_file:
+    with open(args.properties, "r", encoding="utf-8") as properties_file:
         properties_json = json.load(properties_file)
 
     parsing_context = ParsingContext(properties_json, defines_string=args.defines, parsing_for_codegen=True, check_unused_grammars_values=args.check_unused_grammars_values, verbose=args.verbose)

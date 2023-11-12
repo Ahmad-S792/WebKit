@@ -71,6 +71,7 @@ public:
     InlineRect logicalRectForRootInlineBox() const { return m_rootInlineBox.logicalRect(); }
     InlineRect logicalBorderBoxForAtomicInlineLevelBox(const Box&, const BoxGeometry&) const;
     InlineRect logicalBorderBoxForInlineBox(const Box&, const BoxGeometry&) const;
+    InlineRect logicalRectForOpaqueBox(const Line::Run& opaqueRun, const BoxGeometry&) const;
 
     const InlineLevelBox* inlineLevelBoxFor(const Box& layoutBox) const { return const_cast<LineBox&>(*this).inlineLevelBoxFor(layoutBox); }
     const InlineLevelBox& inlineLevelBoxFor(const Line::Run& lineRun) const { return const_cast<LineBox&>(*this).inlineLevelBoxFor(lineRun); }
@@ -80,7 +81,6 @@ public:
     const InlineLevelBoxList& nonRootInlineLevelBoxes() const { return m_nonRootInlineLevelBoxList; }
 
     FontBaseline baselineType() const { return m_baselineType; }
-    bool isHorizontal() const { return m_rootInlineBox.layoutBox().style().isHorizontalWritingMode(); }
 
     const InlineRect& logicalRect() const { return m_logicalRect; }
 

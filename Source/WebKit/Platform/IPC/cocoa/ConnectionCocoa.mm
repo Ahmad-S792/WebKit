@@ -27,6 +27,7 @@
 #import "Connection.h"
 
 #import "DataReference.h"
+#import "Encoder.h"
 #import "IPCUtilities.h"
 #import "ImportanceAssertion.h"
 #import "Logging.h"
@@ -48,24 +49,8 @@
 
 #if PLATFORM(IOS_FAMILY)
 #import "ProcessAssertion.h"
-#import <UIKit/UIAccessibility.h>
-
-#if USE(APPLE_INTERNAL_SDK)
-#import <AXRuntime/AXDefines.h>
-#import <AXRuntime/AXNotificationConstants.h>
-#else
-#define kAXPidStatusChangedNotification 0
-#endif
 
 #endif
-
-#if PLATFORM(MAC)
-
-#import "ApplicationServicesSPI.h"
-
-extern "C" AXError _AXUIElementNotifyProcessSuspendStatus(AXSuspendStatus);
-
-#endif // PLATFORM(MAC)
 
 namespace IPC {
 
@@ -401,7 +386,7 @@ static std::unique_ptr<Decoder> createMessageDecoder(mach_msg_header_t* header, 
             return nullptr;
         }
 
-        return Decoder::create(body, bodySize, { });
+        return Decoder::create({ body, bodySize }, { });
     }
 
     mach_msg_body_t* body = reinterpret_cast<mach_msg_body_t*>(header + 1);
@@ -449,9 +434,9 @@ static std::unique_ptr<Decoder> createMessageDecoder(mach_msg_header_t* header, 
         size_t messageBodySize = descriptor->out_of_line.size;
         descriptor->out_of_line.deallocate = false; // We are taking ownership of the memory.
 
-        return Decoder::create(messageBody, messageBodySize, [](const uint8_t* buffer, size_t length) {
+        return Decoder::create({ messageBody, messageBodySize }, [](DataReference buffer) {
             // FIXME: <rdar://problem/62086358> bufferDeallocator block ignores mach_msg_ool_descriptor_t->deallocate
-            vm_deallocate(mach_task_self(), reinterpret_cast<vm_address_t>(buffer), length);
+            vm_deallocate(mach_task_self(), reinterpret_cast<vm_address_t>(buffer.data()), buffer.size_bytes());
         }, WTFMove(attachments));
     }
 
@@ -464,7 +449,7 @@ static std::unique_ptr<Decoder> createMessageDecoder(mach_msg_header_t* header, 
         return nullptr;
     }
 
-    return Decoder::create(messageBody, messageBodySize, WTFMove(attachments));
+    return Decoder::create({ messageBody, messageBodySize }, WTFMove(attachments));
 }
 
 // The receive buffer size should always include the maximum trailer size.
@@ -589,29 +574,6 @@ bool Connection::kill()
     return false;
 }
 
-void AccessibilityProcessSuspendedNotification(bool suspended)
-{
-#if PLATFORM(MAC)
-    _AXUIElementNotifyProcessSuspendStatus(suspended ? AXSuspendStatusSuspended : AXSuspendStatusRunning);
-#elif PLATFORM(IOS_FAMILY)
-    UIAccessibilityPostNotification(kAXPidStatusChangedNotification, @{ @"pid" : @(getpid()), @"suspended" : @(suspended) });
-#else
-    UNUSED_PARAM(suspended);
-#endif
-}
-
-void Connection::willSendSyncMessage(OptionSet<SendSyncOption> sendSyncOptions)
-{
-    if (sendSyncOptions.contains(IPC::SendSyncOption::InformPlatformProcessWillSuspend) && WebCore::AXObjectCache::accessibilityEnabled())
-        AccessibilityProcessSuspendedNotification(true);
-}
-
-void Connection::didReceiveSyncReply(OptionSet<SendSyncOption> sendSyncOptions)
-{
-    if (sendSyncOptions.contains(IPC::SendSyncOption::InformPlatformProcessWillSuspend) && WebCore::AXObjectCache::accessibilityEnabled())
-        AccessibilityProcessSuspendedNotification(false);
-}
-
 pid_t Connection::remoteProcessID() const
 {
     if (!m_xpcConnection)
@@ -636,4 +598,5 @@ std::optional<Connection::ConnectionIdentifierPair> Connection::createConnection
     mach_port_insert_right(mach_task_self(), listeningPort, listeningPort, MACH_MSG_TYPE_MAKE_SEND);
     return ConnectionIdentifierPair { Identifier { listeningPort, nullptr }, MachSendRight::adopt(listeningPort) };
 }
+
 } // namespace IPC

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2008-2021 Apple Inc. All rights reserved.
+ * Copyright (C) 2008-2023 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -31,6 +31,7 @@
 #include "CachedBytecode.h"
 #include "CodeSpecializationKind.h"
 #include "SourceOrigin.h"
+#include "SourceTaintedOrigin.h"
 #include <wtf/RefCounted.h>
 #include <wtf/text/TextPosition.h>
 #include <wtf/text/WTFString.h>
@@ -55,7 +56,7 @@ class UnlinkedFunctionCodeBlock;
     public:
         static const intptr_t nullID = 1;
         
-        JS_EXPORT_PRIVATE SourceProvider(const SourceOrigin&, String&& sourceURL, const TextPosition& startPosition, SourceProviderSourceType);
+        JS_EXPORT_PRIVATE SourceProvider(const SourceOrigin&, String&& sourceURL, String&& preRedirectURL, SourceTaintedOrigin, const TextPosition& startPosition, SourceProviderSourceType);
 
         JS_EXPORT_PRIVATE virtual ~SourceProvider();
 
@@ -75,6 +76,8 @@ class UnlinkedFunctionCodeBlock;
 
         // This is NOT the path that should be used for computing relative paths from a script. Use SourceOrigin's URL for that, the values may or may not be the same...
         const String& sourceURL() const { return m_sourceURL; }
+        const String& sourceURLStripped();
+        const String& preRedirectURL() const { return m_preRedirectURL; }
         const String& sourceURLDirective() const { return m_sourceURLDirective; }
         const String& sourceMappingURLDirective() const { return m_sourceMappingURLDirective; }
 
@@ -90,6 +93,10 @@ class UnlinkedFunctionCodeBlock;
 
         void setSourceURLDirective(const String& sourceURLDirective) { m_sourceURLDirective = sourceURLDirective; }
         void setSourceMappingURLDirective(const String& sourceMappingURLDirective) { m_sourceMappingURLDirective = sourceMappingURLDirective; }
+        void setSourceTaintedOrigin(SourceTaintedOrigin taintedness) { m_taintedness = taintedness; }
+
+        SourceTaintedOrigin sourceTaintedOrigin() const { return m_taintedness; }
+        bool couldBeTainted() const { return m_taintedness != SourceTaintedOrigin::Untainted; }
 
     private:
         JS_EXPORT_PRIVATE void getID();
@@ -97,19 +104,22 @@ class UnlinkedFunctionCodeBlock;
         SourceProviderSourceType m_sourceType;
         SourceOrigin m_sourceOrigin;
         String m_sourceURL;
+        String m_sourceURLStripped;
+        String m_preRedirectURL;
         String m_sourceURLDirective;
         String m_sourceMappingURLDirective;
         TextPosition m_startPosition;
         SourceID m_id { 0 };
+        SourceTaintedOrigin m_taintedness;
     };
 
     DECLARE_ALLOCATOR_WITH_HEAP_IDENTIFIER(StringSourceProvider);
     class StringSourceProvider : public SourceProvider {
         WTF_MAKE_FAST_ALLOCATED_WITH_HEAP_IDENTIFIER(StringSourceProvider);
     public:
-        static Ref<StringSourceProvider> create(const String& source, const SourceOrigin& sourceOrigin, String sourceURL, const TextPosition& startPosition = TextPosition(), SourceProviderSourceType sourceType = SourceProviderSourceType::Program)
+        static Ref<StringSourceProvider> create(const String& source, const SourceOrigin& sourceOrigin, String sourceURL, SourceTaintedOrigin taintedness, const TextPosition& startPosition = TextPosition(), SourceProviderSourceType sourceType = SourceProviderSourceType::Program)
         {
-            return adoptRef(*new StringSourceProvider(source, sourceOrigin, WTFMove(sourceURL), startPosition, sourceType));
+            return adoptRef(*new StringSourceProvider(source, sourceOrigin, taintedness, WTFMove(sourceURL), startPosition, sourceType));
         }
         
         unsigned hash() const override
@@ -123,8 +133,8 @@ class UnlinkedFunctionCodeBlock;
         }
 
     protected:
-        StringSourceProvider(const String& source, const SourceOrigin& sourceOrigin, String&& sourceURL, const TextPosition& startPosition, SourceProviderSourceType sourceType)
-            : SourceProvider(sourceOrigin, WTFMove(sourceURL), startPosition, sourceType)
+        StringSourceProvider(const String& source, const SourceOrigin& sourceOrigin, SourceTaintedOrigin taintedness, String&& sourceURL, const TextPosition& startPosition, SourceProviderSourceType sourceType)
+            : SourceProvider(sourceOrigin, WTFMove(sourceURL), String(), taintedness, startPosition, sourceType)
             , m_source(source.isNull() ? *StringImpl::empty() : *source.impl())
         {
         }
@@ -142,7 +152,7 @@ class UnlinkedFunctionCodeBlock;
         virtual void unlockUnderlyingBuffer() { }
 
     protected:
-        JS_EXPORT_PRIVATE BaseWebAssemblySourceProvider(const SourceOrigin&, String&&);
+        JS_EXPORT_PRIVATE BaseWebAssemblySourceProvider(const SourceOrigin&, String&& sourceURL);
     };
 
     class WebAssemblySourceProvider final : public BaseWebAssemblySourceProvider {
@@ -211,3 +221,17 @@ class UnlinkedFunctionCodeBlock;
 #endif
 
 } // namespace JSC
+
+namespace WTF {
+
+template<> struct EnumTraits<JSC::SourceTaintedOrigin> {
+    using values = EnumValues<
+        JSC::SourceTaintedOrigin,
+        JSC::SourceTaintedOrigin::Untainted,
+        JSC::SourceTaintedOrigin::IndirectlyTaintedByHistory,
+        JSC::SourceTaintedOrigin::IndirectlyTainted,
+        JSC::SourceTaintedOrigin::KnownTainted
+    >;
+};
+
+} // namespace WTF

@@ -57,6 +57,24 @@ public:
 #endif
     }
 
+    bool isMac() const
+    {
+#if PLATFORM(MAC)
+        return true;
+#else
+        return false;
+#endif
+    }
+
+    bool isKeyboardImmediatelyAvailable()
+    {
+#if PLATFORM(VISION)
+        return true;
+#else
+        return false;
+#endif
+    }
+
     bool isWebKit2() const { return true; }
 
     // The basics.
@@ -113,6 +131,7 @@ public:
     void setCacheModel(int);
     void setAsynchronousSpellCheckingEnabled(bool);
     void setAllowsAnySSLCertificate(bool);
+
     void setShouldSwapToEphemeralSessionOnNextNavigation(bool);
     void setShouldSwapToDefaultSessionOnNextNavigation(bool);
     void setCustomUserAgent(JSStringRef);
@@ -161,6 +180,7 @@ public:
     uint64_t domCacheSize(JSStringRef origin);
     void setAllowStorageQuotaIncrease(bool);
     void setQuota(uint64_t);
+    void setOriginQuotaRatioEnabled(bool);
 
     // Failed load condition testing
     void forceImmediateCompletion();
@@ -214,6 +234,8 @@ public:
     bool shouldFinishAfterDownload() const { return m_shouldFinishAfterDownload; }
     void setShouldLogDownloadCallbacks(bool);
     void setShouldLogDownloadSize(bool);
+    void setShouldLogDownloadExpectedSize(bool);
+    void setShouldDownloadContentDispositionAttachments(bool);
 
     bool shouldAllowEditing() const { return m_shouldAllowEditing; }
 
@@ -297,6 +319,17 @@ public:
     static void simulateWebNotificationClick(JSValueRef notification);
     static void simulateWebNotificationClickForServiceWorkerNotifications();
 
+    JSRetainPtr<JSStringRef> getBackgroundFetchIdentifier();
+    void abortBackgroundFetch(JSStringRef);
+    void pauseBackgroundFetch(JSStringRef);
+    void resumeBackgroundFetch(JSStringRef);
+    void simulateClickBackgroundFetch(JSStringRef);
+    void setBackgroundFetchPermission(bool);
+    JSRetainPtr<JSStringRef> lastAddedBackgroundFetchIdentifier() const;
+    JSRetainPtr<JSStringRef> lastRemovedBackgroundFetchIdentifier() const;
+    JSRetainPtr<JSStringRef> lastUpdatedBackgroundFetchIdentifier() const;
+    JSRetainPtr<JSStringRef> backgroundFetchState(JSStringRef);
+
     // Geolocation.
     void setGeolocationPermission(bool);
     void setMockGeolocationPosition(double latitude, double longitude, double accuracy, std::optional<double> altitude, std::optional<double> altitudeAccuracy, std::optional<double> heading, std::optional<double> speed, std::optional<double> floorLevel);
@@ -307,6 +340,8 @@ public:
     void setScreenWakeLockPermission(bool);
 
     // MediaStream
+    void setCameraPermission(bool);
+    void setMicrophonePermission(bool);
     void setUserMediaPermission(bool);
     void resetUserMediaPermission();
     void setUserMediaPersistentPermissionForOrigin(bool permission, JSStringRef origin, JSStringRef parentOrigin);
@@ -426,6 +461,7 @@ public:
     void setStatisticsCrossSiteLoadWithLinkDecoration(JSStringRef fromHost, JSStringRef toHost);
     void setStatisticsTimeToLiveUserInteraction(double seconds);
     void setStatisticsNotifyPagesWhenDataRecordsWereScanned(bool);
+    void setStatisticsTimeAdvanceForTesting(double);
     void setStatisticsIsRunningTest(bool);
     void setStatisticsShouldClassifyResourcesBeforeDataRecordsRemoval(bool);
     void setStatisticsMinimumTimeBetweenDataRecordsRemoval(double);
@@ -494,8 +530,8 @@ public:
     void dumpAllHTTPRedirectedResponseHeaders() { m_dumpAllHTTPRedirectedResponseHeaders = true; }
     bool shouldDumpAllHTTPRedirectedResponseHeaders() const { return m_dumpAllHTTPRedirectedResponseHeaders; }
 
-    void addMockCameraDevice(JSStringRef persistentId, JSStringRef label);
-    void addMockMicrophoneDevice(JSStringRef persistentId, JSStringRef label);
+    void addMockCameraDevice(JSStringRef persistentId, JSStringRef label, JSValueRef properties);
+    void addMockMicrophoneDevice(JSStringRef persistentId, JSStringRef label, JSValueRef propertie);
     void addMockScreenDevice(JSStringRef persistentId, JSStringRef label);
     void clearMockMediaDevices();
     void removeMockMediaDevice(JSStringRef persistentId);
@@ -504,7 +540,7 @@ public:
     void setMockCameraOrientation(unsigned);
     bool isMockRealtimeMediaSourceCenterEnabled();
     void setMockCaptureDevicesInterrupted(bool isCameraInterrupted, bool isMicrophoneInterrupted);
-    void triggerMockMicrophoneConfigurationChange();
+    void triggerMockCaptureConfigurationChange(bool forMicrophone, bool forDisplay);
 
     bool hasAppBoundSession();
     void clearAppBoundSession();
@@ -519,8 +555,6 @@ public:
 
     size_t userScriptInjectedCount() const;
     void injectUserScript(JSStringRef);
-
-    void sendDisplayConfigurationChangedMessageForTesting();
 
     void setServiceWorkerFetchTimeout(double seconds);
 
@@ -566,7 +600,7 @@ private:
     void setDumpPixels(bool);
     void setWaitUntilDone(bool);
 
-    void addMockMediaDevice(JSStringRef persistentId, JSStringRef label, const char* type);
+    void addMockMediaDevice(JSStringRef persistentId, JSStringRef label, const char* type, WKDictionaryRef);
 
     WKRetainPtr<WKURLRef> m_testURL; // Set by InjectedBundlePage once provisional load starts.
 

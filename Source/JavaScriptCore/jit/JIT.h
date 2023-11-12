@@ -165,11 +165,10 @@ namespace JSC {
 
         VM& vm() { return *JSInterfaceJIT::vm(); }
 
-        void compileAndLinkWithoutFinalizing(JITCompilationEffort);
-        CompilationResult finalizeOnMainThread(CodeBlock*);
-        size_t codeSize() const;
+        std::tuple<std::unique_ptr<LinkBuffer>, RefPtr<BaselineJITCode>> compileAndLinkWithoutFinalizing(JITCompilationEffort);
+        static CompilationResult finalizeOnMainThread(CodeBlock*, LinkBuffer&, RefPtr<BaselineJITCode>);
 
-        void doMainThreadPreparationBeforeCompile();
+        static void doMainThreadPreparationBeforeCompile(VM&);
         
         static CompilationResult compile(VM& vm, CodeBlock* codeBlock, JITCompilationEffort effort)
         {
@@ -186,13 +185,12 @@ namespace JSC {
 
         static constexpr GPRReg s_metadataGPR = LLInt::Registers::metadataTableGPR;
         static constexpr GPRReg s_constantsGPR = LLInt::Registers::pbGPR;
-        static constexpr JITConstantPool::Constant s_globalObjectConstant { 0 };
 
     private:
         void privateCompileMainPass();
         void privateCompileLinkPass();
         void privateCompileSlowCases();
-        void link();
+        RefPtr<BaselineJITCode> link(LinkBuffer&);
         CompilationResult privateCompile(CodeBlock*, JITCompilationEffort);
 
         // Add a call out from JIT code, without an exception check.
@@ -209,9 +207,9 @@ namespace JSC {
         }
 
 #if OS(WINDOWS) && CPU(X86_64)
-        Call appendCallWithSlowPathReturnType(const CodePtr<CFunctionPtrTag> function)
+        Call appendCallWithUGPRPair(const CodePtr<CFunctionPtrTag> function)
         {
-            Call functionCall = callWithSlowPathReturnType(OperationPtrTag);
+            Call functionCall = callWithUGPRPair(OperationPtrTag);
             m_farCalls.append(FarCallRecord(functionCall, function.retagged<OperationPtrTag>()));
             return functionCall;
         }
@@ -237,12 +235,15 @@ namespace JSC {
 
     public:
         void loadConstant(unsigned constantIndex, GPRReg);
+        void loadStructureStubInfo(StructureStubInfoIndex, GPRReg);
+        static void emitMaterializeMetadataAndConstantPoolRegisters(CCallHelpers&);
     private:
         void loadGlobalObject(GPRReg);
 
         // Assuming s_constantsGPR is available.
         static void loadGlobalObject(CCallHelpers&, GPRReg);
         static void loadConstant(CCallHelpers&, unsigned constantIndex, GPRReg);
+        static void loadStructureStubInfo(CCallHelpers&, StructureStubInfoIndex, GPRReg);
 
         void loadCodeBlockConstant(VirtualRegister, JSValueRegs);
         void loadCodeBlockConstantPayload(VirtualRegister, RegisterID);
@@ -315,6 +316,7 @@ namespace JSC {
         void emitWriteBarrier(GPRReg owner);
 
         template<typename Bytecode> void emitValueProfilingSite(const Bytecode&, JSValueRegs);
+        template<typename Bytecode> void emitValueProfilingSite(const Bytecode&, BytecodeIndex, JSValueRegs);
 
         template<typename Op>
         static inline constexpr bool isProfiledOp = std::is_same_v<decltype(Op::Metadata::m_profile), ValueProfile>;
@@ -332,6 +334,8 @@ namespace JSC {
         void emitArrayProfilingSiteWithCell(const Bytecode&, RegisterID cellGPR, RegisterID scratchGPR);
         template <typename Bytecode>
         void emitArrayProfilingSiteWithCell(const Bytecode&, ptrdiff_t, RegisterID cellGPR, RegisterID scratchGPR);
+
+        void emitArrayProfilingSiteWithCellAndProfile(RegisterID cellGPR, RegisterID profileGPR, RegisterID scratchGPR);
 
         template<typename Op>
         ECMAMode ecmaMode(Op);
@@ -382,6 +386,7 @@ namespace JSC {
         void emit_op_bitxor(const JSInstruction*);
         void emit_op_bitnot(const JSInstruction*);
         void emit_op_call(const JSInstruction*);
+        void emit_op_call_ignore_result(const JSInstruction*);
         void emit_op_tail_call(const JSInstruction*);
         void emit_op_call_direct_eval(const JSInstruction*);
         void emit_op_call_varargs(const JSInstruction*);
@@ -430,6 +435,7 @@ namespace JSC {
         void emit_op_instanceof(const JSInstruction*);
         void emit_op_is_empty(const JSInstruction*);
         void emit_op_typeof_is_undefined(const JSInstruction*);
+        void emit_op_typeof_is_function(const JSInstruction*);
         void emit_op_is_undefined_or_null(const JSInstruction*);
         void emit_op_is_boolean(const JSInstruction*);
         void emit_op_is_number(const JSInstruction*);
@@ -440,6 +446,7 @@ namespace JSC {
 #endif
         void emit_op_is_object(const JSInstruction*);
         void emit_op_is_cell_with_type(const JSInstruction*);
+        void emit_op_has_structure_with_flags(const JSInstruction*);
         void emit_op_jeq_null(const JSInstruction*);
         void emit_op_jfalse(const JSInstruction*);
         void emit_op_jmp(const JSInstruction*);
@@ -546,8 +553,14 @@ namespace JSC {
         void emit_op_enumerator_in_by_val(const JSInstruction*);
         void emit_op_enumerator_has_own_property(const JSInstruction*);
 
+        template<typename OpcodeType>
+        void generatePutByValSlowCase(const OpcodeType&, Vector<SlowCaseEntry>::iterator&);
+        void emit_op_enumerator_put_by_val(const JSInstruction*);
+        void emitSlow_op_enumerator_put_by_val(const JSInstruction*, Vector<SlowCaseEntry>::iterator&);
+
         void emitSlow_op_add(const JSInstruction*, Vector<SlowCaseEntry>::iterator&);
         void emitSlow_op_call(const JSInstruction*, Vector<SlowCaseEntry>::iterator&);
+        void emitSlow_op_call_ignore_result(const JSInstruction*, Vector<SlowCaseEntry>::iterator&);
         void emitSlow_op_tail_call(const JSInstruction*, Vector<SlowCaseEntry>::iterator&);
         void emitSlow_op_call_direct_eval(const JSInstruction*, Vector<SlowCaseEntry>::iterator&);
         void emitSlow_op_call_varargs(const JSInstruction*, Vector<SlowCaseEntry>::iterator&);
@@ -589,6 +602,7 @@ namespace JSC {
         void emitSlow_op_jstricteq(const JSInstruction*, Vector<SlowCaseEntry>::iterator&);
         void emitSlow_op_jnstricteq(const JSInstruction*, Vector<SlowCaseEntry>::iterator&);
         void emitSlow_op_loop_hint(const JSInstruction*, Vector<SlowCaseEntry>::iterator&);
+        void emitSlow_op_enter(const JSInstruction*, Vector<SlowCaseEntry>::iterator&);
         void emitSlow_op_check_traps(const JSInstruction*, Vector<SlowCaseEntry>::iterator&);
         void emitSlow_op_mod(const JSInstruction*, Vector<SlowCaseEntry>::iterator&);
         void emitSlow_op_pow(const JSInstruction*, Vector<SlowCaseEntry>::iterator&);
@@ -598,6 +612,7 @@ namespace JSC {
         void emitSlow_op_new_object(const JSInstruction*, Vector<SlowCaseEntry>::iterator&);
         void emitSlow_op_put_by_id(const JSInstruction*, Vector<SlowCaseEntry>::iterator&);
         void emitSlow_op_put_by_val(const JSInstruction*, Vector<SlowCaseEntry>::iterator&);
+        void emitSlow_op_put_by_val_direct(const JSInstruction*, Vector<SlowCaseEntry>::iterator&);
         void emitSlow_op_put_private_name(const JSInstruction*, Vector<SlowCaseEntry>::iterator&);
         void emitSlow_op_sub(const JSInstruction*, Vector<SlowCaseEntry>::iterator&);
 
@@ -616,7 +631,7 @@ namespace JSC {
         void emitSlow_op_iterator_next(const JSInstruction*, Vector<SlowCaseEntry>::iterator&);
 
         void emitHasPrivate(VirtualRegister dst, VirtualRegister base, VirtualRegister propertyOrBrand, AccessType);
-        void emitHasPrivateSlow(AccessType);
+        void emitHasPrivateSlow(AccessType, Vector<SlowCaseEntry>::iterator&);
 
         template<typename Op>
         void emitNewFuncCommon(const JSInstruction*);
@@ -625,6 +640,8 @@ namespace JSC {
         void emitVarInjectionCheck(bool needsVarInjectionChecks, GPRReg);
         void emitVarReadOnlyCheck(ResolveType, GPRReg scratchGPR);
         void emitNotifyWriteWatchpoint(GPRReg pointerToSet);
+        void emitGetScope(VirtualRegister destination);
+        void emitCheckTraps();
 
         bool isKnownCell(VirtualRegister);
 
@@ -652,21 +669,9 @@ namespace JSC {
         static MacroAssemblerCodeRef<JITThunkPtrTag> returnFromBaselineGenerator(VM&);
 
     private:
-        static MacroAssemblerCodeRef<JITThunkPtrTag> slow_op_get_by_id_with_this_callSlowOperationThenCheckExceptionGenerator(VM&);
-        static MacroAssemblerCodeRef<JITThunkPtrTag> slow_op_del_by_id_callSlowOperationThenCheckExceptionGenerator(VM&);
-        static MacroAssemblerCodeRef<JITThunkPtrTag> slow_op_del_by_val_callSlowOperationThenCheckExceptionGenerator(VM&);
-        static MacroAssemblerCodeRef<JITThunkPtrTag> slow_op_put_by_val_callSlowOperationThenCheckExceptionGenerator(VM&);
-        static MacroAssemblerCodeRef<JITThunkPtrTag> slow_op_put_private_name_callSlowOperationThenCheckExceptionGenerator(VM&);
-
         static MacroAssemblerCodeRef<JITThunkPtrTag> slow_op_put_to_scopeGenerator(VM&);
         static MacroAssemblerCodeRef<JITThunkPtrTag> op_throw_handlerGenerator(VM&);
         static MacroAssemblerCodeRef<JITThunkPtrTag> op_check_traps_handlerGenerator(VM&);
-
-        static MacroAssemblerCodeRef<JITThunkPtrTag> slow_op_get_by_id_callSlowOperationThenCheckExceptionGenerator(VM&);
-        static MacroAssemblerCodeRef<JITThunkPtrTag> slow_op_put_by_id_callSlowOperationThenCheckExceptionGenerator(VM&);
-        static MacroAssemblerCodeRef<JITThunkPtrTag> slow_op_get_by_val_callSlowOperationThenCheckExceptionGenerator(VM&);
-        static MacroAssemblerCodeRef<JITThunkPtrTag> slow_op_get_by_val_with_this_callSlowOperationThenCheckExceptionGenerator(VM&);
-        static MacroAssemblerCodeRef<JITThunkPtrTag> slow_op_get_private_name_callSlowOperationThenCheckExceptionGenerator(VM&);
         static MacroAssemblerCodeRef<JITThunkPtrTag> slow_op_get_from_scopeGenerator(VM&);
         static MacroAssemblerCodeRef<JITThunkPtrTag> slow_op_resolve_scopeGenerator(VM&);
         template <ResolveType>
@@ -745,7 +750,7 @@ namespace JSC {
             if constexpr (is64BitType<typename FunctionTraits<OperationType>::ResultType>::value)
                 return appendCallWithExceptionCheck(operation);
             updateTopCallFrame();
-            MacroAssembler::Call call = appendCallWithSlowPathReturnType(operation);
+            MacroAssembler::Call call = appendCallWithUGPRPair(operation);
             exceptionCheck();
             return call;
         }
@@ -803,7 +808,7 @@ namespace JSC {
             // x64 Windows cannot use standard call when the return type is larger than 64 bits.
             if constexpr (is64BitType<typename FunctionTraits<OperationType>::ResultType>::value)
                 return appendCall(operation);
-            return appendCallWithSlowPathReturnType(operation);
+            return appendCallWithUGPRPair(operation);
         }
 #else // OS(WINDOWS) && CPU(X86_64)
         template<typename OperationType, typename... Args>
@@ -831,9 +836,7 @@ namespace JSC {
         };
 
         template<typename Op, typename SnippetGenerator>
-        void emitBitBinaryOpFastPath(const JSInstruction* currentInstruction, ProfilingPolicy shouldEmitProfiling = ProfilingPolicy::NoProfiling);
-
-        void emitRightShiftFastPath(const JSInstruction* currentInstruction, OpcodeID);
+        void emitBitBinaryOpFastPath(const JSInstruction* currentInstruction);
 
         template<typename Op>
         void emitRightShiftFastPath(const JSInstruction* currentInstruction, JITRightShiftGenerator::ShiftType);
@@ -894,7 +897,7 @@ namespace JSC {
         void resetSP();
 
         JITConstantPool::Constant addToConstantPool(JITConstantPool::Type, void* payload = nullptr);
-        std::tuple<BaselineUnlinkedStructureStubInfo*, JITConstantPool::Constant> addUnlinkedStructureStubInfo();
+        std::tuple<BaselineUnlinkedStructureStubInfo*, StructureStubInfoIndex> addUnlinkedStructureStubInfo();
         BaselineUnlinkedCallLinkInfo* addUnlinkedCallLinkInfo();
 
         Vector<FarCallRecord> m_farCalls;
@@ -945,13 +948,11 @@ namespace JSC {
         unsigned m_bytecodeCountHavingSlowCase { 0 };
         
         Label m_arityCheck;
-        std::unique_ptr<LinkBuffer> m_linkBuffer;
 
         std::unique_ptr<JITDisassembler> m_disassembler;
         RefPtr<Profiler::Compilation> m_compilation;
 
         PCToCodeOriginMapBuilder m_pcToCodeOriginMapBuilder;
-        std::unique_ptr<PCToCodeOriginMap> m_pcToCodeOriginMap;
 
         HashMap<const JSInstruction*, void*> m_instructionToMathIC;
         HashMap<const JSInstruction*, UniqueRef<MathICGenerationState>> m_instructionToMathICGenerationState;
@@ -964,7 +965,6 @@ namespace JSC {
         UnlinkedCodeBlock* const m_unlinkedCodeBlock { nullptr };
 
         MathICHolder m_mathICs;
-        RefPtr<BaselineJITCode> m_jitCode;
 
         Vector<JITConstantPool::Value> m_constantPool;
         SegmentedVector<BaselineUnlinkedCallLinkInfo> m_unlinkedCalls;

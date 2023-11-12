@@ -3,39 +3,24 @@
 
 /*---
 esid: sec-temporal.calendar.prototype.year
-description: A number as calendar in a property bag is converted to a string, then to a calendar
+description: A number as calendar in a property bag is not accepted
 features: [Temporal]
 ---*/
 
 const instance = new Temporal.Calendar("iso8601");
 
-const calendar = 19970327;
-
-let arg = { year: 1976, monthCode: "M11", day: 18, calendar };
-const result1 = instance.year(arg);
-assert.sameValue(result1, 1976, "19970327 is a valid ISO string for calendar");
-
-arg = { year: 1976, monthCode: "M11", day: 18, calendar: { calendar } };
-const result2 = instance.year(arg);
-assert.sameValue(result2, 1976, "19970327 is a valid ISO string for calendar (nested property)");
-
 const numbers = [
   1,
+  19970327,
   -19970327,
   1234567890,
 ];
 
 for (const calendar of numbers) {
-  let arg = { year: 1976, monthCode: "M11", day: 18, calendar };
+  const arg = { year: 1976, monthCode: "M11", day: 18, calendar };
   assert.throws(
-    RangeError,
+    TypeError,
     () => instance.year(arg),
-    `Number ${calendar} does not convert to a valid ISO string for calendar`
-  );
-  arg = { year: 1976, monthCode: "M11", day: 18, calendar: { calendar } };
-  assert.throws(
-    RangeError,
-    () => instance.year(arg),
-    `Number ${calendar} does not convert to a valid ISO string for calendar (nested property)`
+    "Numbers cannot be used as a calendar"
   );
 }

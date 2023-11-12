@@ -27,6 +27,7 @@
 #include "MessageSender.h"
 
 #include "IPCTestUtilities.h"
+#include "MessageSenderInlines.h"
 #include "Test.h"
 
 namespace TestWebKitAPI {
@@ -86,6 +87,56 @@ TEST_P(MessageSenderTest, SendAsyncAfterInvalidateCancelsAllAsyncReplies)
         while (replies.size() < 60u)
             RunLoop::current().cycle();
     }
+}
+
+// Tests that async reply messages sent to a connection after invalidate()
+// will receive the error.
+TEST_P(MessageSenderTest, SendWithPromisedReply)
+{
+    ASSERT_TRUE(openBoth());
+    b()->invalidate();
+
+    bool done = false;
+
+    b()->sendWithPromisedReply(MockTestMessageWithAsyncReply1 { }, 100)->whenSettled(RunLoop::current(), [&] (MockTestMessageWithAsyncReply1::Promise::Result result) {
+        EXPECT_FALSE(result.has_value());
+        EXPECT_EQ(result.error(), IPC::Error::InvalidConnection);
+        done = true;
+    });
+
+    while (!done)
+        RunLoop::current().cycle();
+}
+
+// Tests that async reply messages sent to a connection after invalidate()
+// will receive the error asynchronously.
+TEST_P(MessageSenderTest, SendAsyncWithErrorAsynchronousCallback)
+{
+    ASSERT_TRUE(openBoth());
+    b()->invalidate();
+
+
+    bool done = false;
+    b()->sendWithAsyncReply(MockTestMessageWithAsyncReply1 { }, [&] (uint64_t value) {
+        // Value is default constructed here, and no error is actually returned.
+        done = true;
+    }, 100);
+    EXPECT_FALSE(done);
+
+    while (!done)
+        RunLoop::current().cycle();
+
+    done = false;
+    b()->sendWithPromisedReply(MockTestMessageWithAsyncReply1 { }, 100)->whenSettled(RunLoop::current(), [&] (MockTestMessageWithAsyncReply1::Promise::Result result) {
+        EXPECT_FALSE(result.has_value());
+        EXPECT_EQ(result.error(), IPC::Error::InvalidConnection);
+        done = true;
+    });
+    EXPECT_FALSE(done);
+
+    while (!done)
+        RunLoop::current().cycle();
+
 }
 
 INSTANTIATE_TEST_SUITE_P(MessageSenderTest,

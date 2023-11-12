@@ -1,6 +1,6 @@
 /*
- * Copyright (C) 2004-2020 Apple Inc. All rights reserved.
- * Copyright (C) 2010 Google Inc. All rights reserved.
+ * Copyright (C) 2004-2023 Apple Inc. All rights reserved.
+ * Copyright (C) 2010-2014 Google Inc. All rights reserved.
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Library General Public
@@ -26,18 +26,18 @@
 #include "DOMFormData.h"
 #include "DirectoryFileListCreator.h"
 #include "DragData.h"
-#include "ElementChildIterator.h"
+#include "ElementChildIteratorInlines.h"
 #include "ElementRareData.h"
 #include "Event.h"
 #include "File.h"
 #include "FileChooser.h"
 #include "FileList.h"
 #include "FormController.h"
-#include "Frame.h"
 #include "HTMLInputElement.h"
 #include "HTMLNames.h"
 #include "Icon.h"
 #include "InputTypeNames.h"
+#include "LocalFrame.h"
 #include "LocalizedStrings.h"
 #include "MIMETypeRegistry.h"
 #include "RenderFileUploadControl.h"
@@ -130,7 +130,7 @@ std::pair<Vector<FileChooserFileInfo>, String> FileInputType::filesFromFormContr
     size_t size = state.size() - 1;
     files.reserveInitialCapacity(size / 2);
     for (size_t i = 0; i < size; i += 2)
-        files.uncheckedAppend({ state[i], { }, state[i + 1] });
+        files.append({ state[i], { }, state[i + 1] });
 
     return { files, state[size] };
 }
@@ -150,10 +150,10 @@ FormControlState FileInputType::saveFormControlState() const
     Vector<AtomString> stateVector;
     stateVector.reserveInitialCapacity(length);
     for (auto& file : m_fileList->files()) {
-        stateVector.uncheckedAppend(AtomString { file->path() });
-        stateVector.uncheckedAppend(AtomString { file->name() });
+        stateVector.append(AtomString { file->path() });
+        stateVector.append(AtomString { file->name() });
     }
-    stateVector.uncheckedAppend(AtomString { m_displayString });
+    stateVector.append(AtomString { m_displayString });
     return FormControlState { WTFMove(stateVector) };
 }
 
@@ -253,13 +253,17 @@ String FileInputType::firstElementPathForInputValue() const
     return makeString("C:\\fakepath\\", m_fileList->file(0).name());
 }
 
-void FileInputType::setValue(const String&, bool, TextFieldEventBehavior, TextControlSetValueSelection)
+void FileInputType::setValue(const String&, bool valueChanged, TextFieldEventBehavior, TextControlSetValueSelection)
 {
     // FIXME: Should we clear the file list, or replace it with a new empty one here? This is observable from JavaScript through custom properties.
+    if (!valueChanged)
+        return;
+    
     m_fileList->clear();
     m_icon = nullptr;
     ASSERT(element());
     element()->invalidateStyleForSubtree();
+    element()->updateValidity();
 }
 
 void FileInputType::createShadowSubtree()
@@ -354,6 +358,11 @@ bool FileInputType::allowsDirectories() const
     return element()->hasAttributeWithoutSynchronization(webkitdirectoryAttr);
 }
 
+bool FileInputType::dirAutoUsesValue() const
+{
+    return false;
+}
+
 void FileInputType::setFiles(RefPtr<FileList>&& files, WasSetByJavaScript wasSetByJavaScript)
 {
     setFiles(WTFMove(files), RequestIcon::Yes, wasSetByJavaScript);
@@ -444,11 +453,9 @@ void FileInputType::filesChosen(const Vector<String>& paths, const Vector<String
 
     size_t size = element()->hasAttributeWithoutSynchronization(multipleAttr) ? paths.size() : 1;
 
-    Vector<FileChooserFileInfo> files;
-    files.reserveInitialCapacity(size);
-
-    for (size_t i = 0; i < size; ++i)
-        files.uncheckedAppend({ paths[i], i < replacementPaths.size() ? replacementPaths[i] : nullString(), { } });
+    Vector<FileChooserFileInfo> files(size, [&](size_t i) {
+        return FileChooserFileInfo { paths[i], i < replacementPaths.size() ? replacementPaths[i] : nullString(), { } };
+    });
 
     filesChosen(WTFMove(files));
 }

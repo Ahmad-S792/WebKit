@@ -28,11 +28,11 @@
 #include "CachedImageClient.h"
 #include "Element.h"
 #include "FloatQuad.h"
-#include "Frame.h"
 #include "FrameDestructionObserverInlines.h"
 #include "HTMLNames.h"
 #include "InspectorInstrumentationPublic.h"
 #include "LayoutRect.h"
+#include "LocalFrame.h"
 #include "Page.h"
 #include "RenderObjectEnums.h"
 #include "RenderStyle.h"
@@ -73,7 +73,7 @@ class RenderLayerModelObject;
 class RenderFragmentContainer;
 class RenderTheme;
 class RenderTreeBuilder;
-class HighlightData;
+class RenderHighlight;
 class TransformState;
 class VisiblePosition;
 
@@ -95,8 +95,10 @@ namespace Style {
 class PseudoElementRequest;
 }
 
+enum class RepaintRectCalculation { Fast, Accurate };
+
 // Base class for all rendering tree objects.
-class RenderObject : public CachedImageClient {
+class RenderObject : public CachedImageClient, public CanMakeCheckedPtr {
     WTF_MAKE_ISO_ALLOCATED(RenderObject);
     friend class RenderBlock;
     friend class RenderBlockFlow;
@@ -105,11 +107,124 @@ class RenderObject : public CachedImageClient {
     friend class RenderLayer;
     friend class RenderLayerScrollableArea;
 public:
+    enum class Type : uint8_t {
+#if ENABLE(ATTACHMENT_ELEMENT)
+        Attachment,
+#endif
+        BlockFlow,
+        Button,
+        CombineText,
+        Counter,
+        DeprecatedFlexibleBox,
+        DetailsMarker,
+        EmbeddedObject,
+        FileUploadControl,
+        FlexibleBox,
+        Frame,
+        FrameSet,
+        Grid,
+        HTMLCanvas,
+        IFrame,
+        Image,
+        Inline,
+        LineBreak,
+        ListBox,
+        ListItem,
+        ListMarker,
+        Media,
+        MenuList,
+        Meter,
+#if ENABLE(MODEL_ELEMENT)
+        Model,
+#endif
+        MultiColumnFlow,
+        MultiColumnSet,
+        MultiColumnSpannerPlaceholder,
+        Progress,
+        Quote,
+        Replica,
+        RubyAsInline,
+        RubyAsBlock,
+        RubyBase,
+        RubyRun,
+        RubyText,
+        ScrollbarPart,
+        SearchField,
+        Slider,
+        SliderContainer,
+        Table,
+        TableCaption,
+        TableCell,
+        TableCol,
+        TableRow,
+        TableSection,
+        Text,
+        TextControlInnerBlock,
+        TextControlInnerContainer,
+        TextControlMultiLine,
+        TextControlSingleLine,
+        TextFragment,
+        VTTCue,
+        Video,
+        View,
+#if ENABLE(MATHML)
+        MathMLBlock,
+        MathMLFenced,
+        MathMLFencedOperator,
+        MathMLFraction,
+        MathMLMath,
+        MathMLMenclose,
+        MathMLOperator,
+        MathMLPadded,
+        MathMLRoot,
+        MathMLRow,
+        MathMLScripts,
+        MathMLSpace,
+        MathMLTable,
+        MathMLToken,
+        MathMLUnderOver,
+#endif
+        SVGEllipse,
+        SVGForeignObject,
+        SVGGradientStop,
+        SVGHiddenContainer,
+        SVGImage,
+        SVGInline,
+        SVGInlineText,
+        SVGPath,
+        SVGRect,
+        SVGResourceClipper,
+        SVGResourceFilter,
+        SVGResourceFilterPrimitive,
+        SVGResourceLinearGradient,
+        SVGResourceMarker,
+        SVGResourceMasker,
+        SVGResourcePattern,
+        SVGResourceRadialGradient,
+        SVGRoot,
+        SVGTSpan,
+        SVGText,
+        SVGTextPath,
+        SVGTransformableContainer,
+        SVGViewportContainer,
+        LegacySVGEllipse,
+        LegacySVGForeignObject,
+        LegacySVGHiddenContainer,
+        LegacySVGImage,
+        LegacySVGPath,
+        LegacySVGRect,
+        LegacySVGResourceClipper,
+        LegacySVGRoot,
+        LegacySVGTransformableContainer,
+        LegacySVGViewportContainer
+    };
+
     // Anonymous objects should pass the document as their node, and they will then automatically be
     // marked as anonymous in the constructor.
-    explicit RenderObject(Node&);
+    RenderObject(Type, Node&);
     virtual ~RenderObject();
 
+    Type type() const { return m_type; }
     Layout::Box* layoutBox() { return m_layoutBox.get(); }
     const Layout::Box* layoutBox() const { return m_layoutBox.get(); }
     void setLayoutBox(Layout::Box&);
@@ -119,11 +234,12 @@ public:
 
     virtual ASCIILiteral renderName() const = 0;
 
-    RenderElement* parent() const { return m_parent; }
+    inline RenderElement* parent() const; // Defined in RenderElement.h.
+    inline CheckedPtr<RenderElement> checkedParent() const; // Defined in RenderElement.h.
     bool isDescendantOf(const RenderObject*) const;
 
-    RenderObject* previousSibling() const { return m_previous; }
-    RenderObject* nextSibling() const { return m_next; }
+    RenderObject* previousSibling() const { return m_previous.get(); }
+    RenderObject* nextSibling() const { return m_next.get(); }
     RenderObject* previousInFlowSibling() const;
     RenderObject* nextInFlowSibling() const;
 
@@ -199,84 +315,85 @@ public:
 
     bool isPseudoElement() const { return node() && node()->isPseudoElement(); }
 
-    bool isRenderElement() const { return !isText(); }
+    bool isRenderElement() const { return !isRenderText(); }
     bool isRenderReplaced() const;
-    bool isBoxModelObject() const;
+    bool isRenderBoxModelObject() const;
     bool isRenderBlock() const;
     bool isRenderBlockFlow() const;
     bool isRenderInline() const;
     bool isRenderLayerModelObject() const;
 
-    bool isAtomicInlineLevelBox() const;
+    inline bool isAtomicInlineLevelBox() const;
 
-    virtual bool isCounter() const { return false; }
-    virtual bool isQuote() const { return false; }
+    bool isRenderCounter() const { return type() == Type::Counter; }
+    bool isRenderQuote() const { return type() == Type::Quote; }
 
-    virtual bool isDetailsMarker() const { return false; }
-    virtual bool isEmbeddedObject() const { return false; }
+    bool isRenderDetailsMarker() const { return type() == Type::DetailsMarker; }
+    bool isRenderEmbeddedObject() const { return type() == Type::EmbeddedObject; }
     bool isFieldset() const;
-    virtual bool isFileUploadControl() const { return false; }
-    virtual bool isFrame() const { return false; }
-    virtual bool isFrameSet() const { return false; }
+    bool isRenderFileUploadControl() const { return type() == Type::FileUploadControl; }
+    bool isRenderFrame() const { return type() == Type::Frame; }
+    bool isRenderFrameSet() const { return type() == Type::FrameSet; }
     virtual bool isImage() const { return false; }
     virtual bool isInlineBlockOrInlineTable() const { return false; }
-    virtual bool isListBox() const { return false; }
-    virtual bool isListItem() const { return false; }
-    virtual bool isListMarker() const { return false; }
-    virtual bool isMedia() const { return false; }
-    virtual bool isMenuList() const { return false; }
-    virtual bool isMeter() const { return false; }
-    virtual bool isProgress() const { return false; }
-    virtual bool isRenderButton() const { return false; }
-    virtual bool isRenderIFrame() const { return false; }
+    bool isRenderListBox() const { return type() == Type::ListBox; }
+    bool isRenderListItem() const { return type() == Type::ListItem; }
+    bool isRenderListMarker() const { return type() == Type::ListMarker; }
+    virtual bool isRenderMedia() const { return false; }
+    bool isRenderMenuList() const { return type() == Type::MenuList; }
+    bool isRenderMeter() const { return type() == Type::Meter; }
+    bool isRenderProgress() const { return type() == Type::Progress; }
+    bool isRenderButton() const { return type() == Type::Button; }
+    bool isRenderIFrame() const { return type() == Type::IFrame; }
     virtual bool isRenderImage() const { return false; }
+    bool isRenderTextFragment() const { return type() == Type::TextFragment; }
 #if ENABLE(MODEL_ELEMENT)
-    virtual bool isRenderModel() const { return false; }
+    bool isRenderModel() const { return type() == Type::Model; }
 #endif
     virtual bool isRenderFragmentContainer() const { return false; }
-    virtual bool isReplica() const { return false; }
+    bool isRenderReplica() const { return type() == Type::Replica; }
 
-    virtual bool isRubyInline() const { return false; }
-    virtual bool isRubyBlock() const { return false; }
-    virtual bool isRubyBase() const { return false; }
-    virtual bool isRubyRun() const { return false; }
-    virtual bool isRubyText() const { return false; }
+    bool isRenderRubyAsInline() const { return type() == Type::RubyAsInline; }
+    bool isRenderRubyAsBlock() const { return type() == Type::RubyAsBlock; }
+    bool isRenderRubyBase() const { return type() == Type::RubyBase; }
+    bool isRenderRubyRun() const { return type() == Type::RubyRun; }
+    bool isRenderRubyText() const { return type() == Type::RubyText; }
 
-    virtual bool isSlider() const { return false; }
-    virtual bool isTable() const { return false; }
-    virtual bool isTableCell() const { return false; }
-    virtual bool isRenderTableCol() const { return false; }
-    virtual bool isTableCaption() const { return false; }
-    virtual bool isTableSection() const { return false; }
-    virtual bool isTextControl() const { return false; }
-    virtual bool isTextArea() const { return false; }
-    virtual bool isTextField() const { return false; }
-    virtual bool isSearchField() const { return false; }
-    virtual bool isTextControlInnerBlock() const { return false; }
-    virtual bool isVideo() const { return false; }
-    virtual bool isWidget() const { return false; }
-    virtual bool isCanvas() const { return false; }
+    bool isRenderSlider() const { return type() == Type::Slider; }
+    bool isRenderTable() const;
+    bool isRenderTableCell() const { return type() == Type::TableCell; }
+    bool isRenderTableCol() const { return type() == Type::TableCol; }
+    bool isRenderTableCaption() const { return type() == Type::TableCaption; }
+    bool isRenderTableSection() const { return type() == Type::TableSection; }
+    inline bool isRenderTextControl() const; // Defined in RenderElement.h.
+    bool isRenderTextControlMultiLine() const { return type() == Type::TextControlMultiLine; }
+    virtual bool isRenderTextControlSingleLine() const { return false; }
+    bool isRenderSearchField() const { return type() == Type::SearchField; }
+    bool isRenderTextControlInnerBlock() const { return type() == Type::TextControlInnerBlock; }
+    bool isRenderVideo() const { return type() == Type::Video; }
+    virtual bool isRenderWidget() const { return false; }
+    bool isRenderHTMLCanvas() const { return type() == Type::HTMLCanvas; }
 #if ENABLE(ATTACHMENT_ELEMENT)
-    virtual bool isAttachment() const { return false; }
+    bool isRenderAttachment() const { return type() == Type::Attachment; }
 #endif
-    virtual bool isRenderGrid() const { return false; }
+    bool isRenderGrid() const { return type() == Type::Grid; }
 
     virtual bool isMultiColumnBlockFlow() const { return false; }
-    virtual bool isRenderMultiColumnSet() const { return false; }
-    virtual bool isRenderMultiColumnFlow() const { return false; }
-    virtual bool isRenderMultiColumnSpannerPlaceholder() const { return false; }
+    bool isRenderMultiColumnSet() const { return type() == Type::MultiColumnSet; }
+    bool isRenderMultiColumnFlow() const { return type() == Type::MultiColumnFlow; }
+    bool isRenderMultiColumnSpannerPlaceholder() const { return type() == Type::MultiColumnSpannerPlaceholder; }
 
-    virtual bool isRenderScrollbarPart() const { return false; }
-    virtual bool isRenderVTTCue() const { return false; }
+    bool isRenderScrollbarPart() const { return type() == Type::ScrollbarPart; }
+    bool isRenderVTTCue() const { return type() == Type::VTTCue; }
 
-    bool isDocumentElementRenderer() const { return document().documentElement() == m_node; }
+    bool isDocumentElementRenderer() const { return document().documentElement() == m_node.ptr(); }
     bool isBody() const { return node() && node()->hasTagName(HTMLNames::bodyTag); }
     bool isHR() const { return node() && node()->hasTagName(HTMLNames::hrTag); }
     bool isLegend() const;
 
     bool isHTMLMarquee() const;
 
-    bool isTablePart() const { return isTableCell() || isRenderTableCol() || isTableCaption() || isTableRow() || isTableSection(); }
+    bool isTablePart() const { return isRenderTableCell() || isRenderTableCol() || isRenderTableCaption() || isRenderTableRow() || isRenderTableSection(); }
 
     inline bool isBeforeContent() const;
     inline bool isAfterContent() const;
@@ -289,6 +406,8 @@ public:
 
     bool everHadLayout() const { return m_bitfields.everHadLayout(); }
 
+    static ScrollAnchoringController* findScrollAnchoringControllerForRenderer(const RenderObject&);
+
     bool childrenInline() const { return m_bitfields.childrenInline(); }
     virtual void setChildrenInline(bool b) { m_bitfields.setChildrenInline(b); }
     
@@ -297,68 +416,71 @@ public:
         InsideInFragmentedFlow = 1,
     };
 
-    void setFragmentedFlowStateIncludingDescendants(FragmentedFlowState, const RenderElement* fragmentedFlowRoot);
+    enum class SkipDescendentFragmentedFlow { No, Yes };
+    void setFragmentedFlowStateIncludingDescendants(FragmentedFlowState, SkipDescendentFragmentedFlow = SkipDescendentFragmentedFlow::Yes);
 
     FragmentedFlowState fragmentedFlowState() const { return m_bitfields.fragmentedFlowState(); }
     void setFragmentedFlowState(FragmentedFlowState state) { m_bitfields.setFragmentedFlowState(state); }
 
 #if ENABLE(MATHML)
     virtual bool isRenderMathMLBlock() const { return false; }
-    virtual bool isRenderMathMLTable() const { return false; }
+    bool isRenderMathMLTable() const { return type() == Type::MathMLTable; }
     virtual bool isRenderMathMLOperator() const { return false; }
-    virtual bool isRenderMathMLRow() const { return false; }
-    virtual bool isRenderMathMLMath() const { return false; }
-    virtual bool isRenderMathMLMenclose() const { return false; }
-    virtual bool isRenderMathMLFenced() const { return false; }
-    virtual bool isRenderMathMLFencedOperator() const { return false; }
-    virtual bool isRenderMathMLFraction() const { return false; }
-    virtual bool isRenderMathMLPadded() const { return false; }
-    virtual bool isRenderMathMLRoot() const { return false; }
-    virtual bool isRenderMathMLSpace() const { return false; }
+    bool isRenderMathMLRow() const;
+    bool isRenderMathMLMath() const { return type() == Type::MathMLMath; }
+    bool isRenderMathMLMenclose() const { return type() == Type::MathMLMenclose; }
+    bool isRenderMathMLFenced() const { return type() == Type::MathMLFenced; }
+    bool isRenderMathMLFencedOperator() const { return type() == Type::MathMLFencedOperator; }
+    bool isRenderMathMLFraction() const { return type() == Type::MathMLFraction; }
+    bool isRenderMathMLPadded() const { return type() == Type::MathMLPadded; }
+    bool isRenderMathMLRoot() const { return type() == Type::MathMLRoot; }
+    bool isRenderMathMLSpace() const { return type() == Type::MathMLSpace; }
     virtual bool isRenderMathMLSquareRoot() const { return false; }
     virtual bool isRenderMathMLScripts() const { return false; }
     virtual bool isRenderMathMLToken() const { return false; }
-    virtual bool isRenderMathMLUnderOver() const { return false; }
+    bool isRenderMathMLUnderOver() const { return type() == Type::MathMLUnderOver; }
 #endif // ENABLE(MATHML)
 
     virtual bool isLegacyRenderSVGModelObject() const { return false; }
     virtual bool isRenderSVGModelObject() const { return false; }
-    virtual bool isRenderSVGBlock() const { return false; };
-    virtual bool isLegacySVGRoot() const { return false; }
-    virtual bool isSVGRoot() const { return false; }
-    virtual bool isSVGContainer() const { return false; }
-    virtual bool isLegacySVGContainer() const { return false; }
-    virtual bool isSVGTransformableContainer() const { return false; }
-    virtual bool isLegacySVGTransformableContainer() const { return false; }
-    virtual bool isSVGViewportContainer() const { return false; }
-    virtual bool isLegacySVGViewportContainer() const { return false; }
-    virtual bool isSVGGradientStop() const { return false; }
-    virtual bool isLegacySVGHiddenContainer() const { return false; }
-    virtual bool isSVGHiddenContainer() const { return false; }
-    virtual bool isLegacySVGPath() const { return false; }
-    virtual bool isSVGPath() const { return false; }
-    virtual bool isSVGShape() const { return false; }
-    virtual bool isLegacySVGShape() const { return false; }
-    virtual bool isSVGText() const { return false; }
-    virtual bool isSVGTextPath() const { return false; }
-    virtual bool isSVGTSpan() const { return false; }
-    virtual bool isSVGInline() const { return false; }
-    virtual bool isSVGInlineText() const { return false; }
-    virtual bool isLegacySVGImage() const { return false; }
-    virtual bool isSVGImage() const { return false; }
-    virtual bool isLegacySVGForeignObject() const { return false; }
-    virtual bool isSVGForeignObject() const { return false; }
-    virtual bool isSVGResourceContainer() const { return false; }
-    virtual bool isSVGResourceFilter() const { return false; }
-    virtual bool isSVGResourceClipper() const { return false; }
-    virtual bool isSVGResourceFilterPrimitive() const { return false; }
-    bool isSVGRootOrLegacySVGRoot() const { return isSVGRoot() || isLegacySVGRoot(); }
-    bool isSVGShapeOrLegacySVGShape() const { return isSVGShape() || isLegacySVGShape(); }
-    bool isSVGPathOrLegacySVGPath() const { return isSVGPath() || isLegacySVGPath(); }
-    bool isSVGImageOrLegacySVGImage() const { return isSVGImage() || isLegacySVGImage(); }
-    bool isSVGForeignObjectOrLegacySVGForeignObject() const { return isSVGForeignObject() || isLegacySVGForeignObject(); }
+    virtual bool isRenderSVGBlock() const { return false; }
+    bool isLegacyRenderSVGRoot() const { return type() == Type::LegacySVGRoot; }
+    bool isRenderSVGRoot() const { return type() == Type::SVGRoot; }
+    virtual bool isRenderSVGContainer() const { return false; }
+    virtual bool isLegacyRenderSVGContainer() const { return false; }
+    bool isRenderSVGTransformableContainer() const { return type() == Type::SVGTransformableContainer; }
+    bool isLegacyRenderSVGTransformableContainer() const { return type() == Type::LegacySVGTransformableContainer; }
+    bool isRenderSVGViewportContainer() const { return type() == Type::SVGViewportContainer; }
+    bool isLegacyRenderSVGViewportContainer() const { return type() == Type::LegacySVGViewportContainer; }
+    bool isRenderSVGGradientStop() const { return type() == Type::SVGGradientStop; }
+    virtual bool isLegacyRenderSVGHiddenContainer() const { return false; }
+    bool isRenderSVGHiddenContainer() const { return type() == Type::SVGHiddenContainer || isRenderSVGResourceContainer(); }
+    bool isLegacyRenderSVGPath() const { return type() == Type::LegacySVGPath; }
+    bool isRenderSVGPath() const { return type() == Type::SVGPath; }
+    virtual bool isRenderSVGShape() const { return false; }
+    virtual bool isLegacyRenderSVGShape() const { return false; }
+    bool isRenderSVGText() const { return type() == Type::SVGText; }
+    bool isRenderSVGTextPath() const { return type() == Type::SVGTextPath; }
+    bool isRenderSVGTSpan() const { return type() == Type::SVGTSpan; }
+    bool isRenderSVGInline() const { return type() == Type::SVGInline || type() == Type::SVGTSpan || type() == Type::SVGTextPath; }
+    bool isRenderSVGInlineText() const { return type() == Type::SVGInlineText; }
+    bool isLegacyRenderSVGImage() const { return type() == Type::LegacySVGImage; }
+    bool isRenderSVGImage() const { return type() == Type::SVGImage; }
+    bool isLegacyRenderSVGForeignObject() const { return type() == Type::LegacySVGForeignObject; }
+    bool isRenderSVGForeignObject() const { return type() == Type::SVGForeignObject; }
+    virtual bool isLegacyRenderSVGResourceContainer() const { return false; }
+    bool isRenderSVGResourceContainer() const { return type() == Type::SVGResourceClipper; }
+    bool isRenderSVGResourceFilter() const { return type() == Type::SVGResourceFilter; }
+    bool isLegacyRenderSVGResourceClipper() const { return type() == Type::LegacySVGResourceClipper; }
+    bool isRenderSVGResourceClipper() const { return type() == Type::SVGResourceClipper; }
+    bool isRenderSVGResourceFilterPrimitive() const { return type() == Type::SVGResourceFilterPrimitive; }
+    bool isRenderOrLegacyRenderSVGRoot() const { return isRenderSVGRoot() || isLegacyRenderSVGRoot(); }
+    bool isRenderOrLegacyRenderSVGShape() const { return isRenderSVGShape() || isLegacyRenderSVGShape(); }
+    bool isRenderOrLegacyRenderSVGPath() const { return isRenderSVGPath() || isLegacyRenderSVGPath(); }
+    bool isRenderOrLegacyRenderSVGImage() const { return isRenderSVGImage() || isLegacyRenderSVGImage(); }
+    bool isRenderOrLegacyRenderSVGForeignObject() const { return isRenderSVGForeignObject() || isLegacyRenderSVGForeignObject(); }
     bool isRenderOrLegacyRenderSVGModelObject() const { return isRenderSVGModelObject() || isLegacyRenderSVGModelObject(); }
-    bool isSVGLayerAwareRenderer() const { return isSVGRoot() || isRenderSVGModelObject() || isSVGText() || isSVGInline() || isSVGForeignObject(); }
+    bool isSVGLayerAwareRenderer() const { return isRenderSVGRoot() || isRenderSVGModelObject() || isRenderSVGText() || isRenderSVGInline() || isRenderSVGForeignObject(); }
 
     // FIXME: Those belong into a SVG specific base-class for all renderers (see above)
     // Unfortunately we don't have such a class yet, because it's not possible for all renderers
@@ -391,7 +513,8 @@ public:
 
     // Returns the smallest rectangle enclosing all of the painted content
     // respecting clipping, masking, filters, opacity, stroke-width and markers
-    virtual FloatRect repaintRectInLocalCoordinates() const;
+    // This returns approximate rectangle for SVG renderers when RepaintRectCalculation::Fast is specified.
+    virtual FloatRect repaintRectInLocalCoordinates(RepaintRectCalculation = RepaintRectCalculation::Fast) const;
 
     // This only returns the transform="" value from the element
     // most callsites want localToParentTransform() instead.
@@ -406,7 +529,7 @@ public:
     // rest of the rendering tree will move to a similar model.
     virtual bool nodeAtFloatPoint(const HitTestRequest&, HitTestResult&, const FloatPoint& pointInParent, HitTestAction);
 
-    virtual bool hasIntrinsicAspectRatio() const { return isReplacedOrInlineBlock() && (isImage() || isVideo() || isCanvas()); }
+    virtual bool hasIntrinsicAspectRatio() const { return isReplacedOrInlineBlock() && (isImage() || isRenderVideo() || isRenderHTMLCanvas()); }
     bool isAnonymous() const { return m_bitfields.isAnonymous(); }
     bool isAnonymousBlock() const;
     bool isBlockContainer() const;
@@ -420,16 +543,16 @@ public:
     bool isAbsolutelyPositioned() const { return isOutOfFlowPositioned() && style().position() == PositionType::Absolute; }
     bool isRelativelyPositioned() const { return m_bitfields.isRelativelyPositioned(); }
     bool isStickilyPositioned() const { return m_bitfields.isStickilyPositioned(); }
-    bool shouldUsePositionedClipping() const { return isAbsolutelyPositioned() || isSVGForeignObject(); }
+    bool shouldUsePositionedClipping() const { return isAbsolutelyPositioned() || isRenderSVGForeignObject(); }
 
-    bool isText() const  { return !m_bitfields.isBox() && m_bitfields.isTextOrRenderView(); }
-    bool isLineBreak() const { return m_bitfields.isLineBreak(); }
-    bool isBR() const { return isLineBreak() && !isWBR(); }
-    bool isLineBreakOpportunity() const { return isLineBreak() && isWBR(); }
-    bool isTextOrLineBreak() const { return isText() || isLineBreak(); }
-    bool isBox() const { return m_bitfields.isBox(); }
-    bool isTableRow() const { return m_bitfields.isTableRow(); }
-    bool isRenderView() const  { return m_bitfields.isBox() && m_bitfields.isTextOrRenderView(); }
+    bool isRenderText() const { return m_bitfields.isRenderText(); }
+    bool isRenderLineBreak() const { return type() == Type::LineBreak; }
+    bool isBR() const { return isRenderLineBreak() && !isWBR(); }
+    bool isLineBreakOpportunity() const { return isRenderLineBreak() && isWBR(); }
+    bool isRenderTextOrLineBreak() const { return isRenderText() || isRenderLineBreak(); }
+    bool isRenderBox() const { return m_bitfields.isRenderBox(); }
+    bool isRenderTableRow() const { return type() == Type::TableRow; }
+    bool isRenderView() const  { return type() == Type::View; }
     bool isInline() const { return m_bitfields.isInline(); } // inline object
     bool isReplacedOrInlineBlock() const { return m_bitfields.isReplacedOrInlineBlock(); }
     bool isHorizontalWritingMode() const { return m_bitfields.horizontalWritingMode(); }
@@ -479,12 +602,14 @@ public:
     bool hasPotentiallyScrollableOverflow() const;
 
     bool hasTransformRelatedProperty() const { return m_bitfields.hasTransformRelatedProperty(); } // Transform, perspective or transform-style: preserve-3d.
-    bool isTransformed() const { return hasTransformRelatedProperty() && (style().affectsTransform() || hasSVGTransform()); }
-    bool hasTransformOrPerspective() const { return hasTransformRelatedProperty() && (isTransformed() || style().hasPerspective()); }
+    inline bool isTransformed() const;
+    inline bool hasTransformOrPerspective() const;
 
     inline bool preservesNewline() const;
 
-    RenderView& view() const { return *document().renderView(); };
+    RenderView& view() const { return *document().renderView(); }
+    CheckedRef<RenderView> checkedView() const;
+
     HostWindow* hostWindow() const;
 
     // Returns true if this renderer is rooted.
@@ -494,9 +619,9 @@ public:
     { 
         if (isAnonymous())
             return nullptr;
-        ASSERT(m_node);
-        return m_node.get(); 
+        return m_node.ptr();
     }
+    RefPtr<Node> protectedNode() const { return node(); }
 
     Node* nonPseudoNode() const { return isPseudoElement() ? nullptr : node(); }
 
@@ -505,8 +630,11 @@ public:
     // pseudo elements for which their parent node is returned.
     Node* generatingNode() const { return isPseudoElement() ? generatingPseudoHostElement() : node(); }
 
-    Document& document() const { ASSERT(m_node); return m_node->document(); }
-    Frame& frame() const;
+    Document& document() const { return m_node.get().document(); }
+    inline Ref<Document> protectedDocument() const; // Defined in RenderObjectInlines.h.
+    TreeScope& treeScopeForSVGReferences() const { return m_node.get().treeScopeForSVGReferences(); }
+    LocalFrame& frame() const;
+    Ref<LocalFrame> protectedFrame() const { return frame(); }
     Page& page() const;
     Settings& settings() const { return page().settings(); }
 
@@ -536,11 +664,8 @@ public:
     void invalidateBackgroundObscurationStatus();
     virtual bool computeBackgroundIsKnownToBeObscured(const LayoutPoint&) { return false; }
 
-    void setIsText() { ASSERT(!isBox()); m_bitfields.setIsTextOrRenderView(true); }
-    void setIsLineBreak() { m_bitfields.setIsLineBreak(true); }
-    void setIsBox() { m_bitfields.setIsBox(true); }
-    void setIsTableRow() { m_bitfields.setIsTableRow(true); }
-    void setIsRenderView() { ASSERT(isBox()); m_bitfields.setIsTextOrRenderView(true); }
+    void setIsRenderText() { ASSERT(!isRenderBox()); m_bitfields.setIsRenderText(true); }
+    void setIsRenderBox() { m_bitfields.setIsRenderBox(true); }
     void setReplacedOrInlineBlock(bool b = true) { m_bitfields.setIsReplacedOrInlineBlock(b); }
     void setHorizontalWritingMode(bool b = true) { m_bitfields.setHorizontalWritingMode(b); }
     void setHasNonVisibleOverflow(bool b = true) { m_bitfields.setHasNonVisibleOverflow(b); }
@@ -578,6 +703,7 @@ public:
 
     // Returns the containing block level element for this element.
     WEBCORE_EXPORT RenderBlock* containingBlock() const;
+    CheckedPtr<RenderBlock> checkedContainingBlock() const;
     static RenderBlock* containingBlockForPositionType(PositionType, const RenderObject&);
 
     // Convert the given local point to absolute coordinates. If OptionSet<MapCoordinatesMode> includes UseTransforms, take transforms into account.
@@ -606,7 +732,7 @@ public:
     WEBCORE_EXPORT static Vector<SelectionGeometry> collectSelectionGeometriesWithoutUnionInteriorLines(const SimpleRange&);
 #endif
 
-    virtual void absoluteRects(Vector<IntRect>&, const LayoutPoint&) const { }
+    virtual void boundingRects(Vector<LayoutRect>&, const LayoutPoint& /* offsetFromRoot */) const { }
 
     WEBCORE_EXPORT IntRect absoluteBoundingBoxRect(bool useTransform = true, bool* wasFixed = nullptr) const;
     IntRect absoluteBoundingBoxRectIgnoringTransforms() const { return absoluteBoundingBoxRect(false); }
@@ -621,6 +747,7 @@ public:
         IgnoreTinyRects = 1 << 2,
         IgnoreEmptyTextSelections = 1 << 3,
         UseSelectionHeight = 1 << 4,
+        ComputeIndividualCharacterRects = 1 << 5,
     };
     WEBCORE_EXPORT static Vector<FloatQuad> absoluteTextQuads(const SimpleRange&, OptionSet<BoundingRectBehavior> = { });
     WEBCORE_EXPORT static Vector<IntRect> absoluteTextRects(const SimpleRange&, OptionSet<BoundingRectBehavior> = { });
@@ -645,8 +772,8 @@ public:
     // Return the RenderLayerModelObject in the container chain which is responsible for painting this object, or nullptr
     // if painting is root-relative. This is the container that should be passed to the 'forRepaint' functions.
     struct RepaintContainerStatus {
-        bool fullRepaintIsScheduled { false }; // Either the repaint container or a layer in-between has aleady been scheduled for full repaint.
-        const RenderLayerModelObject* renderer { nullptr };
+        bool fullRepaintIsScheduled { false }; // Either the repaint container or a layer in-between has already been scheduled for full repaint.
+        CheckedPtr<const RenderLayerModelObject> renderer { nullptr };
     };
     RepaintContainerStatus containerForRepaint() const;
     // Actually do the repaint of rect r for this object which has been computed in the coordinate space
@@ -660,6 +787,10 @@ public:
     // Repaint a specific subrectangle within a given object.  The rect |r| is in the object's coordinate space.
     WEBCORE_EXPORT void repaintRectangle(const LayoutRect&, bool shouldClipToLayer = true) const;
 
+    enum class ClipRepaintToLayer : bool { No, Yes };
+    enum class ForceRepaint : bool { No, Yes };
+    void repaintRectangle(const LayoutRect&, ClipRepaintToLayer, ForceRepaint, std::optional<LayoutBoxExtent> additionalRepaintOutsets = std::nullopt) const;
+
     // Repaint a slow repaint object, which, at this time, means we are repainting an object with background-attachment:fixed.
     void repaintSlowRepaintObject() const;
 
@@ -668,6 +799,7 @@ public:
         ApplyCompositedClips = 1 << 1,
         ApplyCompositedContainerScrolls  = 1 << 2,
         ApplyContainerClip = 1 << 3,
+        CalculateAccurateRepaintRect = 1 << 4,
     };
     struct VisibleRectContext {
         VisibleRectContext(bool hasPositionFixedDescendant = false, bool dirtyRectIsFlipped = false, OptionSet<VisibleRectContextOption> options = { })
@@ -676,6 +808,12 @@ public:
             , options(options)
             {
             }
+
+        RepaintRectCalculation repaintRectCalculation() const
+        {
+            return options.contains(VisibleRectContextOption::CalculateAccurateRepaintRect) ? RepaintRectCalculation::Accurate : RepaintRectCalculation::Fast;
+        }
+
         bool hasPositionFixedDescendant { false };
         bool dirtyRectIsFlipped { false };
         bool descendantNeedsEnclosingIntRect { false };
@@ -686,6 +824,7 @@ public:
     // coordinate space. This method deals with outlines and overflow.
     LayoutRect absoluteClippedOverflowRectForRepaint() const { return clippedOverflowRect(nullptr, visibleRectContextForRepaint()); }
     LayoutRect absoluteClippedOverflowRectForSpatialNavigation() const { return clippedOverflowRect(nullptr, visibleRectContextForSpatialNavigation()); }
+    LayoutRect absoluteClippedOverflowRectForRenderTreeAsText() const { return clippedOverflowRect(nullptr, visibleRectContextForRenderTreeAsText()); }
     WEBCORE_EXPORT IntRect pixelSnappedAbsoluteClippedOverflowRect() const;
     virtual LayoutRect clippedOverflowRect(const RenderLayerModelObject* repaintContainer, VisibleRectContext) const;
     LayoutRect clippedOverflowRectForRepaint(const RenderLayerModelObject* repaintContainer) const { return clippedOverflowRect(repaintContainer, visibleRectContextForRepaint()); }
@@ -698,7 +837,7 @@ public:
     // Given a rect in the object's coordinate space, compute a rect  in the coordinate space
     // of repaintContainer suitable for the given VisibleRectContext.
     LayoutRect computeRect(const LayoutRect&, const RenderLayerModelObject* repaintContainer, VisibleRectContext) const;
-    LayoutRect computeRectForRepaint(const LayoutRect& rect, const RenderLayerModelObject* repaintContainer) const { return computeRect(rect, repaintContainer, visibleRectContextForRepaint()); }
+    virtual LayoutRect computeRectForRepaint(const LayoutRect& rect, const RenderLayerModelObject* repaintContainer) const { return computeRect(rect, repaintContainer, visibleRectContextForRepaint()); }
     FloatRect computeFloatRectForRepaint(const FloatRect&, const RenderLayerModelObject* repaintContainer) const;
 
     // Given a rect in the object's coordinate space, compute the location in container space where this rect is visible,
@@ -744,12 +883,12 @@ public:
     void destroy();
 
     // Virtual function helpers for the deprecated Flexible Box Layout (display: -webkit-box).
-    virtual bool isDeprecatedFlexibleBox() const { return false; }
+    virtual bool isRenderDeprecatedFlexibleBox() const { return false; }
     // Virtual function helper for the new FlexibleBox Layout (display: -webkit-flex).
-    virtual bool isFlexibleBox() const { return false; }
-    bool isFlexibleBoxIncludingDeprecated() const { return isFlexibleBox() || isDeprecatedFlexibleBox(); }
+    inline bool isRenderFlexibleBox() const; // Defined in RenderElement.h.
+    inline bool isFlexibleBoxIncludingDeprecated() const; // Defined in RenderElement.h.
 
-    virtual bool isCombineText() const { return false; }
+    bool isRenderCombineText() const { return type() == Type::CombineText; }
 
     virtual int caretMinOffset() const;
     virtual int caretMaxOffset() const;
@@ -783,7 +922,7 @@ public:
     LayoutRect absoluteOutlineBounds() const { return outlineBoundsForRepaint(nullptr); }
 
     // FIXME: Renderers should not need to be notified about internal reparenting (webkit.org/b/224143).
-    enum class IsInternalMove { No, Yes };
+    enum class IsInternalMove : bool { No, Yes };
     virtual void insertedIntoTree(IsInternalMove = IsInternalMove::No);
     virtual void willBeRemovedFromTree(IsInternalMove = IsInternalMove::No);
 
@@ -797,7 +936,8 @@ public:
 
     bool isSkippedContent() const;
 
-    bool shouldSkipContent() const;
+    bool isSkippedContentRoot() const;
+    bool isSkippedContentForLayout() const;
 
 protected:
     //////////////////////////////////////////
@@ -806,7 +946,7 @@ protected:
     void setNextSibling(RenderObject* next) { m_next = next; }
     void setParent(RenderElement*);
     //////////////////////////////////////////
-    Node& nodeForNonAnonymous() const { ASSERT(!isAnonymous()); ASSERT(m_node); return *m_node; }
+    Node& nodeForNonAnonymous() const { ASSERT(!isAnonymous()); return m_node.get(); }
 
     void adjustRectForOutlineAndShadow(LayoutRect&) const;
 
@@ -823,12 +963,11 @@ protected:
 
     static VisibleRectContext visibleRectContextForRepaint();
     static VisibleRectContext visibleRectContextForSpatialNavigation();
+    static VisibleRectContext visibleRectContextForRenderTreeAsText();
 
     bool isSetNeedsLayoutForbidden() const;
 
-    enum class ClipRepaintToLayer : uint8_t { No, Yes };
-    enum class ForceRepaint : uint8_t { No, Yes };
-    void issueRepaint(std::optional<LayoutRect> partialRepaintRect = std::nullopt, ClipRepaintToLayer = ClipRepaintToLayer::No, ForceRepaint = ForceRepaint::No) const;
+    void issueRepaint(std::optional<LayoutRect> partialRepaintRect = std::nullopt, ClipRepaintToLayer = ClipRepaintToLayer::No, ForceRepaint = ForceRepaint::No, std::optional<LayoutBoxExtent> additionalRepaintOutsets = std::nullopt) const;
 
 private:
     void addAbsoluteRectForLayer(LayoutRect& result);
@@ -858,14 +997,6 @@ private:
     void setNeedsLayoutIsForbidden(bool flag) const { m_setNeedsLayoutForbidden = flag; }
     void checkBlockPositionedObjectsNeedLayout();
 #endif
-
-    WeakPtr<Node, WeakPtrImplWithEventTargetData> m_node;
-
-    RenderElement* m_parent;
-    RenderObject* m_previous;
-    RenderObject* m_next;
-
-    CheckedPtr<Layout::Box> m_layoutBox;
 
 #if ASSERT_ENABLED
     bool m_hasAXObject : 1;
@@ -906,12 +1037,10 @@ private:
             , m_preferredLogicalWidthsDirty(false)
             , m_floating(false)
             , m_isAnonymous(node.isDocumentNode())
-            , m_isTextOrRenderView(false)
-            , m_isBox(false)
-            , m_isTableRow(false)
+            , m_isRenderText(false)
+            , m_isRenderBox(false)
             , m_isInline(true)
             , m_isReplacedOrInlineBlock(false)
-            , m_isLineBreak(false)
             , m_horizontalWritingMode(true)
             , m_hasLayer(false)
             , m_hasNonVisibleOverflow(false)
@@ -938,12 +1067,10 @@ private:
         ADD_BOOLEAN_BITFIELD(floating, Floating);
 
         ADD_BOOLEAN_BITFIELD(isAnonymous, IsAnonymous);
-        ADD_BOOLEAN_BITFIELD(isTextOrRenderView, IsTextOrRenderView);
-        ADD_BOOLEAN_BITFIELD(isBox, IsBox);
-        ADD_BOOLEAN_BITFIELD(isTableRow, IsTableRow);
+        ADD_BOOLEAN_BITFIELD(isRenderText, IsRenderText);
+        ADD_BOOLEAN_BITFIELD(isRenderBox, IsRenderBox);
         ADD_BOOLEAN_BITFIELD(isInline, IsInline);
         ADD_BOOLEAN_BITFIELD(isReplacedOrInlineBlock, IsReplacedOrInlineBlock);
-        ADD_BOOLEAN_BITFIELD(isLineBreak, IsLineBreak);
         ADD_BOOLEAN_BITFIELD(horizontalWritingMode, HorizontalWritingMode);
 
         ADD_BOOLEAN_BITFIELD(hasLayer, HasLayer);
@@ -957,10 +1084,12 @@ private:
         
         ADD_BOOLEAN_BITFIELD(isExcludedFromNormalLayout, IsExcludedFromNormalLayout);
 
+        // 3 bits remaining.
+
     private:
         unsigned m_positionedState : 2; // PositionedState
-        unsigned m_selectionState : 3; // SelectionState
-        unsigned m_fragmentedFlowState : 2; // FragmentedFlowState
+        unsigned m_selectionState : 3; // HighlightState
+        unsigned m_fragmentedFlowState : 1; // FragmentedFlowState
         unsigned m_boxDecorationState : 2; // BoxDecorationState
 
     public:
@@ -988,6 +1117,15 @@ private:
 
     RenderObjectBitfields m_bitfields;
 
+    CheckedRef<Node> m_node;
+
+    CheckedPtr<RenderElement> m_parent;
+    CheckedPtr<RenderObject> m_previous;
+    PackedCheckedPtr<RenderObject> m_next;
+    Type m_type;
+
+    CheckedPtr<Layout::Box> m_layoutBox;
+
     // FIXME: This should be RenderElementRareData.
     class RenderObjectRareData {
         WTF_MAKE_FAST_ALLOCATED;
@@ -1002,6 +1140,7 @@ private:
 #if ENABLE(LAYER_BASED_SVG_ENGINE)
         ADD_BOOLEAN_BITFIELD(hasSVGTransform, HasSVGTransform);
 #endif
+        ADD_ENUM_BITFIELD(trimmedMargins, TrimmedMargins, unsigned, 4);
 
         // From RenderElement
         std::unique_ptr<ReferencedSVGResources> referencedSVGResources;
@@ -1028,12 +1167,12 @@ public:
 #if ASSERT_ENABLED
     ~SetLayoutNeededForbiddenScope();
 private:
-    const RenderObject& m_renderObject;
+    CheckedRef<const RenderObject> m_renderObject;
     bool m_preexistingForbidden;
 #endif
 };
 
-inline Frame& RenderObject::frame() const
+inline LocalFrame& RenderObject::frame() const
 {
     return *document().frame();
 }
@@ -1054,7 +1193,7 @@ inline bool RenderObject::renderTreeBeingDestroyed() const
 inline bool RenderObject::isBeforeContent() const
 {
     // Text nodes don't have their own styles, so ignore the style on a text node.
-    if (isText())
+    if (isRenderText())
         return false;
     if (style().styleType() != PseudoId::Before)
         return false;
@@ -1064,7 +1203,7 @@ inline bool RenderObject::isBeforeContent() const
 inline bool RenderObject::isAfterContent() const
 {
     // Text nodes don't have their own styles, so ignore the style on a text node.
-    if (isText())
+    if (isRenderText())
         return false;
     if (style().styleType() != PseudoId::After)
         return false;
@@ -1086,14 +1225,6 @@ inline void RenderObject::setNeedsLayout(MarkingBehavior markParents)
         markContainingBlocksForLayout();
     if (hasLayer())
         setLayerNeedsFullRepaint();
-}
-
-inline bool RenderObject::preservesNewline() const
-{
-    if (isSVGInlineText())
-        return false;
-        
-    return style().preserveNewline();
 }
 
 inline void RenderObject::setSelectionStateIfNeeded(HighlightState state)
@@ -1157,7 +1288,7 @@ inline bool RenderObject::isAnonymousBlock() const
 #if ENABLE(MATHML)
         && !isRenderMathMLBlock()
 #endif
-        && !isListMarker()
+        && !isRenderListMarker()
         && !isRenderFragmentedFlow()
         && !isRenderMultiColumnSet()
         && !isRenderView();
@@ -1189,7 +1320,7 @@ inline void RenderObject::setNeedsLayoutAndPrefWidthsRecalc()
 
 inline void RenderObject::setPositionState(PositionType position)
 {
-    ASSERT((position != PositionType::Absolute && position != PositionType::Fixed) || isBox());
+    ASSERT((position != PositionType::Absolute && position != PositionType::Fixed) || isRenderBox());
     m_bitfields.setPositionedState(static_cast<int>(position));
 }
 
@@ -1206,6 +1337,11 @@ inline auto RenderObject::visibleRectContextForRepaint() -> VisibleRectContext
 inline auto RenderObject::visibleRectContextForSpatialNavigation() -> VisibleRectContext
 {
     return { false, false, { VisibleRectContextOption::ApplyContainerClip, VisibleRectContextOption::ApplyCompositedContainerScrolls, VisibleRectContextOption::ApplyCompositedClips } };
+}
+
+inline auto RenderObject::visibleRectContextForRenderTreeAsText() -> VisibleRectContext
+{
+    return { false, false, { VisibleRectContextOption::ApplyContainerClip, VisibleRectContextOption::ApplyCompositedContainerScrolls, VisibleRectContextOption::ApplyCompositedClips, VisibleRectContextOption::CalculateAccurateRepaintRect  } };
 }
 
 inline bool RenderObject::isSetNeedsLayoutForbidden() const
@@ -1249,16 +1385,43 @@ inline RenderObject* RenderObject::nextInFlowSibling() const
     return nextSibling;
 }
 
-inline bool RenderObject::isAtomicInlineLevelBox() const
-{
-    return style().isDisplayInlineType() && !(style().display() == DisplayType::Inline && !isReplacedOrInlineBlock());
-}
-
 inline bool RenderObject::hasPotentiallyScrollableOverflow() const
 {
     // We only need to test one overflow dimension since 'visible' and 'clip' always get accompanied
     // with 'clip' or 'visible' in the other dimension (see Style::Adjuster::adjust).
     return hasNonVisibleOverflow() && style().overflowX() != Overflow::Clip && style().overflowX() != Overflow::Visible;
+}
+
+#if ENABLE(MATHML)
+inline bool RenderObject::isRenderMathMLRow() const
+{
+    switch (type()) {
+    case Type::MathMLFenced:
+    case Type::MathMLMath:
+    case Type::MathMLMenclose:
+    case Type::MathMLPadded:
+    case Type::MathMLRoot:
+    case Type::MathMLRow:
+        return true;
+    default:
+        break;
+    }
+    return false;
+}
+#endif
+
+inline bool RenderObject::isRenderTable() const
+{
+    switch (type()) {
+    case Type::Table:
+#if ENABLE(MATHML)
+    case Type::MathMLTable:
+#endif
+        return true;
+    default:
+        break;
+    }
+    return false;
 }
 
 WTF::TextStream& operator<<(WTF::TextStream&, const RenderObject&);
@@ -1283,3 +1446,15 @@ void showNodeTree(const WebCore::RenderObject*);
 void showLineTree(const WebCore::RenderObject*);
 void showRenderTree(const WebCore::RenderObject*);
 #endif
+
+namespace WTF {
+
+template<> struct EnumTraits<WebCore::RepaintRectCalculation> {
+    using values = EnumValues<
+        WebCore::RepaintRectCalculation,
+        WebCore::RepaintRectCalculation::Fast,
+        WebCore::RepaintRectCalculation::Accurate
+    >;
+};
+
+} // namespace WTF

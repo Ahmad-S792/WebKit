@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2005-2022 Apple Inc. All rights reserved.
+ * Copyright (C) 2005-2023 Apple Inc. All rights reserved.
  * Copyright (C) 2014 Google Inc. All rights reserved.
  *
  * This library is free software; you can redistribute it and/or
@@ -34,9 +34,9 @@
 #include "FloatRoundedRect.h"
 #include "FocusController.h"
 #include "FontSelector.h"
-#include "Frame.h"
 #include "FrameSelection.h"
 #include "GraphicsContext.h"
+#include "GraphicsTypes.h"
 #include "HTMLAttachmentElement.h"
 #include "HTMLButtonElement.h"
 #include "HTMLInputElement.h"
@@ -47,6 +47,7 @@
 #include "HTMLTextAreaElement.h"
 #include "ImageControlsButtonPart.h"
 #include "InnerSpinButtonPart.h"
+#include "LocalFrame.h"
 #include "LocalizedStrings.h"
 #include "MenuListButtonPart.h"
 #include "MenuListPart.h"
@@ -56,7 +57,7 @@
 #include "ProgressBarPart.h"
 #include "RenderMeter.h"
 #include "RenderProgress.h"
-#include "RenderStyle.h"
+#include "RenderStyleSetters.h"
 #include "RenderView.h"
 #include "SearchFieldCancelButtonPart.h"
 #include "SearchFieldPart.h"
@@ -67,18 +68,17 @@
 #include "SliderTrackPart.h"
 #include "SpinButtonElement.h"
 #include "StringTruncator.h"
+#include "SwitchThumbPart.h"
+#include "SwitchTrackPart.h"
 #include "TextAreaPart.h"
 #include "TextControlInnerElements.h"
 #include "TextFieldPart.h"
 #include "ToggleButtonPart.h"
+#include "TypedElementDescendantIteratorInlines.h"
 #include <wtf/FileSystem.h>
 #include <wtf/Language.h>
 #include <wtf/NeverDestroyed.h>
 #include <wtf/text/StringConcatenateNumbers.h>
-
-#if ENABLE(APPLE_PAY)
-#include "ApplePayButtonPart.h"
-#endif
 
 #if ENABLE(SERVICE_CONTROLS)
 #include "ImageControlsMac.h"
@@ -96,12 +96,6 @@
 namespace WebCore {
 
 using namespace HTMLNames;
-
-static Color& customFocusRingColor()
-{
-    static NeverDestroyed<Color> color;
-    return color;
-}
 
 RenderTheme::RenderTheme()
 {
@@ -212,6 +206,11 @@ void RenderTheme::adjustStyle(RenderStyle& style, const Element* element, const 
         style.setEffectiveAppearance(appearance);
     }
 
+    if (appearance == StyleAppearance::SearchField && searchFieldShouldAppearAsTextField(style)) {
+        appearance = StyleAppearance::TextField;
+        style.setEffectiveAppearance(appearance);
+    }
+
     if (!isAppearanceAllowedForAllElements(appearance)
         && !userAgentAppearanceStyle
         && autoAppearance == StyleAppearance::None
@@ -231,6 +230,7 @@ void RenderTheme::adjustStyle(RenderStyle& style, const Element* element, const 
     case StyleAppearance::Radio:
     case StyleAppearance::PushButton:
     case StyleAppearance::SquareButton:
+    case StyleAppearance::Switch:
 #if ENABLE(INPUT_TYPE_COLOR)
     case StyleAppearance::ColorWell:
 #endif
@@ -239,6 +239,20 @@ void RenderTheme::adjustStyle(RenderStyle& style, const Element* element, const 
         // Border
         LengthBox borderBox(style.borderTopWidth(), style.borderRightWidth(), style.borderBottomWidth(), style.borderLeftWidth());
         borderBox = Theme::singleton().controlBorder(appearance, style.fontCascade(), borderBox, style.effectiveZoom());
+
+        auto supportsVerticalWritingMode = [](StyleAppearance appearance) {
+            return appearance == StyleAppearance::Button
+#if ENABLE(INPUT_TYPE_COLOR)
+                || appearance == StyleAppearance::ColorWell
+#endif
+                || appearance == StyleAppearance::DefaultButton
+                || appearance == StyleAppearance::SquareButton
+                || appearance == StyleAppearance::PushButton;
+        };
+        // Transpose for vertical writing mode:
+        if (!style.isHorizontalWritingMode() && supportsVerticalWritingMode(appearance))
+            borderBox = LengthBox(borderBox.left().value(), borderBox.top().value(), borderBox.right().value(), borderBox.bottom().value());
+
         if (borderBox.top().value() != static_cast<int>(style.borderTopWidth())) {
             if (borderBox.top().value())
                 style.setBorderTopWidth(borderBox.top().value());
@@ -272,8 +286,10 @@ void RenderTheme::adjustStyle(RenderStyle& style, const Element* element, const 
             style.setPaddingBox(WTFMove(paddingBox));
 
         // Whitespace
-        if (Theme::singleton().controlRequiresPreWhiteSpace(appearance))
-            style.setWhiteSpace(WhiteSpace::Pre);
+        if (Theme::singleton().controlRequiresPreWhiteSpace(appearance)) {
+            style.setWhiteSpaceCollapse(WhiteSpaceCollapse::Preserve);
+            style.setTextWrapMode(TextWrapMode::NoWrap);
+        }
 
         // Width / Height
         // The width and height here are affected by the zoom.
@@ -388,6 +404,9 @@ StyleAppearance RenderTheme::autoAppearanceForElement(RenderStyle& style, const 
         if (input.isTextButton() || input.isUploadButton())
             return StyleAppearance::Button;
 
+        if (input.isSwitch())
+            return StyleAppearance::Switch;
+
         if (input.isCheckbox())
             return StyleAppearance::Checkbox;
 
@@ -485,13 +504,19 @@ StyleAppearance RenderTheme::autoAppearanceForElement(RenderStyle& style, const 
 
         if (pseudo == ShadowPseudoIds::webkitInnerSpinButton())
             return StyleAppearance::InnerSpinButton;
+
+        if (pseudo == ShadowPseudoIds::thumb())
+            return StyleAppearance::SwitchThumb;
+
+        if (pseudo == ShadowPseudoIds::track())
+            return StyleAppearance::SwitchTrack;
     }
 
     return StyleAppearance::None;
 }
 
 #if ENABLE(APPLE_PAY)
-static RefPtr<ControlPart> createApplePayButtonPartForRenderer(const RenderObject& renderer)
+static void updateApplePayButtonPartForRenderer(ApplePayButtonPart& applePayButtonPart, const RenderObject& renderer)
 {
     auto& style = renderer.style();
 
@@ -499,15 +524,14 @@ static RefPtr<ControlPart> createApplePayButtonPartForRenderer(const RenderObjec
     if (locale.isEmpty())
         locale = defaultLanguage(ShouldMinimizeLanguages::No);
 
-    return ApplePayButtonPart::create(style.applePayButtonType(), style.applePayButtonStyle(), locale);
+    applePayButtonPart.setButtonType(style.applePayButtonType());
+    applePayButtonPart.setButtonStyle(style.applePayButtonStyle());
+    applePayButtonPart.setLocale(locale);
 }
 #endif
 
-static RefPtr<ControlPart> createMeterPartForRenderer(const RenderObject& renderer)
+static void updateMeterPartForRenderer(MeterPart& meterPart, const RenderMeter& renderMeter)
 {
-    ASSERT(is<RenderMeter>(renderer));
-    const auto& renderMeter = downcast<RenderMeter>(renderer);
-
     auto element = renderMeter.meterElement();
     MeterPart::GaugeRegion gaugeRegion;
 
@@ -523,21 +547,20 @@ static RefPtr<ControlPart> createMeterPartForRenderer(const RenderObject& render
         break;
     }
 
-    return MeterPart::create(gaugeRegion, element->value(), element->min(), element->max());
+    meterPart.setGaugeRegion(gaugeRegion);
+    meterPart.setValue(element->value());
+    meterPart.setMinimum(element->min());
+    meterPart.setMaximum(element->max());
 }
 
-static RefPtr<ControlPart> createProgressBarPartForRenderer(const RenderObject& renderer)
+static void updateProgressBarPartForRenderer(ProgressBarPart& progressBarPart, const RenderProgress& renderProgress)
 {
-    ASSERT(is<RenderProgress>(renderer));
-    const auto& renderProgress = downcast<RenderProgress>(renderer);
-    return ProgressBarPart::create(renderProgress.position(), renderProgress.animationStartTime().secondsSinceEpoch());
+    progressBarPart.setPosition(renderProgress.position());
+    progressBarPart.setAnimationStartTime(renderProgress.animationStartTime().secondsSinceEpoch());
 }
 
-static RefPtr<ControlPart> createSliderTrackPartForRenderer(const RenderObject& renderer)
+static void updateSliderTrackPartForRenderer(SliderTrackPart& sliderTrackPart, const RenderObject& renderer)
 {
-    auto type = renderer.style().effectiveAppearance();
-    ASSERT(type == StyleAppearance::SliderHorizontal || type == StyleAppearance::SliderVertical);
-
     ASSERT(is<HTMLInputElement>(renderer.node()));
     auto& input = downcast<HTMLInputElement>(*renderer.node());
     ASSERT(input.isRangeControl());
@@ -574,7 +597,10 @@ static RefPtr<ControlPart> createSliderTrackPartForRenderer(const RenderObject& 
         }
     }
 #endif
-    return SliderTrackPart::create(type, thumbSize, trackBounds, WTFMove(tickRatios));
+
+    sliderTrackPart.setThumbSize(thumbSize);
+    sliderTrackPart.setTrackBounds(trackBounds);
+    sliderTrackPart.setTickRatios(WTFMove(tickRatios));
 }
 
 RefPtr<ControlPart> RenderTheme::createControlPart(const RenderObject& renderer) const
@@ -603,21 +629,21 @@ RefPtr<ControlPart> RenderTheme::createControlPart(const RenderObject& renderer)
         return MenuListButtonPart::create();
 
     case StyleAppearance::Meter:
-        return createMeterPartForRenderer(renderer);
+        return MeterPart::create();
 
     case StyleAppearance::ProgressBar:
-        return createProgressBarPartForRenderer(renderer);
+        return ProgressBarPart::create();
 
     case StyleAppearance::SliderHorizontal:
     case StyleAppearance::SliderVertical:
-        return createSliderTrackPartForRenderer(renderer);
+        return SliderTrackPart::create(appearance);
 
     case StyleAppearance::SearchField:
         return SearchFieldPart::create();
 
 #if ENABLE(APPLE_PAY)
     case StyleAppearance::ApplePayButton:
-        return createApplePayButtonPartForRenderer(renderer);
+        return ApplePayButtonPart::create();
 #endif
 #if ENABLE(ATTACHMENT_ELEMENT)
     case StyleAppearance::Attachment:
@@ -665,10 +691,46 @@ RefPtr<ControlPart> RenderTheme::createControlPart(const RenderObject& renderer)
     case StyleAppearance::SliderThumbHorizontal:
     case StyleAppearance::SliderThumbVertical:
         return SliderThumbPart::create(appearance);
+
+    case StyleAppearance::Switch:
+        break;
+
+    case StyleAppearance::SwitchThumb:
+        return SwitchThumbPart::create();
+
+    case StyleAppearance::SwitchTrack:
+        return SwitchTrackPart::create();
     }
 
     ASSERT_NOT_REACHED();
     return nullptr;
+}
+
+void RenderTheme::updateControlPartForRenderer(ControlPart& part, const RenderObject& renderer) const
+{
+    if (auto* meterPart = dynamicDowncast<MeterPart>(part)) {
+        ASSERT(is<RenderMeter>(renderer));
+        updateMeterPartForRenderer(*meterPart, downcast<RenderMeter>(renderer));
+        return;
+    }
+
+    if (auto* progressBarPart = dynamicDowncast<ProgressBarPart>(part)) {
+        ASSERT(is<RenderProgress>(renderer));
+        updateProgressBarPartForRenderer(*progressBarPart, downcast<RenderProgress>(renderer));
+        return;
+    }
+
+    if (auto* sliderTrackPart = dynamicDowncast<SliderTrackPart>(part)) {
+        updateSliderTrackPartForRenderer(*sliderTrackPart, renderer);
+        return;
+    }
+
+#if ENABLE(APPLE_PAY)
+    if (auto* applePayButtonPart = dynamicDowncast<ApplePayButtonPart>(part)) {
+        updateApplePayButtonPartForRenderer(*applePayButtonPart, renderer);
+        return;
+    }
+#endif
 }
 
 OptionSet<ControlStyle::State> RenderTheme::extractControlStyleStatesForRenderer(const RenderObject& renderer) const
@@ -738,7 +800,7 @@ ControlStyle RenderTheme::extractControlStyleForRenderer(const RenderBox& box) c
 
     return {
         extractControlStyleStatesForRenderer(*renderer),
-        renderer->style().computedFontPixelSize(),
+        renderer->style().computedFontSize(),
         renderer->style().effectiveZoom(),
         renderer->style().effectiveAccentColor(),
         renderer->style().visitedDependentColorWithColorFilter(CSSPropertyColor),
@@ -759,6 +821,8 @@ bool RenderTheme::paint(const RenderBox& box, ControlPart& part, const PaintInfo
 
     if (paintInfo.context().paintingDisabled())
         return false;
+
+    updateControlPartForRenderer(part, box);
 
     float deviceScaleFactor = box.document().deviceScaleFactor();
     auto zoomedRect = snapRectToDevicePixels(rect, deviceScaleFactor);
@@ -1125,10 +1189,17 @@ Color RenderTheme::platformInactiveListBoxSelectionForegroundColor(OptionSet<Sty
 
 int RenderTheme::baselinePosition(const RenderBox& box) const
 {
+    auto baseline = [&]() -> int {
+        if (box.isHorizontalWritingMode())
+            return box.height() + box.marginTop();
+
+        return (box.width() / 2.0f) + box.marginBefore();
+    }();
+
 #if USE(NEW_THEME)
-    return box.height() + box.marginTop() + Theme::singleton().baselinePositionAdjustment(box.style().effectiveAppearance()) * box.style().effectiveZoom();
+    return baseline + Theme::singleton().baselinePositionAdjustment(box.style().effectiveAppearance(), box.isHorizontalWritingMode()) * box.style().effectiveZoom();
 #else
-    return box.height() + box.marginTop();
+    return baseline;
 #endif
 }
 
@@ -1243,7 +1314,13 @@ bool RenderTheme::isWindowActive(const RenderObject& renderer) const
 
 bool RenderTheme::isChecked(const RenderObject& o) const
 {
-    return is<HTMLInputElement>(o.node()) && downcast<HTMLInputElement>(*o.node()).shouldAppearChecked();
+    if (!o.node())
+        return false;
+    if (auto* element = dynamicDowncast<HTMLInputElement>(*o.node()))
+        return element->shouldAppearChecked();
+    if (auto* host = dynamicDowncast<HTMLInputElement>(o.node()->shadowHost()))
+        return host->shouldAppearChecked();
+    return false;
 }
 
 bool RenderTheme::isIndeterminate(const RenderObject& o) const
@@ -1254,7 +1331,8 @@ bool RenderTheme::isIndeterminate(const RenderObject& o) const
 bool RenderTheme::isEnabled(const RenderObject& renderer) const
 {
     if (auto* element = dynamicDowncast<Element>(renderer.node()))
-        return !element->isDisabledFormControl();
+        return !(element->isDisabledFormControl()
+            || (element->shadowHost() && element->shadowHost()->isDisabledFormControl()));
     return true;
 }
 
@@ -1269,14 +1347,15 @@ bool RenderTheme::isFocused(const RenderObject& renderer) const
         delegate = downcast<SliderThumbElement>(*element).hostInput();
 
     Document& document = delegate->document();
-    Frame* frame = document.frame();
+    auto* frame = document.frame();
     return delegate == document.focusedElement() && frame && frame->selection().isFocusedAndActive();
 }
 
 bool RenderTheme::isPressed(const RenderObject& renderer) const
 {
     if (auto* element = dynamicDowncast<Element>(renderer.node()))
-        return element->active();
+        return element->active()
+            || (element->shadowHost() && element->shadowHost()->active());
     return false;
 }
 
@@ -1672,6 +1751,9 @@ auto RenderTheme::colorCache(OptionSet<StyleColorOptions> options) const -> Colo
 
 Color RenderTheme::systemColor(CSSValueID cssValueId, OptionSet<StyleColorOptions> options) const
 {
+    auto useDarkAppearance = options.contains(StyleColorOptions::UseDarkAppearance);
+    auto forVisitedLink = options.contains(StyleColorOptions::ForVisitedLink);
+
     switch (cssValueId) {
     // https://drafts.csswg.org/css-color-4/#valdef-system-color-canvas
     // Background of application content or documents.
@@ -1697,7 +1779,7 @@ Color RenderTheme::systemColor(CSSValueID cssValueId, OptionSet<StyleColorOption
     // Text in active links. For light backgrounds, traditionally red.
     case CSSValueActivetext:
     case CSSValueWebkitActivelink: // Non-standard addition.
-        return Color::red;
+        return useDarkAppearance ? SRGBA<uint8_t> { 255, 158, 158 } : Color::red;
 
     // https://drafts.csswg.org/css-color-4/#valdef-system-color-buttonface
     // The face background color for push buttons.
@@ -1778,140 +1860,140 @@ Color RenderTheme::systemColor(CSSValueID cssValueId, OptionSet<StyleColorOption
         return Color::black;
 
     // Non-standard addition.
-    case CSSValueWebkitLink:
-        return options.contains(StyleColorOptions::ForVisitedLink) ? SRGBA<uint8_t> { 85, 26, 139 } : SRGBA<uint8_t> { 0, 0, 238 };
+    case CSSValueWebkitLink: {
+        if (useDarkAppearance)
+            return forVisitedLink ? SRGBA<uint8_t> { 208, 173, 240 } : SRGBA<uint8_t> { 158, 158, 255 };
+        return forVisitedLink ? SRGBA<uint8_t> { 85, 26, 139 } : SRGBA<uint8_t> { 0, 0, 238 };
+    }
 
     // Deprecated system-colors:
     // https://drafts.csswg.org/css-color-4/#deprecated-system-colors
 
-    // FIXME: CSS Color 4 imposes same-as requirements on all the deprecated
-    // system colors - https://webkit.org/b/245609.
-
     // https://drafts.csswg.org/css-color-4/#activeborder
     // DEPRECATED: Active window border.
     case CSSValueActiveborder:
-        return Color::white;
+        return systemColor(CSSValueButtonborder, options);
 
     // https://drafts.csswg.org/css-color-4/#activecaption
     // DEPRECATED: Active window caption.
     case CSSValueActivecaption:
-        return SRGBA<uint8_t> { 204, 204, 204 };
+        return systemColor(CSSValueCanvastext, options);
 
     // https://drafts.csswg.org/css-color-4/#appworkspace
     // DEPRECATED: Background color of multiple document interface.
     case CSSValueAppworkspace:
-        return Color::white;
+        return systemColor(CSSValueCanvas, options);
 
     // https://drafts.csswg.org/css-color-4/#background
     // DEPRECATED: Desktop background.
     case CSSValueBackground:
-        return SRGBA<uint8_t> { 99, 99, 206 };
+        return systemColor(CSSValueCanvas, options);
 
     // https://drafts.csswg.org/css-color-4/#buttonhighlight
     // DEPRECATED: The color of the border facing the light source for 3-D elements that
     // appear 3-D due to one layer of surrounding border.
     case CSSValueButtonhighlight:
-        return SRGBA<uint8_t> { 221, 221, 221 };
+        return systemColor(CSSValueButtonface, options);
 
     // https://drafts.csswg.org/css-color-4/#buttonshadow
     // DEPRECATED: The color of the border away from the light source for 3-D elements that
     // appear 3-D due to one layer of surrounding border.
     case CSSValueButtonshadow:
-        return SRGBA<uint8_t> { 136, 136, 136 };
+        return systemColor(CSSValueButtonface, options);
 
     // https://drafts.csswg.org/css-color-4/#captiontext
     // DEPRECATED: Text in caption, size box, and scrollbar arrow box.
     case CSSValueCaptiontext:
-        return Color::black;
+        return systemColor(CSSValueCanvastext, options);
 
     // https://drafts.csswg.org/css-color-4/#inactiveborder
     // DEPRECATED: Inactive window border.
     case CSSValueInactiveborder:
-        return Color::white;
+        return systemColor(CSSValueButtonborder, options);
 
     // https://drafts.csswg.org/css-color-4/#inactivecaption
     // DEPRECATED: Inactive window caption.
     case CSSValueInactivecaption:
-        return Color::white;
+        return systemColor(CSSValueCanvas, options);
 
     // https://drafts.csswg.org/css-color-4/#inactivecaptiontext
     // DEPRECATED: Color of text in an inactive caption.
     case CSSValueInactivecaptiontext:
-        return SRGBA<uint8_t> { 127, 127, 127 };
+        return systemColor(CSSValueGraytext, options);
 
     // https://drafts.csswg.org/css-color-4/#infobackground
     // DEPRECATED: Background color for tooltip controls.
     case CSSValueInfobackground:
-        return SRGBA<uint8_t> { 251, 252, 197 };
+        return systemColor(CSSValueCanvas, options);
 
     // https://drafts.csswg.org/css-color-4/#infotext
     // DEPRECATED: Text color for tooltip controls.
     case CSSValueInfotext:
-        return Color::black;
+        return systemColor(CSSValueCanvastext, options);
 
     // https://drafts.csswg.org/css-color-4/#menu
     // DEPRECATED: Menu background.
     case CSSValueMenu:
-        return Color::lightGray;
+        return systemColor(CSSValueCanvas, options);
 
     // https://drafts.csswg.org/css-color-4/#menutext
     // DEPRECATED: Text in menus.
     case CSSValueMenutext:
-        return Color::black;
+        return systemColor(CSSValueCanvastext, options);
 
     // https://drafts.csswg.org/css-color-4/#scrollbar
     // DEPRECATED: Scroll bar gray area.
     case CSSValueScrollbar:
-        return Color::white;
+        return systemColor(CSSValueCanvas, options);
 
     // https://drafts.csswg.org/css-color-4/#threeddarkshadow
     // DEPRECATED: The color of the darker (generally outer) of the two borders away from
     // thelight source for 3-D elements that appear 3-D due to two concentric layers of
     // surrounding border.
     case CSSValueThreeddarkshadow:
-        return SRGBA<uint8_t> { 102, 102, 102 };
+        return systemColor(CSSValueButtonborder, options);
 
     // https://drafts.csswg.org/css-color-4/#threedface
     // DEPRECATED: The face background color for 3-D elements that appear 3-D due to two
     // concentric layers of surrounding border
     case CSSValueThreedface:
-        return Color::lightGray;
+        return systemColor(CSSValueButtonface, options);
 
     // https://drafts.csswg.org/css-color-4/#threedhighlight
     // DEPRECATED: The color of the lighter (generally outer) of the two borders facing
     // the light source for 3-D elements that appear 3-D due to two concentric layers of
     // surrounding border.
     case CSSValueThreedhighlight:
-        return SRGBA<uint8_t> { 221, 221, 221 };
+        return systemColor(CSSValueButtonborder, options);
 
     // https://drafts.csswg.org/css-color-4/#threedlightshadow
     // DEPRECATED: The color of the darker (generally inner) of the two borders facing
     // the light source for 3-D elements that appear 3-D due to two concentric layers of
     // surrounding border
     case CSSValueThreedlightshadow:
-        return Color::lightGray;
+        return systemColor(CSSValueButtonborder, options);
 
     // https://drafts.csswg.org/css-color-4/#threedshadow
     // DEPRECATED: The color of the lighter (generally inner) of the two borders away
     // from the light source for 3-D elements that appear 3-D due to two concentric layers
     // of surrounding border.
     case CSSValueThreedshadow:
-        return SRGBA<uint8_t> { 136, 136, 136 };
+        return systemColor(CSSValueButtonborder, options);
 
     // https://drafts.csswg.org/css-color-4/#window
     // DEPRECATED: Window background.
     case CSSValueWindow:
-        return Color::white;
+        return systemColor(CSSValueCanvas, options);
 
     // https://drafts.csswg.org/css-color-4/#windowframe
     // DEPRECATED: Window frame.
     case CSSValueWindowframe:
-        return SRGBA<uint8_t> { 204, 204, 204 };
+        return systemColor(CSSValueButtonborder, options);
 
     // https://drafts.csswg.org/css-color-4/#windowtext
     // DEPRECATED: Text in windows.
     case CSSValueWindowtext:
-        return Color::black;
+        return systemColor(CSSValueCanvastext, options);
 
     default:
         return { };
@@ -1966,31 +2048,6 @@ Color RenderTheme::tapHighlightColor()
 
 #endif
 
-// Value chosen by observation. This can be tweaked.
-constexpr double minColorContrastValue = 1.195;
-
-// For transparent or translucent background color, use lightening.
-constexpr float minDisabledColorAlphaValue = 0.5f;
-
-Color RenderTheme::disabledTextColor(const Color& textColor, const Color& backgroundColor) const
-{
-    // The explicit check for black is an optimization for the 99% case (black on white).
-    // This also means that black on black will turn into grey on black when disabled.
-    Color disabledColor;
-    if (equalIgnoringSemanticColor(textColor, Color::black) || backgroundColor.alphaAsFloat() < minDisabledColorAlphaValue || textColor.luminance() < backgroundColor.luminance())
-        disabledColor = textColor.lightened();
-    else
-        disabledColor = textColor.darkened();
-
-    // If there's not very much contrast between the disabled color and the background color,
-    // just leave the text color alone. We don't want to change a good contrast color scheme so that it has really bad contrast.
-    // If the contrast was already poor, then it doesn't do any good to change it to a different poor contrast color scheme.
-    if (contrastRatio(disabledColor, backgroundColor) < minColorContrastValue)
-        return textColor;
-
-    return disabledColor;
-}
-
 // Value chosen to return dark gray for both white on black and black on white.
 constexpr float datePlaceholderColorLightnessAdjustmentFactor = 0.66f;
 
@@ -2007,16 +2064,82 @@ Color RenderTheme::datePlaceholderTextColor(const Color& textColor, const Color&
     return convertColor<SRGBA<float>>(hsla);
 }
 
-void RenderTheme::setCustomFocusRingColor(const Color& color)
+
+Color RenderTheme::spellingMarkerColor(OptionSet<StyleColorOptions> options) const
 {
-    customFocusRingColor() = color;
+    auto& cache = colorCache(options);
+    if (!cache.spellingMarkerColor.isValid())
+        cache.spellingMarkerColor = platformSpellingMarkerColor(options);
+    return cache.spellingMarkerColor;
+}
+
+Color RenderTheme::platformSpellingMarkerColor(OptionSet<StyleColorOptions>) const
+{
+    return Color::red;
+}
+
+Color RenderTheme::dictationAlternativesMarkerColor(OptionSet<StyleColorOptions> options) const
+{
+    auto& cache = colorCache(options);
+    if (!cache.dictationAlternativesMarkerColor.isValid())
+        cache.dictationAlternativesMarkerColor = platformDictationAlternativesMarkerColor(options);
+    return cache.dictationAlternativesMarkerColor;
+}
+
+Color RenderTheme::platformDictationAlternativesMarkerColor(OptionSet<StyleColorOptions>) const
+{
+    return Color::green;
+}
+
+Color RenderTheme::autocorrectionReplacementMarkerColor(const RenderText& renderer) const
+{
+    auto options = renderer.styleColorOptions();
+    auto& cache = colorCache(options);
+    if (!cache.autocorrectionReplacementMarkerColor.isValid())
+        cache.autocorrectionReplacementMarkerColor = platformAutocorrectionReplacementMarkerColor(options);
+    return cache.autocorrectionReplacementMarkerColor;
+}
+
+Color RenderTheme::platformAutocorrectionReplacementMarkerColor(OptionSet<StyleColorOptions>) const
+{
+    return Color::green;
+}
+
+Color RenderTheme::grammarMarkerColor(OptionSet<StyleColorOptions> options) const
+{
+    auto& cache = colorCache(options);
+    if (!cache.grammarMarkerColor.isValid())
+        cache.grammarMarkerColor = platformGrammarMarkerColor(options);
+    return cache.grammarMarkerColor;
+}
+
+Color RenderTheme::platformGrammarMarkerColor(OptionSet<StyleColorOptions>) const
+{
+    return Color::green;
+}
+
+Color RenderTheme::documentMarkerLineColor(const RenderText& renderer, DocumentMarkerLineStyleMode mode) const
+{
+    auto options = renderer.styleColorOptions();
+
+    switch (mode) {
+    case DocumentMarkerLineStyleMode::Spelling:
+        return spellingMarkerColor(options);
+    case DocumentMarkerLineStyleMode::DictationAlternatives:
+    case DocumentMarkerLineStyleMode::TextCheckingDictationPhraseWithAlternatives:
+        return dictationAlternativesMarkerColor(options);
+    case DocumentMarkerLineStyleMode::AutocorrectionReplacement:
+        return autocorrectionReplacementMarkerColor(renderer);
+    case DocumentMarkerLineStyleMode::Grammar:
+        return grammarMarkerColor(options);
+    }
+
+    ASSERT_NOT_REACHED();
+    return Color::transparentBlack;
 }
 
 Color RenderTheme::focusRingColor(OptionSet<StyleColorOptions> options) const
 {
-    if (customFocusRingColor().isValid())
-        return customFocusRingColor();
-
     auto& cache = colorCache(options);
     if (!cache.systemFocusRingColor.isValid())
         cache.systemFocusRingColor = platformFocusRingColor(options);

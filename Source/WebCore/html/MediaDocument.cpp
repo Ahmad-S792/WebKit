@@ -32,9 +32,7 @@
 #include "ChromeClient.h"
 #include "DocumentLoader.h"
 #include "EventNames.h"
-#include "Frame.h"
 #include "FrameLoader.h"
-#include "FrameLoaderClient.h"
 #include "HTMLBodyElement.h"
 #include "HTMLEmbedElement.h"
 #include "HTMLHeadElement.h"
@@ -44,12 +42,14 @@
 #include "HTMLSourceElement.h"
 #include "HTMLVideoElement.h"
 #include "KeyboardEvent.h"
+#include "LocalFrame.h"
+#include "LocalFrameLoaderClient.h"
 #include "NodeList.h"
 #include "Page.h"
 #include "RawDataDocumentParser.h"
 #include "ScriptController.h"
 #include "ShadowRoot.h"
-#include "TypedElementDescendantIterator.h"
+#include "TypedElementDescendantIteratorInlines.h"
 #include <wtf/IsoMallocInlines.h>
 #include <wtf/text/StringBuilder.h>
 
@@ -121,7 +121,7 @@ void MediaDocumentParser::createDocumentStructure()
     body->appendChild(videoElement);
     document.setHasVisuallyNonEmptyCustomContent();
 
-    RefPtr<Frame> frame = document.frame();
+    RefPtr frame = document.frame();
     if (!frame)
         return;
 
@@ -138,7 +138,7 @@ void MediaDocumentParser::appendBytes(DocumentWriter&, const uint8_t*, size_t)
     finish();
 }
     
-MediaDocument::MediaDocument(Frame* frame, const Settings& settings, const URL& url)
+MediaDocument::MediaDocument(LocalFrame* frame, const Settings& settings, const URL& url)
     : HTMLDocument(frame, settings, url, { }, { DocumentClass::Media })
 {
     setCompatibilityMode(DocumentCompatibilityMode::NoQuirksMode);
@@ -164,6 +164,7 @@ static inline HTMLVideoElement* descendantVideoElement(ContainerNode& node)
     return descendantsOfType<HTMLVideoElement>(node).first();
 }
 
+#if !ENABLE(MODERN_MEDIA_CONTROLS)
 static inline HTMLVideoElement* ancestorVideoElement(Node* node)
 {
     while (node && !is<HTMLVideoElement>(*node))
@@ -171,6 +172,7 @@ static inline HTMLVideoElement* ancestorVideoElement(Node* node)
 
     return downcast<HTMLVideoElement>(node);
 }
+#endif
 
 void MediaDocument::defaultEventHandler(Event& event)
 {

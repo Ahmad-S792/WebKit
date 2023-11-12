@@ -40,13 +40,13 @@
 #include "JSCDATASection.h"
 #include "JSComment.h"
 #include "JSDOMBinding.h"
-#include "JSDOMWindowCustom.h"
 #include "JSDocument.h"
 #include "JSDocumentFragment.h"
 #include "JSDocumentType.h"
 #include "JSEventListener.h"
 #include "JSHTMLElement.h"
 #include "JSHTMLElementWrapperFactory.h"
+#include "JSLocalDOMWindowCustom.h"
 #include "JSMathMLElementWrapperFactory.h"
 #include "JSProcessingInstruction.h"
 #include "JSSVGElementWrapperFactory.h"
@@ -60,7 +60,7 @@
 #include "ShadowRoot.h"
 #include "GCReachableRef.h"
 #include "Text.h"
-#include "WebCoreOpaqueRoot.h"
+#include "WebCoreOpaqueRootInlines.h"
 
 namespace WebCore {
 
@@ -107,12 +107,12 @@ static ALWAYS_INLINE JSValue createWrapperInline(JSGlobalObject* lexicalGlobalOb
     switch (node->nodeType()) {
         case Node::ELEMENT_NODE:
             if (is<HTMLElement>(node))
-                wrapper = createJSHTMLWrapper(globalObject, static_reference_cast<HTMLElement>(WTFMove(node)));
+                wrapper = createJSHTMLWrapper(globalObject, downcast<HTMLElement>(WTFMove(node)));
             else if (is<SVGElement>(node))
-                wrapper = createJSSVGWrapper(globalObject, static_reference_cast<SVGElement>(WTFMove(node)));
+                wrapper = createJSSVGWrapper(globalObject, downcast<SVGElement>(WTFMove(node)));
 #if ENABLE(MATHML)
             else if (is<MathMLElement>(node))
-                wrapper = createJSMathMLWrapper(globalObject, static_reference_cast<MathMLElement>(WTFMove(node)));
+                wrapper = createJSMathMLWrapper(globalObject, downcast<MathMLElement>(WTFMove(node)));
 #endif
             else
                 wrapper = createWrapper<Element>(globalObject, WTFMove(node));
@@ -175,7 +175,8 @@ void willCreatePossiblyOrphanedTreeByRemovalSlowCase(Node& root)
 
     auto& globalObject = mainWorldGlobalObject(*frame);
     JSLockHolder lock(&globalObject);
-    toJS(&globalObject, &globalObject, root);
+    ASSERT(!root.wrapper());
+    createWrapper(&globalObject, &globalObject, root);
 }
 
 } // namespace WebCore

@@ -28,11 +28,13 @@
 
 #if HAVE(IOSURFACE)
 
+#include "Logging.h"
 #include <WebCore/GraphicsContextCG.h>
 #include <WebCore/ImageBufferIOSurfaceBackend.h>
 #include <WebCore/PixelBuffer.h>
 #include <wtf/IsoMallocInlines.h>
 #include <wtf/StdLibExtras.h>
+#include <wtf/text/TextStream.h>
 
 namespace WebKit {
 using namespace WebCore;
@@ -61,22 +63,26 @@ std::unique_ptr<ImageBufferRemoteIOSurfaceBackend> ImageBufferRemoteIOSurfaceBac
         return nullptr;
     }
 
-    return makeUnique<ImageBufferRemoteIOSurfaceBackend>(parameters, WTFMove(handle));
+    return makeUnique<ImageBufferRemoteIOSurfaceBackend>(parameters, WTFMove(std::get<MachSendRight>(handle)));
 }
 
-ImageBufferBackendHandle ImageBufferRemoteIOSurfaceBackend::createBackendHandle(SharedMemory::Protection) const
+std::optional<ImageBufferBackendHandle> ImageBufferRemoteIOSurfaceBackend::createBackendHandle(SharedMemory::Protection) const
 {
-    if (!std::holds_alternative<MachSendRight>(m_handle)) {
-        RELEASE_ASSERT_NOT_REACHED();
-        return { };
-    }
+    return MachSendRight { m_handle };
+}
 
-    return std::get<MachSendRight>(m_handle).copySendRight();
+std::optional<ImageBufferBackendHandle> ImageBufferRemoteIOSurfaceBackend::takeBackendHandle(SharedMemory::Protection)
+{
+    return std::exchange(m_handle, { });
 }
 
 void ImageBufferRemoteIOSurfaceBackend::setBackendHandle(ImageBufferBackendHandle&& handle)
 {
-    m_handle = WTFMove(handle);
+    if (!std::holds_alternative<MachSendRight>(handle)) {
+        RELEASE_ASSERT_NOT_REACHED();
+        return;
+    }
+    m_handle = WTFMove(std::get<MachSendRight>(handle));
 }
 
 void ImageBufferRemoteIOSurfaceBackend::clearBackendHandle()
@@ -86,42 +92,49 @@ void ImageBufferRemoteIOSurfaceBackend::clearBackendHandle()
 
 bool ImageBufferRemoteIOSurfaceBackend::hasBackendHandle() const
 {
-    return std::holds_alternative<MachSendRight>(m_handle);
+    return !!m_handle;
 }
 
-GraphicsContext& ImageBufferRemoteIOSurfaceBackend::context() const
+GraphicsContext& ImageBufferRemoteIOSurfaceBackend::context()
 {
     RELEASE_ASSERT_NOT_REACHED();
     return *(GraphicsContext*)nullptr;
 }
 
-IntSize ImageBufferRemoteIOSurfaceBackend::backendSize() const
-{
-    return calculateBackendSize(m_parameters);
-}
-
 unsigned ImageBufferRemoteIOSurfaceBackend::bytesPerRow() const
 {
-    IntSize backendSize = calculateBackendSize(m_parameters);
-    return ImageBufferIOSurfaceBackend::calculateBytesPerRow(backendSize);
+    return ImageBufferIOSurfaceBackend::calculateBytesPerRow(m_parameters.backendSize);
 }
 
-RefPtr<NativeImage> ImageBufferRemoteIOSurfaceBackend::copyNativeImage(BackingStoreCopy) const
+RefPtr<NativeImage> ImageBufferRemoteIOSurfaceBackend::copyNativeImage()
 {
     RELEASE_ASSERT_NOT_REACHED();
     return { };
 }
 
-RefPtr<PixelBuffer> ImageBufferRemoteIOSurfaceBackend::getPixelBuffer(const PixelBufferFormat&, const IntRect&, const ImageBufferAllocator&) const
+RefPtr<NativeImage> ImageBufferRemoteIOSurfaceBackend::createNativeImageReference()
 {
     RELEASE_ASSERT_NOT_REACHED();
-    return nullptr;
+    return { };
+}
+
+void ImageBufferRemoteIOSurfaceBackend::getPixelBuffer(const IntRect&, PixelBuffer&)
+{
+    RELEASE_ASSERT_NOT_REACHED();
 }
 
 void ImageBufferRemoteIOSurfaceBackend::putPixelBuffer(const PixelBuffer&, const IntRect&, const IntPoint&, AlphaPremultiplication)
 {
     RELEASE_ASSERT_NOT_REACHED();
 }
+
+String ImageBufferRemoteIOSurfaceBackend::debugDescription() const
+{
+    TextStream stream;
+    stream << "ImageBufferRemoteIOSurfaceBackend " << this << " handle " << m_handle.sendRight() << " " << m_volatilityState;
+    return stream.release();
+}
+
 
 } // namespace WebKit
 

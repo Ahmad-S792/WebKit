@@ -31,6 +31,7 @@
 #include "Element.h"
 #include "EventNames.h"
 #include "MouseEvent.h"
+#include "PlatformMouseEvent.h"
 #include <wtf/IsoMallocInlines.h>
 #include <wtf/NeverDestroyed.h>
 
@@ -48,7 +49,7 @@ private:
     SimulatedMouseEvent(const AtomString& eventType, RefPtr<WindowProxy>&& view, RefPtr<Event>&& underlyingEvent, Element& target, SimulatedClickSource source)
         : MouseEvent(eventType, CanBubble::Yes, IsCancelable::Yes, IsComposed::Yes,
             underlyingEvent ? underlyingEvent->timeStamp() : MonotonicTime::now(), WTFMove(view), /* detail */ 0,
-            { }, { }, 0, 0, modifiersFromUnderlyingEvent(underlyingEvent), 0, 0, nullptr, 0, 0, IsSimulated::Yes,
+            { }, { }, 0, 0, modifiersFromUnderlyingEvent(underlyingEvent), MouseButton::Left, 0, nullptr, 0, SyntheticClickType::NoTap, IsSimulated::Yes,
             source == SimulatedClickSource::UserAgent ? IsTrusted::Yes : IsTrusted::No)
     {
         setUnderlyingEvent(underlyingEvent.get());
@@ -78,7 +79,7 @@ private:
 
 static void simulateMouseEvent(const AtomString& eventType, Element& element, Event* underlyingEvent, SimulatedClickSource source)
 {
-    element.dispatchEvent(SimulatedMouseEvent::create(eventType, element.document().windowProxy(), underlyingEvent, element, source));
+    element.dispatchEvent(SimulatedMouseEvent::create(eventType, element.document().protectedWindowProxy().get(), underlyingEvent, element, source));
 }
 
 bool simulateClick(Element& element, Event* underlyingEvent, SimulatedClickMouseEventOptions mouseEventOptions, SimulatedClickVisualOptions visualOptions, SimulatedClickSource creationOptions)
@@ -86,8 +87,8 @@ bool simulateClick(Element& element, Event* underlyingEvent, SimulatedClickMouse
     if (element.isDisabledFormControl())
         return false;
 
-    static MainThreadNeverDestroyed<HashSet<Element*>> elementsDispatchingSimulatedClicks;
-    if (!elementsDispatchingSimulatedClicks.get().add(&element).isNewEntry)
+    static MainThreadNeverDestroyed<HashSet<CheckedRef<Element>>> elementsDispatchingSimulatedClicks;
+    if (!elementsDispatchingSimulatedClicks.get().add(element).isNewEntry)
         return false;
 
     auto& eventNames = WebCore::eventNames();
@@ -104,7 +105,7 @@ bool simulateClick(Element& element, Event* underlyingEvent, SimulatedClickMouse
 
     simulateMouseEvent(eventNames.clickEvent, element, underlyingEvent, creationOptions);
 
-    elementsDispatchingSimulatedClicks.get().remove(&element);
+    elementsDispatchingSimulatedClicks.get().remove(element);
     return true;
 }
 

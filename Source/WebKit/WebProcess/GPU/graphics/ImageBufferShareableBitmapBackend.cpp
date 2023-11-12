@@ -41,22 +41,13 @@ using namespace WebCore;
 
 WTF_MAKE_ISO_ALLOCATED_IMPL(ImageBufferShareableBitmapBackend);
 
-ShareableBitmapConfiguration ImageBufferShareableBitmapBackend::configuration(const Parameters& parameters)
-{
-    return { parameters.colorSpace };
-}
-
 IntSize ImageBufferShareableBitmapBackend::calculateSafeBackendSize(const Parameters& parameters)
 {
-    IntSize backendSize = calculateBackendSize(parameters);
+    IntSize backendSize = parameters.backendSize;
     if (backendSize.isEmpty())
         return { };
 
-    CheckedUint32 bytesPerRow = ShareableBitmap::calculateBytesPerRow(backendSize, configuration(parameters));
-    if (bytesPerRow.hasOverflowed())
-        return { };
-
-    CheckedSize numBytes = CheckedUint32(backendSize.height()) * bytesPerRow;
+    CheckedUint32 numBytes = ShareableBitmapConfiguration::calculateSizeInBytes(backendSize, parameters.colorSpace);
     if (numBytes.hasOverflowed())
         return { };
 
@@ -66,13 +57,12 @@ IntSize ImageBufferShareableBitmapBackend::calculateSafeBackendSize(const Parame
 unsigned ImageBufferShareableBitmapBackend::calculateBytesPerRow(const Parameters& parameters, const IntSize& backendSize)
 {
     ASSERT(!backendSize.isEmpty());
-    return ShareableBitmap::calculateBytesPerRow(backendSize, configuration(parameters));
+    return ShareableBitmapConfiguration::calculateBytesPerRow(backendSize, parameters.colorSpace);
 }
 
 size_t ImageBufferShareableBitmapBackend::calculateMemoryCost(const Parameters& parameters)
 {
-    IntSize backendSize = calculateBackendSize(parameters);
-    return ImageBufferBackend::calculateMemoryCost(backendSize, calculateBytesPerRow(parameters, backendSize));
+    return ImageBufferBackend::calculateMemoryCost(parameters.backendSize, calculateBytesPerRow(parameters, parameters.backendSize));
 }
 
 std::unique_ptr<ImageBufferShareableBitmapBackend> ImageBufferShareableBitmapBackend::create(const Parameters& parameters, const WebCore::ImageBufferCreationContext&)
@@ -83,7 +73,7 @@ std::unique_ptr<ImageBufferShareableBitmapBackend> ImageBufferShareableBitmapBac
     if (backendSize.isEmpty())
         return nullptr;
 
-    auto bitmap = ShareableBitmap::create(backendSize, configuration(parameters));
+    auto bitmap = ShareableBitmap::create({ backendSize, parameters.colorSpace });
     if (!bitmap)
         return nullptr;
 
@@ -96,12 +86,12 @@ std::unique_ptr<ImageBufferShareableBitmapBackend> ImageBufferShareableBitmapBac
 
 std::unique_ptr<ImageBufferShareableBitmapBackend> ImageBufferShareableBitmapBackend::create(const Parameters& parameters, ImageBufferBackendHandle handle)
 {
-    if (!std::holds_alternative<ShareableBitmapHandle>(handle)) {
+    if (!std::holds_alternative<ShareableBitmap::Handle>(handle)) {
         ASSERT_NOT_REACHED();
         return nullptr;
     }
 
-    auto bitmap = ShareableBitmap::create(WTFMove(std::get<ShareableBitmapHandle>(handle)));
+    auto bitmap = ShareableBitmap::create(WTFMove(std::get<ShareableBitmap::Handle>(handle)));
     if (!bitmap)
         return nullptr;
 
@@ -113,7 +103,7 @@ std::unique_ptr<ImageBufferShareableBitmapBackend> ImageBufferShareableBitmapBac
 }
 
 ImageBufferShareableBitmapBackend::ImageBufferShareableBitmapBackend(const Parameters& parameters, Ref<ShareableBitmap>&& bitmap, std::unique_ptr<GraphicsContext>&& context)
-    : PlatformImageBufferBackend(parameters)
+    : ImageBufferShareableBitmapBackendBase(parameters)
     , m_bitmap(WTFMove(bitmap))
     , m_context(WTFMove(context))
 {
@@ -124,16 +114,11 @@ ImageBufferShareableBitmapBackend::ImageBufferShareableBitmapBackend(const Param
     m_context->applyDeviceScaleFactor(resolutionScale());
 }
 
-ImageBufferBackendHandle ImageBufferShareableBitmapBackend::createBackendHandle(SharedMemory::Protection protection) const
+std::optional<ImageBufferBackendHandle> ImageBufferShareableBitmapBackend::createBackendHandle(SharedMemory::Protection protection) const
 {
     if (auto handle = m_bitmap->createHandle(protection))
         return ImageBufferBackendHandle(WTFMove(*handle));
     return { };
-}
-
-IntSize ImageBufferShareableBitmapBackend::backendSize() const
-{
-    return m_bitmap->size();
 }
 
 unsigned ImageBufferShareableBitmapBackend::bytesPerRow() const
@@ -148,19 +133,31 @@ RefPtr<cairo_surface_t> ImageBufferShareableBitmapBackend::createCairoSurface()
 }
 #endif
 
-RefPtr<NativeImage> ImageBufferShareableBitmapBackend::copyNativeImage(BackingStoreCopy copyBehavior) const
+RefPtr<NativeImage> ImageBufferShareableBitmapBackend::copyNativeImage()
 {
-    return NativeImage::create(m_bitmap->createPlatformImage(copyBehavior));
+    return NativeImage::create(m_bitmap->createPlatformImage(CopyBackingStore));
 }
 
-RefPtr<PixelBuffer> ImageBufferShareableBitmapBackend::getPixelBuffer(const PixelBufferFormat& outputFormat, const IntRect& srcRect, const ImageBufferAllocator& allocator) const
+RefPtr<NativeImage> ImageBufferShareableBitmapBackend::createNativeImageReference()
 {
-    return ImageBufferBackend::getPixelBuffer(outputFormat, srcRect, m_bitmap->data(), allocator);
+    return NativeImage::create(m_bitmap->createPlatformImage(DontCopyBackingStore));
+}
+
+void ImageBufferShareableBitmapBackend::getPixelBuffer(const IntRect& srcRect, PixelBuffer& destination)
+{
+    ImageBufferBackend::getPixelBuffer(srcRect, m_bitmap->data(), destination);
 }
 
 void ImageBufferShareableBitmapBackend::putPixelBuffer(const PixelBuffer& pixelBuffer, const IntRect& srcRect, const IntPoint& destPoint, WebCore::AlphaPremultiplication destFormat)
 {
     ImageBufferBackend::putPixelBuffer(pixelBuffer, srcRect, destPoint, destFormat, m_bitmap->data());
+}
+
+String ImageBufferShareableBitmapBackend::debugDescription() const
+{
+    TextStream stream;
+    stream << "ImageBufferShareableBitmapBackend " << this;
+    return stream.release();
 }
 
 } // namespace WebKit

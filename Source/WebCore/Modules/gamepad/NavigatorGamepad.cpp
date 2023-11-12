@@ -28,10 +28,11 @@
 
 #if ENABLE(GAMEPAD)
 
-#include "DOMWindow.h"
+#include "Document.h"
 #include "Gamepad.h"
 #include "GamepadManager.h"
 #include "GamepadProvider.h"
+#include "LocalDOMWindow.h"
 #include "Navigator.h"
 #include "PlatformGamepad.h"
 
@@ -75,8 +76,8 @@ Ref<Gamepad> NavigatorGamepad::gamepadFromPlatformGamepad(PlatformGamepad& platf
 
 const Vector<RefPtr<Gamepad>>& NavigatorGamepad::getGamepads(Navigator& navigator)
 {
-    auto* domWindow = navigator.window();
-    Document* document = domWindow ? domWindow->document() : nullptr;
+    RefPtr domWindow = navigator.window();
+    RefPtr document = domWindow ? domWindow->document() : nullptr;
     if (!document) {
         static NeverDestroyed<Vector<RefPtr<Gamepad>>> emptyGamepads;
         return emptyGamepads;
@@ -98,7 +99,7 @@ const Vector<RefPtr<Gamepad>>& NavigatorGamepad::gamepads()
     if (m_gamepads.isEmpty())
         return m_gamepads;
 
-    const Vector<PlatformGamepad*>& platformGamepads = GamepadProvider::singleton().platformGamepads();
+    auto& platformGamepads = GamepadProvider::singleton().platformGamepads();
 
     for (unsigned i = 0; i < platformGamepads.size(); ++i) {
         if (!platformGamepads[i]) {
@@ -115,7 +116,7 @@ const Vector<RefPtr<Gamepad>>& NavigatorGamepad::gamepads()
 
 void NavigatorGamepad::gamepadsBecameVisible()
 {
-    const Vector<PlatformGamepad*>& platformGamepads = GamepadProvider::singleton().platformGamepads();
+    auto& platformGamepads = GamepadProvider::singleton().platformGamepads();
     m_gamepads.resize(platformGamepads.size());
 
     for (unsigned i = 0; i < platformGamepads.size(); ++i) {

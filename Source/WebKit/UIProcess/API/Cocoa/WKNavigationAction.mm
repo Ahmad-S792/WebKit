@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2014 Apple Inc. All rights reserved.
+ * Copyright (C) 2014-2023 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -31,6 +31,7 @@
 #import "WKFrameInfoInternal.h"
 #import "WKNavigationInternal.h"
 #import "WebEventFactory.h"
+#import "WebsiteDataStore.h"
 #import "_WKHitTestResultInternal.h"
 #import "_WKUserInitiatedActionInternal.h"
 #import <WebCore/FloatPoint.h>
@@ -245,12 +246,26 @@ static WKSyntheticClickType toWKSyntheticClickType(WebKit::WebMouseEventSyntheti
     auto& webHitTestResultData = _navigationAction->webHitTestResultData();
     if (!webHitTestResultData)
         return nil;
+    RefPtr sourceFrame = _navigationAction->sourceFrame();
+    if (!sourceFrame)
+        return nil;
+    RefPtr page = sourceFrame->page();
+    if (!page)
+        return nil;
 
-    auto apiHitTestResult = API::HitTestResult::create(webHitTestResultData.value());
+    auto apiHitTestResult = API::HitTestResult::create(webHitTestResultData.value(), *page);
     return retainPtr(wrapper(apiHitTestResult)).autorelease();
 #else
     return nil;
 #endif
+}
+
+- (NSString *)_targetFrameName
+{
+    auto& name = _navigationAction->targetFrameName();
+    if (name.isNull())
+        return nil;
+    return name;
 }
 
 - (BOOL)_hasOpener

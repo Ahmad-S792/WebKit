@@ -58,17 +58,17 @@
 #include <WebCore/CommonVM.h>
 #include <WebCore/DeprecatedGlobalSettings.h>
 #include <WebCore/Document.h>
-#include <WebCore/Frame.h>
 #include <WebCore/FrameLoader.h>
-#include <WebCore/FrameView.h>
 #include <WebCore/GCController.h>
 #include <WebCore/GeolocationClient.h>
 #include <WebCore/GeolocationController.h>
 #include <WebCore/GeolocationPositionData.h>
 #include <WebCore/JSDOMConvertBufferSource.h>
 #include <WebCore/JSDOMExceptionHandling.h>
-#include <WebCore/JSDOMWindow.h>
+#include <WebCore/JSLocalDOMWindow.h>
 #include <WebCore/JSNotification.h>
+#include <WebCore/LocalFrame.h>
+#include <WebCore/LocalFrameView.h>
 #include <WebCore/Page.h>
 #include <WebCore/PageGroup.h>
 #include <WebCore/PrintContext.h>
@@ -91,14 +91,14 @@ namespace WebKit {
 using namespace WebCore;
 using namespace JSC;
 
-RefPtr<InjectedBundle> InjectedBundle::create(WebProcessCreationParameters& parameters, API::Object* initializationUserData)
+RefPtr<InjectedBundle> InjectedBundle::create(WebProcessCreationParameters& parameters, RefPtr<API::Object>&& initializationUserData)
 {
     TraceScope scope(TracePointCode::CreateInjectedBundleStart, TracePointCode::CreateInjectedBundleEnd);
     
     auto bundle = adoptRef(*new InjectedBundle(parameters));
 
     bundle->m_sandboxExtension = SandboxExtension::create(WTFMove(parameters.injectedBundlePathExtensionHandle));
-    if (!bundle->initialize(parameters, initializationUserData))
+    if (!bundle->initialize(parameters, WTFMove(initializationUserData)))
         return nullptr;
 
     return bundle;
@@ -140,7 +140,7 @@ void InjectedBundle::postSynchronousMessage(const String& messageName, API::Obje
 {
     auto& webProcess = WebProcess::singleton();
     auto sendResult = webProcess.parentProcessConnection()->sendSync(Messages::WebProcessPool::HandleSynchronousMessage(messageName, UserData(webProcess.transformObjectsToHandles(messageBody))), 0);
-    if (sendResult) {
+    if (sendResult.succeeded()) {
         auto [returnUserData] = sendResult.takeReply();
         returnData = webProcess.transformHandlesToObjects(returnUserData.object());
     } else
@@ -179,7 +179,7 @@ void InjectedBundle::setAsynchronousSpellCheckingEnabled(bool enabled)
 
 int InjectedBundle::numberOfPages(WebFrame* frame, double pageWidthInPixels, double pageHeightInPixels)
 {
-    Frame* coreFrame = frame ? frame->coreFrame() : 0;
+    auto* coreFrame = frame ? frame->coreLocalFrame() : nullptr;
     if (!coreFrame)
         return -1;
     if (!pageWidthInPixels)
@@ -192,11 +192,11 @@ int InjectedBundle::numberOfPages(WebFrame* frame, double pageWidthInPixels, dou
 
 int InjectedBundle::pageNumberForElementById(WebFrame* frame, const String& id, double pageWidthInPixels, double pageHeightInPixels)
 {
-    Frame* coreFrame = frame ? frame->coreFrame() : 0;
+    RefPtr coreFrame = frame ? frame->coreLocalFrame() : nullptr;
     if (!coreFrame)
         return -1;
 
-    Element* element = coreFrame->document()->getElementById(id);
+    RefPtr element = coreFrame->document()->getElementById(id);
     if (!element)
         return -1;
 
@@ -205,12 +205,12 @@ int InjectedBundle::pageNumberForElementById(WebFrame* frame, const String& id, 
     if (!pageHeightInPixels)
         pageHeightInPixels = coreFrame->view()->height();
 
-    return PrintContext::pageNumberForElement(element, FloatSize(pageWidthInPixels, pageHeightInPixels));
+    return PrintContext::pageNumberForElement(element.get(), FloatSize(pageWidthInPixels, pageHeightInPixels));
 }
 
 String InjectedBundle::pageSizeAndMarginsInPixels(WebFrame* frame, int pageIndex, int width, int height, int marginTop, int marginRight, int marginBottom, int marginLeft)
 {
-    Frame* coreFrame = frame ? frame->coreFrame() : 0;
+    auto* coreFrame = frame ? frame->coreLocalFrame() : nullptr;
     if (!coreFrame)
         return String();
 
@@ -219,7 +219,7 @@ String InjectedBundle::pageSizeAndMarginsInPixels(WebFrame* frame, int pageIndex
 
 bool InjectedBundle::isPageBoxVisible(WebFrame* frame, int pageIndex)
 {
-    Frame* coreFrame = frame ? frame->coreFrame() : 0;
+    auto* coreFrame = frame ? frame->coreLocalFrame() : nullptr;
     if (!coreFrame)
         return false;
 
@@ -255,31 +255,31 @@ void InjectedBundle::reportException(JSContextRef context, JSValueRef exception)
     JSC::JSGlobalObject* globalObject = toJS(context);
     JSLockHolder lock(globalObject);
 
-    // Make sure the context has a DOMWindow global object, otherwise this context didn't originate from a Page.
-    if (!globalObject->inherits<JSDOMWindow>())
+    // Make sure the context has a LocalDOMWindow global object, otherwise this context didn't originate from a Page.
+    if (!globalObject->inherits<JSLocalDOMWindow>())
         return;
 
     WebCore::reportException(globalObject, toJS(globalObject, exception));
 }
 
-void InjectedBundle::didCreatePage(WebPage* page)
+void InjectedBundle::didCreatePage(WebPage& page)
 {
-    m_client->didCreatePage(*this, *page);
+    m_client->didCreatePage(*this, page);
 }
 
-void InjectedBundle::willDestroyPage(WebPage* page)
+void InjectedBundle::willDestroyPage(WebPage& page)
 {
-    m_client->willDestroyPage(*this, *page);
+    m_client->willDestroyPage(*this, page);
 }
 
-void InjectedBundle::didReceiveMessage(const String& messageName, API::Object* messageBody)
+void InjectedBundle::didReceiveMessage(const String& messageName, RefPtr<API::Object>&& messageBody)
 {
-    m_client->didReceiveMessage(*this, messageName, messageBody);
+    m_client->didReceiveMessage(*this, messageName, WTFMove(messageBody));
 }
 
-void InjectedBundle::didReceiveMessageToPage(WebPage* page, const String& messageName, API::Object* messageBody)
+void InjectedBundle::didReceiveMessageToPage(WebPage& page, const String& messageName, RefPtr<API::Object>&& messageBody)
 {
-    m_client->didReceiveMessageToPage(*this, *page, messageName, messageBody);
+    m_client->didReceiveMessageToPage(Ref { *this }, page, messageName, WTFMove(messageBody));
 }
 
 void InjectedBundle::setUserStyleSheetLocation(const String& location)
@@ -309,7 +309,7 @@ void InjectedBundle::removeAllWebNotificationPermissions(WebPage* page)
 #endif
 }
 
-std::optional<UUID> InjectedBundle::webNotificationID(JSContextRef jsContext, JSValueRef jsNotification)
+std::optional<WTF::UUID> InjectedBundle::webNotificationID(JSContextRef jsContext, JSValueRef jsNotification)
 {
 #if ENABLE(NOTIFICATIONS)
     WebCore::Notification* notification = JSNotification::toWrapped(toJS(jsContext)->vm(), toJS(toJS(jsContext), jsNotification));
@@ -336,12 +336,12 @@ InjectedBundle::DocumentIDToURLMap InjectedBundle::liveDocumentURLs(bool exclude
 {
     DocumentIDToURLMap result;
 
-    for (const auto* document : Document::allDocuments())
+    for (auto& document : Document::allDocuments())
         result.add(document->identifier().object(), document->url().string());
 
     if (excludeDocumentsInPageGroupPages) {
         Page::forEachPage([&](Page& page) {
-            for (AbstractFrame* frame = &page.mainFrame(); frame; frame = frame->tree().traverseNext()) {
+            for (auto* frame = &page.mainFrame(); frame; frame = frame->tree().traverseNext()) {
                 auto* localFrame = dynamicDowncast<LocalFrame>(frame);
                 if (!localFrame)
                     continue;

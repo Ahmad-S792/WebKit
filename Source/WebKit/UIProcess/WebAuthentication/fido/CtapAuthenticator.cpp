@@ -92,19 +92,18 @@ CtapAuthenticator::CtapAuthenticator(std::unique_ptr<CtapDriver>&& driver, Authe
 void CtapAuthenticator::makeCredential()
 {
     ASSERT(!m_isDowngraded);
-    if (processGoogleLegacyAppIdSupportExtension())
-        return;
     Vector<uint8_t> cborCmd;
     auto& options = std::get<PublicKeyCredentialCreationOptions>(requestData().options);
     auto internalUVAvailability = m_info.options().userVerificationAvailability();
     auto residentKeyAvailability = m_info.options().residentKeyAvailability();
+    Vector<String> authenticatorSupportedExtensions;
     // If UV is required, then either built-in uv or a pin will work.
     if (internalUVAvailability == UVAvailability::kSupportedAndConfigured && (!options.authenticatorSelection || options.authenticatorSelection->userVerification != UserVerificationRequirement::Discouraged) && m_pinAuth.isEmpty())
-        cborCmd = encodeMakeCredenitalRequestAsCBOR(requestData().hash, options, internalUVAvailability, residentKeyAvailability);
+        cborCmd = encodeMakeCredentialRequestAsCBOR(requestData().hash, options, internalUVAvailability, residentKeyAvailability, authenticatorSupportedExtensions);
     else if (m_info.options().clientPinAvailability() == AuthenticatorSupportedOptions::ClientPinAvailability::kSupportedAndPinSet)
-        cborCmd = encodeMakeCredenitalRequestAsCBOR(requestData().hash, options, internalUVAvailability, residentKeyAvailability, PinParameters { pin::kProtocolVersion, m_pinAuth });
+        cborCmd = encodeMakeCredentialRequestAsCBOR(requestData().hash, options, internalUVAvailability, residentKeyAvailability, authenticatorSupportedExtensions, PinParameters { pin::kProtocolVersion, m_pinAuth });
     else
-        cborCmd = encodeMakeCredenitalRequestAsCBOR(requestData().hash, options, internalUVAvailability, residentKeyAvailability);
+        cborCmd = encodeMakeCredentialRequestAsCBOR(requestData().hash, options, internalUVAvailability, residentKeyAvailability, authenticatorSupportedExtensions);
     driver().transact(WTFMove(cborCmd), [weakThis = WeakPtr { *this }](Vector<uint8_t>&& data) {
         ASSERT(RunLoop::isMain());
         if (!weakThis)
@@ -125,7 +124,7 @@ void CtapAuthenticator::continueMakeCredentialAfterResponseReceived(Vector<uint8
         }
 
         if (error == CtapDeviceResponseCode::kCtap2ErrCredentialExcluded) {
-            receiveRespond(ExceptionData { InvalidStateError, "At least one credential matches an entry of the excludeCredentials list in the authenticator."_s });
+            receiveRespond(ExceptionData { ExceptionCode::InvalidStateError, "At least one credential matches an entry of the excludeCredentials list in the authenticator."_s });
             return;
         }
 
@@ -136,7 +135,7 @@ void CtapAuthenticator::continueMakeCredentialAfterResponseReceived(Vector<uint8
                 return;
         }
 
-        receiveRespond(ExceptionData { UnknownError, makeString("Unknown internal error. Error code: ", static_cast<uint8_t>(error)) });
+        receiveRespond(ExceptionData { ExceptionCode::UnknownError, makeString("Unknown internal error. Error code: ", static_cast<uint8_t>(error)) });
         return;
     }
     auto& options = std::get<PublicKeyCredentialCreationOptions>(requestData().options);
@@ -157,13 +156,14 @@ void CtapAuthenticator::getAssertion()
     Vector<uint8_t> cborCmd;
     auto& options = std::get<PublicKeyCredentialRequestOptions>(requestData().options);
     auto internalUVAvailability = m_info.options().userVerificationAvailability();
+    Vector<String> authenticatorSupportedExtensions;
     // If UV is required, then either built-in uv or a pin will work.
     if (internalUVAvailability == UVAvailability::kSupportedAndConfigured && options.userVerification != UserVerificationRequirement::Discouraged && m_pinAuth.isEmpty())
-        cborCmd = encodeGetAssertionRequestAsCBOR(requestData().hash, options, internalUVAvailability);
+        cborCmd = encodeGetAssertionRequestAsCBOR(requestData().hash, options, internalUVAvailability, authenticatorSupportedExtensions);
     else if (m_info.options().clientPinAvailability() == AuthenticatorSupportedOptions::ClientPinAvailability::kSupportedAndPinSet && options.userVerification != UserVerificationRequirement::Discouraged)
-        cborCmd = encodeGetAssertionRequestAsCBOR(requestData().hash, options, internalUVAvailability, PinParameters { pin::kProtocolVersion, m_pinAuth });
+        cborCmd = encodeGetAssertionRequestAsCBOR(requestData().hash, options, internalUVAvailability, authenticatorSupportedExtensions, PinParameters { pin::kProtocolVersion, m_pinAuth });
     else
-        cborCmd = encodeGetAssertionRequestAsCBOR(requestData().hash, options, internalUVAvailability);
+        cborCmd = encodeGetAssertionRequestAsCBOR(requestData().hash, options, internalUVAvailability, authenticatorSupportedExtensions);
     driver().transact(WTFMove(cborCmd), [weakThis = WeakPtr { *this }](Vector<uint8_t>&& data) {
         ASSERT(RunLoop::isMain());
         if (!weakThis)
@@ -196,7 +196,7 @@ void CtapAuthenticator::continueGetAssertionAfterResponseReceived(Vector<uint8_t
         if (error == CtapDeviceResponseCode::kCtap2ErrNoCredentials && observer())
             observer()->authenticatorStatusUpdated(WebAuthenticationStatus::NoCredentialsFound);
 
-        receiveRespond(ExceptionData { UnknownError, makeString("Unknown internal error. Error code: ", static_cast<uint8_t>(error)) });
+        receiveRespond(ExceptionData { ExceptionCode::UnknownError, makeString("Unknown internal error. Error code: ", static_cast<uint8_t>(error)) });
         return;
     }
 
@@ -207,7 +207,7 @@ void CtapAuthenticator::continueGetAssertionAfterResponseReceived(Vector<uint8_t
 
     m_remainingAssertionResponses = response->numberOfCredentials() - 1;
     m_assertionResponses.reserveInitialCapacity(response->numberOfCredentials());
-    m_assertionResponses.uncheckedAppend(response.releaseNonNull());
+    m_assertionResponses.append(response.releaseNonNull());
     driver().transact(encodeEmptyAuthenticatorRequest(CtapRequestCommand::kAuthenticatorGetNextAssertion), [weakThis = WeakPtr { *this }](Vector<uint8_t>&& data) {
         ASSERT(RunLoop::isMain());
         if (!weakThis)
@@ -221,11 +221,11 @@ void CtapAuthenticator::continueGetNextAssertionAfterResponseReceived(Vector<uin
     auto response = readCTAPGetAssertionResponse(data, AuthenticatorAttachment::CrossPlatform);
     if (!response) {
         auto error = getResponseCode(data);
-        receiveRespond(ExceptionData { UnknownError, makeString("Unknown internal error. Error code: ", static_cast<uint8_t>(error)) });
+        receiveRespond(ExceptionData { ExceptionCode::UnknownError, makeString("Unknown internal error. Error code: ", static_cast<uint8_t>(error)) });
         return;
     }
     m_remainingAssertionResponses--;
-    m_assertionResponses.uncheckedAppend(response.releaseNonNull());
+    m_assertionResponses.append(response.releaseNonNull());
 
     if (!m_remainingAssertionResponses) {
         if (auto* observer = this->observer()) {
@@ -268,7 +268,7 @@ void CtapAuthenticator::continueGetKeyAgreementAfterGetRetries(Vector<uint8_t>&&
     auto retries = pin::RetriesResponse::parse(data);
     if (!retries) {
         auto error = getResponseCode(data);
-        receiveRespond(ExceptionData { UnknownError, makeString("Unknown internal error. Error code: ", static_cast<uint8_t>(error)) });
+        receiveRespond(ExceptionData { ExceptionCode::UnknownError, makeString("Unknown internal error. Error code: ", static_cast<uint8_t>(error)) });
         return;
     }
 
@@ -286,7 +286,7 @@ void CtapAuthenticator::continueRequestPinAfterGetKeyAgreement(Vector<uint8_t>&&
     auto keyAgreement = pin::KeyAgreementResponse::parse(data);
     if (!keyAgreement) {
         auto error = getResponseCode(data);
-        receiveRespond(ExceptionData { UnknownError, makeString("Unknown internal error. Error code: ", static_cast<uint8_t>(error)) });
+        receiveRespond(ExceptionData { ExceptionCode::UnknownError, makeString("Unknown internal error. Error code: ", static_cast<uint8_t>(error)) });
         return;
     }
 
@@ -303,7 +303,7 @@ void CtapAuthenticator::continueRequestPinAfterGetKeyAgreement(Vector<uint8_t>&&
 void CtapAuthenticator::continueGetPinTokenAfterRequestPin(const String& pin, const CryptoKeyEC& peerKey)
 {
     if (pin.isNull()) {
-        receiveRespond(ExceptionData { UnknownError, "Pin is null."_s });
+        receiveRespond(ExceptionData { ExceptionCode::UnknownError, "Pin is null."_s });
         return;
     }
 
@@ -317,7 +317,7 @@ void CtapAuthenticator::continueGetPinTokenAfterRequestPin(const String& pin, co
     }
     auto tokenRequest = pin::TokenRequest::tryCreate(*pinUTF8, peerKey);
     if (!tokenRequest) {
-        receiveRespond(ExceptionData { UnknownError, "Cannot create a TokenRequest."_s });
+        receiveRespond(ExceptionData { ExceptionCode::UnknownError, "Cannot create a TokenRequest."_s });
         return;
     }
 
@@ -343,7 +343,7 @@ void CtapAuthenticator::continueRequestAfterGetPinToken(Vector<uint8_t>&& data, 
                 return;
         }
 
-        receiveRespond(ExceptionData { UnknownError, makeString("Unknown internal error. Error code: ", static_cast<uint8_t>(error)) });
+        receiveRespond(ExceptionData { ExceptionCode::UnknownError, makeString("Unknown internal error. Error code: ", static_cast<uint8_t>(error)) });
         return;
     }
 
@@ -388,20 +388,6 @@ bool CtapAuthenticator::tryDowngrade()
     driver().setProtocol(ProtocolVersion::kU2f);
     observer()->downgrade(this, U2fAuthenticator::create(releaseDriver()));
     return true;
-}
-
-// Only U2F protocol is supported for Google legacy AppID support.
-bool CtapAuthenticator::processGoogleLegacyAppIdSupportExtension()
-{
-    auto& extensions = std::get<PublicKeyCredentialCreationOptions>(requestData().options).extensions;
-    if (!extensions) {
-        // AuthenticatorCoordinator::create should always set it.
-        ASSERT_NOT_REACHED();
-        return false;
-    }
-    if (extensions->googleLegacyAppidSupport)
-        tryDowngrade();
-    return extensions->googleLegacyAppidSupport;
 }
 
 Vector<AuthenticatorTransport> CtapAuthenticator::transports() const

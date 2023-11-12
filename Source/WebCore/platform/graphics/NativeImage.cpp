@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2020 Apple Inc.  All rights reserved.
+ * Copyright (C) 2020-2023 Apple Inc.  All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -26,10 +26,9 @@
 #include "config.h"
 #include "NativeImage.h"
 
-#include <wtf/NeverDestroyed.h>
-
 namespace WebCore {
 
+#if !USE(CG)
 RefPtr<NativeImage> NativeImage::create(PlatformImagePtr&& platformImage, RenderingResourceIdentifier renderingResourceIdentifier)
 {
     if (!platformImage)
@@ -37,16 +36,23 @@ RefPtr<NativeImage> NativeImage::create(PlatformImagePtr&& platformImage, Render
     return adoptRef(*new NativeImage(WTFMove(platformImage), renderingResourceIdentifier));
 }
 
-NativeImage::NativeImage(PlatformImagePtr&& platformImage, RenderingResourceIdentifier renderingResourceIdentifier)
-    : m_platformImage(WTFMove(platformImage))
-    , m_renderingResourceIdentifier(renderingResourceIdentifier)
+RefPtr<NativeImage> NativeImage::createTransient(PlatformImagePtr&& image, RenderingResourceIdentifier identifier)
 {
+    return create(WTFMove(image), identifier);
+}
+#endif
+
+NativeImage::NativeImage(PlatformImagePtr&& platformImage, RenderingResourceIdentifier renderingResourceIdentifier)
+    : RenderingResource(renderingResourceIdentifier)
+    , m_platformImage(WTFMove(platformImage))
+{
+    ASSERT(m_platformImage);
 }
 
-NativeImage::~NativeImage()
+void NativeImage::setPlatformImage(PlatformImagePtr&& platformImage)
 {
-    for (auto observer : m_observers)
-        observer->releaseNativeImage(m_renderingResourceIdentifier);
+    ASSERT(platformImage);
+    m_platformImage = WTFMove(platformImage);
 }
 
 } // namespace WebCore

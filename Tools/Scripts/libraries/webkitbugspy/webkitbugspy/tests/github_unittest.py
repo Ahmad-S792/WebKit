@@ -264,6 +264,18 @@ class TestGitHub(unittest.TestCase):
             self.assertTrue(issue.opened)
             self.assertEqual(issue.comments[-1].content, 'Need to revert, fix broke the build')
 
+    def test_duplicate(self):
+        with mocks.GitHub(self.URL.split('://')[1], issues=mocks.ISSUES, environment=wkmocks.Environment(
+            GITHUB_EXAMPLE_COM_USERNAME='tcontributor',
+            GITHUB_EXAMPLE_COM_TOKEN='token',
+        )):
+            tracker = github.Tracker(self.URL)
+            issue = tracker.issue(1)
+            self.assertTrue(issue.opened)
+            self.assertTrue(issue.close(original=tracker.issue(2)))
+            self.assertFalse(issue.opened)
+            self.assertEqual(issue.comments[-1].content, 'Duplicate of #2')
+
     def test_labels(self):
         with mocks.GitHub(self.URL.split('://')[1]) as mocked:
             self.assertDictEqual(github.Tracker(self.URL).labels, mocked.DEFAULT_LABELS)
@@ -397,6 +409,21 @@ class TestGitHub(unittest.TestCase):
                 github.Tracker(self.URL, redact={'version:Other': True}).issue(1).redacted,
                 github.Tracker.Redaction(True, "matches 'version:Other'"),
             )
+
+    def test_redaction_exception(self):
+        with mocks.GitHub(self.URL.split('://')[1], issues=mocks.ISSUES, projects=mocks.PROJECTS):
+            self.assertEqual(github.Tracker(
+                self.URL,
+                redact={'.*': True},
+                redact_exemption={'component:Text': True},
+            ).issue(1).redacted, github.Tracker.Redaction(
+                exemption=True, reason="matches 'component:Text'",
+            ))
+            self.assertEqual(github.Tracker(
+                self.URL,
+                redact={'.*': True},
+                redact_exemption={'component:Scrolling': True},
+            ).issue(1).redacted, github.Tracker.Redaction(True, 'is a GitHub Issue'))
 
     def test_parse_error(self):
         error_json = {'message': 'Validation Failed', 'errors': [{'resource': 'Issue', 'code': 'custom', 'field': 'body', 'message': 'body is too long (maximum is 65536 characters)'}], 'documentation_url': 'https://docs.github.com/rest/reference/pulls#create-a-pull-request'}

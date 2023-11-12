@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2009-2019 Apple Inc. All rights reserved.
+ * Copyright (C) 2009-2023 Apple Inc. All rights reserved.
  * Copyright (C) 2010 University of Szeged
  *
  * Redistribution and use in source and binary forms, with or without
@@ -571,6 +571,7 @@ private:
         OP_BKPT             = 0xBE00,
         OP_IT               = 0xBF00,
         OP_NOP_T1           = 0xBF00,
+        OP_UDF              = 0xDE00
     } OpcodeID;
 
     typedef enum {
@@ -1006,6 +1007,11 @@ public:
     void bkpt(uint8_t imm = 0)
     {
         m_formatter.oneWordOp8Imm8(OP_BKPT, imm);
+    }
+
+    void udf(uint8_t imm = 0)
+    {
+        m_formatter.oneWordOp8Imm8(OP_UDF, imm);
     }
 
     static bool isBkpt(void* address)
@@ -2244,6 +2250,12 @@ public:
         // boolean values are 64bit (toInt, unsigned, roundZero)
         m_formatter.vfpOp(OP_VCVT_FPIVFP, OP_VCVT_FPIVFPb, true, vcvtOp(true, false, true), rd, rm);
     }
+
+    void vcvt_floatingPointToSignedNearest(FPSingleRegisterID rd, FPDoubleRegisterID rm)
+    {
+        // boolean values are 64bit (toInt, unsigned, roundZero)
+        m_formatter.vfpOp(OP_VCVT_FPIVFP, OP_VCVT_FPIVFPb, true, vcvtOp(true, false, false), rd, rm);
+    }
     
     void vcvt_floatingPointToUnsigned(FPSingleRegisterID rd, FPDoubleRegisterID rm)
     {
@@ -2500,11 +2512,6 @@ public:
     
     // Assembler admin methods:
 
-    static ALWAYS_INLINE bool linkRecordSourceComparator(const LinkRecord& a, const LinkRecord& b)
-    {
-        return a.from() < b.from();
-    }
-
     static bool canCompact(JumpType jumpType)
     {
         // The following cannot be compacted:
@@ -2567,7 +2574,9 @@ public:
     
     Vector<LinkRecord, 0, UnsafeVectorOverflow>& jumpsToLink()
     {
-        std::sort(m_jumpsToLink.begin(), m_jumpsToLink.end(), linkRecordSourceComparator);
+        std::sort(m_jumpsToLink.begin(), m_jumpsToLink.end(), [](auto& a, auto& b) {
+            return a.from() < b.from();
+        });
         return m_jumpsToLink;
     }
 
@@ -2720,13 +2729,6 @@ public:
         return readPointer(reinterpret_cast<uint16_t*>(from) - 1);
     }
 
-    static void repatchInt32(void* where, int32_t value)
-    {
-        ASSERT(!(reinterpret_cast<intptr_t>(where) & 1));
-        
-        setInt32(where, value, true);
-    }
-    
     static void repatchPointer(void* where, void* value)
     {
         ASSERT(!(reinterpret_cast<intptr_t>(where) & 1));
@@ -2760,7 +2762,13 @@ public:
         cacheFlush(ptr - 2, sizeof(uint16_t) * 2);
 #endif
     }
-    
+
+    static void replaceWithNops(void* instructionStart, size_t memoryToFillWithNopsInBytes)
+    {
+        fillNops<performJITMemcpy>(instructionStart, memoryToFillWithNopsInBytes);
+        cacheFlush(instructionStart, memoryToFillWithNopsInBytes);
+    }
+
     static ptrdiff_t maxJumpReplacementSize()
     {
 #if OS(LINUX)
@@ -2773,52 +2781,6 @@ public:
     static constexpr ptrdiff_t patchableJumpSize()
     {
         return 10;
-    }
-    
-    static void replaceWithLoad(void* instructionStart)
-    {
-        ASSERT(!(bitwise_cast<uintptr_t>(instructionStart) & 1));
-        uint16_t* ptr = reinterpret_cast<uint16_t*>(instructionStart);
-        switch (ptr[0] & 0xFFF0) {
-        case OP_LDR_imm_T3:
-            break;
-        case OP_ADD_imm_T3: {
-            ASSERT(!(ptr[1] & 0xF000));
-            uint16_t instructions[2];
-            instructions[0] = ptr[0] & 0x000F;
-            instructions[0] |= OP_LDR_imm_T3;
-            instructions[1] = ptr[1] | (ptr[1] & 0x0F00) << 4;
-            instructions[1] &= 0xF0FF;
-            performJITMemcpy(ptr, instructions, sizeof(uint16_t) * 2);
-            cacheFlush(ptr, sizeof(uint16_t) * 2);
-            break;
-        }
-        default:
-            RELEASE_ASSERT_NOT_REACHED();
-        }
-    }
-
-    static void replaceWithAddressComputation(void* instructionStart)
-    {
-        ASSERT(!(bitwise_cast<uintptr_t>(instructionStart) & 1));
-        uint16_t* ptr = reinterpret_cast<uint16_t*>(instructionStart);
-        switch (ptr[0] & 0xFFF0) {
-        case OP_LDR_imm_T3: {
-            ASSERT(!(ptr[1] & 0x0F00));
-            uint16_t instructions[2];
-            instructions[0] = ptr[0] & 0x000F;
-            instructions[0] |= OP_ADD_imm_T3;
-            instructions[1] = ptr[1] | (ptr[1] & 0xF000) >> 4;
-            instructions[1] &= 0x0FFF;
-            performJITMemcpy(ptr, instructions, sizeof(uint16_t) * 2);
-            cacheFlush(ptr, sizeof(uint16_t) * 2);
-            break;
-        }
-        case OP_ADD_imm_T3:
-            break;
-        default:
-            RELEASE_ASSERT_NOT_REACHED();
-        }
     }
 
     unsigned debugOffset() { return m_formatter.debugOffset(); }
@@ -2844,7 +2806,7 @@ public:
     static void cacheFlush(void* code, size_t size)
     {
 #if OS(DARWIN)
-        sys_cache_control(kCacheFunctionPrepareForExecution, code, size);
+        sys_icache_invalidate(code, size);
 #elif OS(LINUX)
         size_t page = pageSize();
         uintptr_t current = reinterpret_cast<uintptr_t>(code);

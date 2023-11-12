@@ -4,7 +4,7 @@
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
  * License as published by the Free Software Foundation; either
- * version 2,1 of the License, or (at your option) any later version.
+ * version 2.1 of the License, or (at your option) any later version.
  *
  * This library is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -69,7 +69,7 @@ struct _WebKitFaviconDatabasePrivate {
     RefPtr<IconDatabase> iconDatabase;
 };
 
-WEBKIT_DEFINE_FINAL_TYPE_IN_2022_API(WebKitFaviconDatabase, webkit_favicon_database, G_TYPE_OBJECT)
+WEBKIT_DEFINE_FINAL_TYPE(WebKitFaviconDatabase, webkit_favicon_database, G_TYPE_OBJECT, GObject)
 
 static void webkit_favicon_database_class_init(WebKitFaviconDatabaseClass* faviconDatabaseClass)
 {
@@ -203,9 +203,9 @@ void webkitFaviconDatabaseGetFaviconInternal(WebKitFaviconDatabase* database, co
  * @database: a #WebKitFaviconDatabase
  * @page_uri: URI of the page for which we want to retrieve the favicon
  * @cancellable: (allow-none): A #GCancellable or %NULL.
- * @callback: (scope async): A #GAsyncReadyCallback to call when the request is
+ * @callback: (scope async) (nullable): A #GAsyncReadyCallback to call when the request is
  *            satisfied or %NULL if you don't care about the result.
- * @user_data: (closure): The data to pass to @callback.
+ * @user_data: The data to pass to @callback.
  *
  * Asynchronously obtains a favicon image.
  *

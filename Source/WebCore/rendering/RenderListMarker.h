@@ -30,8 +30,6 @@ class CSSCounterStyle;
 class RenderListItem;
 class StyleRuleCounterStyle;
 
-String listMarkerText(ListStyleType, int value, CSSCounterStyle* = nullptr);
-
 // Used to render the list item's marker.
 // The RenderListMarker always has to be a child of a RenderListItem.
 class RenderListMarker final : public RenderBox {
@@ -57,7 +55,6 @@ private:
     void willBeDestroyed() final;
     ASCIILiteral renderName() const final { return "RenderListMarker"_s; }
     void computePreferredLogicalWidths() final;
-    bool isListMarker() const final { return true; }
     bool canHaveChildren() const final { return false; }
     void paint(PaintInfo&, const LayoutPoint&) final;
     void layout() final;
@@ -80,7 +77,8 @@ private:
     struct TextRunWithUnderlyingString;
     TextRunWithUnderlyingString textRun() const;
 
-    CSSCounterStyle* counterStyle() const;
+    RefPtr<CSSCounterStyle> counterStyle() const;
+    bool widthUsesMetricsOfPrimaryFont() const;
 
     String m_textWithSuffix;
     uint8_t m_textWithoutSuffixLength { 0 };
@@ -93,4 +91,4 @@ private:
 
 } // namespace WebCore
 
-SPECIALIZE_TYPE_TRAITS_RENDER_OBJECT(RenderListMarker, isListMarker())
+SPECIALIZE_TYPE_TRAITS_RENDER_OBJECT(RenderListMarker, isRenderListMarker())
