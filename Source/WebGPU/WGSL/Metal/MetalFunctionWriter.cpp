@@ -354,6 +354,30 @@ void FunctionDefinitionWriter::emitNecessaryHelpers()
         m_stringBuilder.append(m_indent, "}\n");
     }
 
+    if (m_callGraph.ast().usesDot4I8Packed()) {
+        m_stringBuilder.append(m_indent, "int __wgslDot4I8Packed(uint lhs, uint rhs)\n");
+        m_stringBuilder.append(m_indent, "{\n");
+        {
+            IndentationScope scope(m_indent);
+            m_stringBuilder.append(m_indent, "auto vec1 = as_type<packed_char4>(lhs);");
+            m_stringBuilder.append(m_indent, "auto vec2 = as_type<packed_char4>(rhs);");
+            m_stringBuilder.append(m_indent, "return vec1[0] * vec2[0] + vec1[1] * vec2[1] + vec1[2] * vec2[2] + vec1[3] * vec2[3];");
+        }
+        m_stringBuilder.append(m_indent, "}\n");
+    }
+
+    if (m_callGraph.ast().usesDot4U8Packed()) {
+        m_stringBuilder.append(m_indent, "uint __wgslDot4U8Packed(uint lhs, uint rhs)\n");
+        m_stringBuilder.append(m_indent, "{\n");
+        {
+            IndentationScope scope(m_indent);
+            m_stringBuilder.append(m_indent, "auto vec1 = as_type<packed_uchar4>(lhs);");
+            m_stringBuilder.append(m_indent, "auto vec2 = as_type<packed_uchar4>(rhs);");
+            m_stringBuilder.append(m_indent, "return vec1[0] * vec2[0] + vec1[1] * vec2[1] + vec1[2] * vec2[2] + vec1[3] * vec2[3];");
+        }
+        m_stringBuilder.append(m_indent, "}\n");
+    }
+
     if (m_callGraph.ast().usesFirstLeadingBit()) {
         m_stringBuilder.append(m_indent, "template<typename T>\n");
         m_stringBuilder.append(m_indent, "T __wgslFirstLeadingBit(T e)\n");
@@ -1752,10 +1776,8 @@ void FunctionDefinitionWriter::visit(const Type* type, AST::CallExpression& call
     auto isArray = is<AST::ArrayTypeExpression>(call.target());
     auto isStruct = !isArray && std::holds_alternative<Types::Struct>(*call.target().inferredType());
     if (isArray || isStruct) {
-        if (isStruct) {
-            visit(type);
-            m_stringBuilder.append(" ");
-        }
+        visit(type);
+        m_stringBuilder.append("(");
         const Type* arrayElementType = nullptr;
         if (isArray)
             arrayElementType = std::get<Types::Array>(*type).element;
@@ -1772,7 +1794,7 @@ void FunctionDefinitionWriter::visit(const Type* type, AST::CallExpression& call
                 m_stringBuilder.append(",\n");
             }
         }
-        m_stringBuilder.append(m_indent, "}");
+        m_stringBuilder.append(m_indent, "})");
         return;
     }
 
@@ -1835,6 +1857,8 @@ void FunctionDefinitionWriter::visit(const Type* type, AST::CallExpression& call
             { "countOneBits", "popcount"_s },
             { "countTrailingZeros", "ctz"_s },
             { "dot", "__wgslDot"_s },
+            { "dot4I8Packed", "__wgslDot4I8Packed"_s },
+            { "dot4U8Packed", "__wgslDot4U8Packed"_s },
             { "dpdx", "dfdx"_s },
             { "dpdxCoarse", "dfdx"_s },
             { "dpdxFine", "dfdx"_s },

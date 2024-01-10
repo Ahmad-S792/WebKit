@@ -4231,10 +4231,10 @@ MediaCapabilityGrantsEnabled:
       default: false
     WebKit:
       "PLATFORM(IOS_FAMILY_SIMULATOR)": false
-      default: false
+      default: true
     WebCore:
       "PLATFORM(IOS_FAMILY_SIMULATOR)": false
-      default: false
+      default: true
 
 MediaCaptionFormatTypesAllowedInLockdownMode:
   type: String
@@ -4490,6 +4490,21 @@ MediaStreamEnabled:
       default: true
     WebCore:
       default: true
+
+MediaStreamTrackProcessingEnabled:
+  type: bool
+  status: testable
+  category: media
+  humanReadableName: "MediaStreamTrack Processing"
+  humanReadableDescription: "Enable MediaStreamTrack Processing"
+  condition: ENABLE(MEDIA_STREAM)
+  defaultValue:
+    WebKitLegacy:
+      default: false
+    WebKit:
+      default: false
+    WebCore:
+      default: false
 
 MediaUserGestureInheritsFromDocument:
   type: bool
