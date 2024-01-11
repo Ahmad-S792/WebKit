@@ -1,6 +1,7 @@
 /*
  * Copyright (C) 2011 University of Szeged
  * Copyright (C) 2011 Zoltan Herczeg
+ * Copyright (C) 2024 Apple Inc.  All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -25,34 +26,27 @@
  */
 
 #include "config.h"
-#include "FELightingNEON.h"
+#include "FELightingNeonParallelApplier.h"
 
-#if CPU(ARM_NEON) && CPU(ARM_TRADITIONAL) && COMPILER(GCC_COMPATIBLE)
+#if (CPU(ARM_NEON) && CPU(ARM_TRADITIONAL) && COMPILER(GCC_COMPATIBLE))
+
+#include "FELighting.h"
+#include "PointLightSource.h"
+#include "SpotLightSource.h"
+#include <wtf/Int128.h>
+#include <wtf/ParallelJobs.h>
 
 namespace WebCore {
 
-// These constants are copied to the following SIMD registers:
-//   ALPHAX_Q ALPHAY_Q REMAPX_D REMAPY_D
+// Otherwise: Distant Light.
+#define FLAG_POINT_LIGHT                 0x01
+#define FLAG_SPOT_LIGHT                  0x02
+#define FLAG_CONE_EXPONENT_IS_1          0x04
 
-
-static alignas(16) short s_FELightingConstantsForNeon[] = {
-    // Alpha coefficients.
-    -2, 1, 0, -1, 2, 1, 0, -1,
-    0, -1, -2, -1, 0, 1, 2, 1,
-    // Remapping indices.
-    0x0f0e, 0x0302, 0x0504, 0x0706,
-    0x0b0a, 0x1312, 0x1514, 0x1716,
-};
-
-short* feLightingConstantsForNeon()
-{
-    return s_FELightingConstantsForNeon;
-}
-
-void FELighting::platformApplyNeonWorker(FELightingPaintingDataForNeon* parameters)
-{
-    neonDrawLighting(parameters);
-}
+// Otherwise: Diffuse light.
+#define FLAG_SPECULAR_LIGHT              0x10
+#define FLAG_DIFFUSE_CONST_IS_1          0x20
+#define FLAG_SPECULAR_EXPONENT_IS_1      0x40
 
 #define ASSTRING(str) #str
 #define TOSTRING(value) ASSTRING(value)
@@ -211,6 +205,10 @@ void FELighting::platformApplyNeonWorker(FELightingPaintingDataForNeon* paramete
 // the main loop found in FELighting.cpp. Since the whole code
 // is redesigned to be as effective as possible (ARM specific
 // thinking), it is four times faster than its C++ counterpart.
+
+extern "C" {
+void neonDrawLighting(FELightingNeonParallelApplier::ApplyParameters*);
+}
 
 asm ( // NOLINT
 ".globl " TOSTRING(neonDrawLighting) NL
@@ -464,7 +462,23 @@ TOSTRING(neonDrawLighting) ":" NL
     "b .lightStrengthCalculated" NL
 ); // NOLINT
 
-int FELighting::getPowerCoefficients(float exponent)
+const short* FELightingNeonParallelApplier::feLightingConstants()
+{
+    // These constants are copied to the following SIMD registers:
+    // ALPHAX_Q ALPHAY_Q REMAPX_D REMAPY_D
+    alignas(16) static constexpr short feLightingConstants[] = {
+        // Alpha coefficients.
+        -2, 1, 0, -1, 2, 1, 0, -1,
+        0, -1, -2, -1, 0, 1, 2, 1,
+        // Remapping indices.
+        0x0f0e, 0x0302, 0x0504, 0x0706,
+        0x0b0a, 0x1312, 0x1514, 0x1716,
+    };
+
+    return feLightingConstants;
+}
+
+int FELightingNeonParallelApplier::getPowerCoefficients(float exponent)
 {
     // Calling a powf function from the assembly code would require to save
     // and reload a lot of NEON registers. Since the base is in range [0..1]
@@ -498,6 +512,114 @@ int FELighting::getPowerCoefficients(float exponent)
     return result;
 }
 
+void FELightingNeonParallelApplier::applyPlatformWorker(ApplyParameters* parameters)
+{
+    neonDrawLighting(parameters);
+}
+
+void FELightingNeonParallelApplier::applyPlatformParallel(const LightingData& data, const LightSource::PaintingData& paintingData) const
+{
+    alignas(16) FloatArguments floatArguments;
+    ApplyParameters neonData = {
+        data.pixels->bytes(),
+        1,
+        data.width - 2,
+        data.height - 2,
+        0,
+        0,
+        0,
+        &floatArguments,
+        feLightingConstants()
+    };
+
+    // Set light source arguments.
+    floatArguments.constOne = 1;
+
+    auto color = data.lightingColor.toColorTypeLossy<SRGBA<uint8_t>>().resolved();
+
+    floatArguments.colorRed = color.red;
+    floatArguments.colorGreen = color.green;
+    floatArguments.colorBlue = color.blue;
+    floatArguments.padding4 = 0;
+
+    if (data.lightSource->type() == LS_POINT) {
+        neonData.flags |= FLAG_POINT_LIGHT;
+        auto& pointLightSource = downcast<PointLightSource>(*data.lightSource);
+        floatArguments.lightX = pointLightSource.position().x();
+        floatArguments.lightY = pointLightSource.position().y();
+        floatArguments.lightZ = pointLightSource.position().z();
+        floatArguments.padding2 = 0;
+    } else if (data.lightSource->type() == LS_SPOT) {
+        neonData.flags |= FLAG_SPOT_LIGHT;
+        auto& spotLightSource = downcast<SpotLightSource>(*data.lightSource);
+        floatArguments.lightX = spotLightSource.position().x();
+        floatArguments.lightY = spotLightSource.position().y();
+        floatArguments.lightZ = spotLightSource.position().z();
+        floatArguments.padding2 = 0;
+
+        floatArguments.directionX = paintingData.directionVector.x();
+        floatArguments.directionY = paintingData.directionVector.y();
+        floatArguments.directionZ = paintingData.directionVector.z();
+        floatArguments.padding3 = 0;
+
+        floatArguments.coneCutOffLimit = paintingData.coneCutOffLimit;
+        floatArguments.coneFullLight = paintingData.coneFullLight;
+        floatArguments.coneCutOffRange = paintingData.coneCutOffLimit - paintingData.coneFullLight;
+        neonData.coneExponent = getPowerCoefficients(spotLightSource.specularExponent());
+        if (spotLightSource.specularExponent() == 1)
+            neonData.flags |= FLAG_CONE_EXPONENT_IS_1;
+    } else {
+        ASSERT(data.lightSource->type() == LS_DISTANT);
+        floatArguments.lightX = paintingData.initialLightingData.lightVector.x();
+        floatArguments.lightY = paintingData.initialLightingData.lightVector.y();
+        floatArguments.lightZ = paintingData.initialLightingData.lightVector.z();
+        floatArguments.padding2 = 1;
+    }
+
+    // Set lighting arguments.
+    floatArguments.surfaceScale = data.surfaceScale;
+    floatArguments.minusSurfaceScaleDividedByFour = -data.surfaceScale / 4;
+    if (data.filterType == FilterEffect::Type::FEDiffuseLighting)
+        floatArguments.diffuseConstant = data.diffuseConstant;
+    else {
+        neonData.flags |= FLAG_SPECULAR_LIGHT;
+        floatArguments.diffuseConstant = data.specularConstant;
+        neonData.specularExponent = getPowerCoefficients(data.specularExponent);
+        if (data.specularExponent == 1)
+            neonData.flags |= FLAG_SPECULAR_EXPONENT_IS_1;
+    }
+    if (floatArguments.diffuseConstant == 1)
+        neonData.flags |= FLAG_DIFFUSE_CONST_IS_1;
+
+    int optimalThreadNumber = ((data.width - 2) * (data.height - 2)) / minimalRectDimension;
+    if (optimalThreadNumber > 1) {
+        // Initialize parallel jobs
+        ParallelJobs<ApplyParameters> parallelJobs(&FELightingNeonParallelApplier::applyPlatformWorker, optimalThreadNumber);
+
+        // Fill the parameter array
+        int job = parallelJobs.numberOfJobs();
+        if (job > 1) {
+            int yStart = 1;
+            int yStep = (data.height - 2) / job;
+            for (--job; job >= 0; --job) {
+                ApplyParameters& params = parallelJobs.parameter(job);
+                params = neonData;
+                params.yStart = yStart;
+                params.pixels += (yStart - 1) * data.width * 4;
+                if (job > 0) {
+                    params.absoluteHeight = yStep;
+                    yStart += yStep;
+                } else
+                    params.absoluteHeight = (data.height - 1) - yStart;
+            }
+            parallelJobs.execute();
+            return;
+        }
+    }
+
+    neonDrawLighting(&neonData);
+}
+
 } // namespace WebCore
 
-#endif // CPU(ARM_NEON) && COMPILER(GCC_COMPATIBLE)
+#endif // (CPU(ARM_NEON) && CPU(ARM_TRADITIONAL) && COMPILER(GCC_COMPATIBLE))
