@@ -2931,18 +2931,9 @@ void Document::removeAllEventListeners()
 
     protectedReportingScope()->removeAllObservers();
 
-#if ENABLE(IOS_TOUCH_EVENTS)
-    clearTouchEventHandlersAndListeners();
-#endif
     // FIXME: What about disconnected nodes.
     for (RefPtr node = firstChild(); node; node = NodeTraversal::next(*node))
         node->removeAllEventListeners();
-
-#if ENABLE(TOUCH_EVENTS)
-    m_touchEventTargets = nullptr;
-#endif
-    m_wheelEventTargets = nullptr;
-    invalidateEventListenerRegions();
 }
 
 void Document::suspendDeviceMotionAndOrientationUpdates()
@@ -9862,8 +9853,11 @@ void Document::setHasViewTransitionPseudoElementTree(bool value)
     m_hasViewTransitionPseudoElementTree = value;
 }
 
-Ref<ViewTransition> Document::startViewTransition(RefPtr<ViewTransitionUpdateCallback>&& updateCallback)
+RefPtr<ViewTransition> Document::startViewTransition(RefPtr<ViewTransitionUpdateCallback>&& updateCallback)
 {
+    if (!globalObject())
+        return nullptr;
+
     Ref viewTransition = ViewTransition::create(*this, WTFMove(updateCallback));
 
     if (RefPtr activeViewTransition = m_activeViewTransition)
@@ -9871,7 +9865,7 @@ Ref<ViewTransition> Document::startViewTransition(RefPtr<ViewTransitionUpdateCal
 
     setActiveViewTransition(WTFMove(viewTransition));
     scheduleRenderingUpdate(RenderingUpdateStep::PerformPendingViewTransitions);
-    return *m_activeViewTransition;
+    return m_activeViewTransition;
 }
 
 void Document::performPendingViewTransitions()
