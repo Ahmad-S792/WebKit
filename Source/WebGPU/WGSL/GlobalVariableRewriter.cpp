@@ -58,6 +58,7 @@ public:
 
     void visit(AST::CompoundStatement&) override;
     void visit(AST::AssignmentStatement&) override;
+    void visit(AST::VariableStatement&) override;
 
     void visit(AST::Expression&) override;
 
@@ -113,6 +114,12 @@ private:
     AST::Expression& bufferLengthType();
     AST::Expression& bufferLengthReferenceType();
 
+    // atomics
+    void initializeAtomics(AST::Function&, const Vector<AST::Variable*>&, size_t);
+    void insertWorkgroupBarrier(AST::Function&, size_t);
+    AST::Identifier& findOrInsertLocalInvocationIndex(AST::Function&);
+    AST::Statement::List atomicStoreInitialValue(const Vector<AST::Variable*>&);
+
     void packResource(AST::Variable&);
     void packArrayResource(AST::Variable&, const Types::Array*);
     void packStructResource(AST::Variable&, const Types::Struct*);
@@ -121,12 +128,6 @@ private:
     const Type* packStructType(const Types::Struct*);
     const Type* packArrayType(const Types::Array*);
     void updateReference(AST::Variable&, AST::Expression&);
-
-    enum Packing : uint8_t {
-        Packed   = 1 << 0,
-        Unpacked = 1 << 1,
-        Either   = Packed | Unpacked,
-    };
 
     Packing pack(Packing, AST::Expression&);
     Packing getPacking(AST::IdentifierExpression&);
@@ -277,8 +278,17 @@ void RewriteGlobalVariables::visit(AST::AssignmentStatement& statement)
 {
     Packing lhsPacking = pack(Packing::Either, statement.lhs());
     ASSERT(lhsPacking != Packing::Either);
-    Packing rhsPacking = pack(lhsPacking, statement.rhs());
-    ASSERT_UNUSED(rhsPacking, lhsPacking == rhsPacking);
+    if (lhsPacking == Packing::PackedVec3)
+        lhsPacking = Packing::Either;
+    else
+        lhsPacking = static_cast<Packing>(lhsPacking | Packing::Vec3);
+    pack(lhsPacking, statement.rhs());
+}
+
+void RewriteGlobalVariables::visit(AST::VariableStatement& statement)
+{
+    if (auto* initializer = statement.variable().maybeInitializer())
+        pack(static_cast<Packing>(Packing::Unpacked | Packing::Vec3), *initializer);
 }
 
 void RewriteGlobalVariables::visit(AST::Expression& expression)
@@ -286,7 +296,7 @@ void RewriteGlobalVariables::visit(AST::Expression& expression)
     pack(Packing::Unpacked, expression);
 }
 
-auto RewriteGlobalVariables::pack(Packing expectedPacking, AST::Expression& expression) -> Packing
+Packing RewriteGlobalVariables::pack(Packing expectedPacking, AST::Expression& expression)
 {
     const auto& visitAndReplace = [&](auto& expression) -> Packing {
         auto packing = getPacking(expression);
@@ -298,9 +308,9 @@ auto RewriteGlobalVariables::pack(Packing expectedPacking, AST::Expression& expr
             type = referenceType->element;
         ASCIILiteral operation;
         if (std::holds_alternative<Types::Struct>(*type))
-            operation = packing == Packing::Packed ? "__unpack"_s : "__pack"_s;
+            operation = packing & Packing::Packed ? "__unpack"_s : "__pack"_s;
         else if (std::holds_alternative<Types::Array>(*type)) {
-            if (packing == Packing::Packed) {
+            if (packing & Packing::Packed) {
                 operation = "__unpack"_s;
                 m_callGraph.ast().setUsesUnpackArray();
             } else {
@@ -314,17 +324,17 @@ auto RewriteGlobalVariables::pack(Packing expectedPacking, AST::Expression& expr
             switch (std::get<Types::Primitive>(*vector.element).kind) {
             case Types::Primitive::AbstractInt:
             case Types::Primitive::I32:
-                operation = packing == Packing::Packed ? "int3"_s : "packed_int3"_s;
+                operation = packing & Packing::Packed ? "int3"_s : "packed_int3"_s;
                 break;
             case Types::Primitive::U32:
-                operation = packing == Packing::Packed ? "uint3"_s : "packed_uint3"_s;
+                operation = packing & Packing::Packed ? "uint3"_s : "packed_uint3"_s;
                 break;
             case Types::Primitive::AbstractFloat:
             case Types::Primitive::F32:
-                operation = packing == Packing::Packed ? "float3"_s : "packed_float3"_s;
+                operation = packing & Packing::Packed ? "float3"_s : "packed_float3"_s;
                 break;
             case Types::Primitive::F16:
-                operation = packing == Packing::Packed ? "half3"_s : "packed_half3"_s;
+                operation = packing & Packing::Packed ? "half3"_s : "packed_half3"_s;
                 break;
             default:
                 RELEASE_ASSERT_NOT_REACHED();
@@ -366,7 +376,7 @@ auto RewriteGlobalVariables::pack(Packing expectedPacking, AST::Expression& expr
     }
 }
 
-auto RewriteGlobalVariables::getPacking(AST::IdentifierExpression& identifier) -> Packing
+Packing RewriteGlobalVariables::getPacking(AST::IdentifierExpression& identifier)
 {
     auto packing = Packing::Unpacked;
 
@@ -385,7 +395,7 @@ auto RewriteGlobalVariables::getPacking(AST::IdentifierExpression& identifier) -
     return packing;
 }
 
-auto RewriteGlobalVariables::getPacking(AST::FieldAccessExpression& expression) -> Packing
+Packing RewriteGlobalVariables::getPacking(AST::FieldAccessExpression& expression)
 {
     auto basePacking = pack(Packing::Either, expression.base());
     if (basePacking & Packing::Unpacked)
@@ -401,7 +411,7 @@ auto RewriteGlobalVariables::getPacking(AST::FieldAccessExpression& expression) 
     return packingForType(fieldType);
 }
 
-auto RewriteGlobalVariables::getPacking(AST::IndexAccessExpression& expression) -> Packing
+Packing RewriteGlobalVariables::getPacking(AST::IndexAccessExpression& expression)
 {
     auto basePacking = pack(Packing::Either, expression.base());
     pack(Packing::Unpacked, expression.index());
@@ -417,32 +427,43 @@ auto RewriteGlobalVariables::getPacking(AST::IndexAccessExpression& expression) 
     return packingForType(arrayType.element);
 }
 
-auto RewriteGlobalVariables::getPacking(AST::BinaryExpression& expression) -> Packing
+Packing RewriteGlobalVariables::getPacking(AST::BinaryExpression& expression)
 {
     pack(Packing::Unpacked, expression.leftExpression());
     pack(Packing::Unpacked, expression.rightExpression());
     return Packing::Unpacked;
 }
 
-auto RewriteGlobalVariables::getPacking(AST::UnaryExpression& expression) -> Packing
+Packing RewriteGlobalVariables::getPacking(AST::UnaryExpression& expression)
 {
     pack(Packing::Unpacked, expression.expression());
     return Packing::Unpacked;
 }
 
-auto RewriteGlobalVariables::getPacking(AST::CallExpression& call) -> Packing
+Packing RewriteGlobalVariables::getPacking(AST::CallExpression& call)
 {
     if (is<AST::IdentifierExpression>(call.target())) {
         auto& target = downcast<AST::IdentifierExpression>(call.target());
         if (target.identifier() == "arrayLength"_s) {
             ASSERT(call.arguments().size() == 1);
+            auto arrayOffset = 0;
             const auto& getBase = [&](auto&& getBase, AST::Expression& expression) -> AST::Expression& {
                 if (is<AST::IdentityExpression>(expression))
                     return getBase(getBase, downcast<AST::IdentityExpression>(expression).expression());
                 if (is<AST::UnaryExpression>(expression))
                     return getBase(getBase, downcast<AST::UnaryExpression>(expression).expression());
-                if (is<AST::FieldAccessExpression>(expression))
-                    return getBase(getBase, downcast<AST::FieldAccessExpression>(expression).base());
+                if (is<AST::FieldAccessExpression>(expression)) {
+                    auto& fieldAccess = downcast<AST::FieldAccessExpression>(expression);
+                    auto& base = fieldAccess.base();
+                    auto* type = base.inferredType();
+                    if (auto* reference = std::get_if<Types::Reference>(type))
+                        type = reference->element;
+                    auto& structure = std::get<Types::Struct>(*type).structure;
+                    auto& lastMember = structure.members().last();
+                    RELEASE_ASSERT(lastMember.name().id() == fieldAccess.fieldName().id());
+                    arrayOffset += lastMember.offset();
+                    return getBase(getBase, base);
+                }
                 if (is<AST::IdentifierExpression>(expression))
                     return expression;
                 RELEASE_ASSERT_NOT_REACHED();
@@ -463,7 +484,9 @@ auto RewriteGlobalVariables::getPacking(AST::CallExpression& call) -> Packing
             ASSERT(std::holds_alternative<Types::Pointer>(*arrayPointerType));
             auto& arrayType = std::get<Types::Pointer>(*arrayPointerType).element;
             ASSERT(std::holds_alternative<Types::Array>(*arrayType));
-            auto arrayStride = std::get<Types::Array>(*arrayType).element->size();
+            auto* elementType = std::get<Types::Array>(*arrayType).element;
+            auto arrayStride = elementType->size();
+            arrayStride = WTF::roundUpToMultipleOf(elementType->alignment(), arrayStride);
 
             auto& strideExpression = m_callGraph.ast().astBuilder().construct<AST::Unsigned32Literal>(
                 SourceSpan::empty(),
@@ -471,10 +494,26 @@ auto RewriteGlobalVariables::getPacking(AST::CallExpression& call) -> Packing
             );
             strideExpression.m_inferredType = m_callGraph.ast().types().u32Type();
 
+            AST::Expression* lhs = &length;
+            if (arrayOffset) {
+                auto& arrayOffsetExpression = m_callGraph.ast().astBuilder().construct<AST::Unsigned32Literal>(
+                    SourceSpan::empty(),
+                    arrayOffset
+                );
+                arrayOffsetExpression.m_inferredType = m_callGraph.ast().types().u32Type();
+                lhs = &m_callGraph.ast().astBuilder().construct<AST::BinaryExpression>(
+                    SourceSpan::empty(),
+                    length,
+                    arrayOffsetExpression,
+                    AST::BinaryOperation::Subtract
+                );
+                lhs->m_inferredType = m_callGraph.ast().types().u32Type();
+            }
+
             m_callGraph.ast().setUsesDivision();
             auto& elementCount = m_callGraph.ast().astBuilder().construct<AST::BinaryExpression>(
                 SourceSpan::empty(),
-                length,
+                *lhs,
                 strideExpression,
                 AST::BinaryOperation::Divide
             );
@@ -491,21 +530,9 @@ auto RewriteGlobalVariables::getPacking(AST::CallExpression& call) -> Packing
     return Packing::Unpacked;
 }
 
-auto RewriteGlobalVariables::packingForType(const Type* type) -> Packing
+Packing RewriteGlobalVariables::packingForType(const Type* type)
 {
-    if (auto* referenceType = std::get_if<Types::Reference>(type))
-        return packingForType(referenceType->element);
-
-    if (auto* structType = std::get_if<Types::Struct>(type)) {
-        if (structType->structure.role() == AST::StructureRole::UserDefinedResource)
-            return Packing::Packed;
-    } else if (auto* vectorType = std::get_if<Types::Vector>(type)) {
-        if (vectorType->size == 3)
-            return Packing::Packed;
-    } else if (auto* arrayType = std::get_if<Types::Array>(type))
-        return packingForType(arrayType->element);
-
-    return Packing::Unpacked;
+    return type->packing();
 }
 
 void RewriteGlobalVariables::collectGlobals()
@@ -700,8 +727,6 @@ const Type* RewriteGlobalVariables::packStructType(const Types::Struct* structTy
     if (structType->structure.role() == AST::StructureRole::UserDefinedResource)
         return m_packedStructTypes.get(structType);
 
-    m_callGraph.ast().setUsesPackedStructs();
-
     // Ensure we pack nested structs
     bool packedAnyMember = false;
     for (auto& member : structType->structure.members()) {
@@ -726,6 +751,7 @@ const Type* RewriteGlobalVariables::packStructType(const Types::Struct* structTy
     );
     m_callGraph.ast().append(m_callGraph.ast().declarations(), packedStruct);
     const Type* packedStructType = m_callGraph.ast().types().structType(packedStruct);
+    packedStruct.m_inferredType = packedStructType;
     m_packedStructTypes.add(structType, packedStructType);
     return packedStructType;
 }
@@ -1190,8 +1216,9 @@ void RewriteGlobalVariables::finalizeArgumentBufferStruct(unsigned group, Vector
         AST::Attribute::List { },
         AST::StructureRole::BindGroup
     );
+    argumentBufferStruct.m_inferredType = m_callGraph.ast().types().structType(argumentBufferStruct);
     m_callGraph.ast().append(m_callGraph.ast().declarations(), argumentBufferStruct);
-    m_structTypes.add(group, m_callGraph.ast().types().structType(argumentBufferStruct));
+    m_structTypes.add(group, argumentBufferStruct.m_inferredType);
 }
 
 Vector<unsigned> RewriteGlobalVariables::insertStructs(const PipelineLayout& layout)
@@ -1370,22 +1397,155 @@ void RewriteGlobalVariables::insertMaterializations(AST::Function& function, con
                 initializer,
                 AST::Attribute::List { }
             );
-            auto& variableStatement = m_callGraph.ast().astBuilder().construct<AST::VariableStatement>(
-                SourceSpan::empty(),
-                variable
-            );
-            m_callGraph.ast().insert(function.body().statements(), 0, AST::Statement::Ref(variableStatement));
+
+            auto& variableStatement = m_callGraph.ast().astBuilder().construct<AST::VariableStatement>(SourceSpan::empty(), variable);
+            m_callGraph.ast().insert(function.body().statements(), 0, std::reference_wrapper<AST::Statement>(variableStatement));
         }
     }
 }
 
 void RewriteGlobalVariables::insertLocalDefinitions(AST::Function& function, const UsedPrivateGlobals& usedPrivateGlobals)
 {
+    Vector<AST::Variable*> atomics;
+    auto initialBodySize = function.body().statements().size();
     for (auto* global : usedPrivateGlobals) {
-        auto& variable = *global->declaration;
-        auto& variableStatement = m_callGraph.ast().astBuilder().construct<AST::VariableStatement>(SourceSpan::empty(), variable);
+        if (std::holds_alternative<Types::Atomic>(*global->declaration->storeType()))
+            atomics.append(global->declaration);
+
+        auto& variableStatement = m_callGraph.ast().astBuilder().construct<AST::VariableStatement>(SourceSpan::empty(), *global->declaration);
         m_callGraph.ast().insert(function.body().statements(), 0, std::reference_wrapper<AST::Statement>(variableStatement));
     }
+
+    if (atomics.size()) {
+        auto offset = function.body().statements().size() - initialBodySize;
+        initializeAtomics(function, atomics, offset);
+    }
+}
+
+void RewriteGlobalVariables::initializeAtomics(AST::Function& function, const Vector<AST::Variable*>& atomics, size_t offset)
+{
+    insertWorkgroupBarrier(function, offset);
+
+    auto localInvocationIndex = findOrInsertLocalInvocationIndex(function);
+    auto initializations = atomicStoreInitialValue(atomics);
+
+    auto& testLhs = m_callGraph.ast().astBuilder().construct<AST::IdentifierExpression>(
+        SourceSpan::empty(),
+        AST::Identifier::make(localInvocationIndex.id())
+    );
+    testLhs.m_inferredType = m_callGraph.ast().types().u32Type();
+
+    auto& testRhs = m_callGraph.ast().astBuilder().construct<AST::Unsigned32Literal>(SourceSpan::empty(), 0);
+    testLhs.m_inferredType = m_callGraph.ast().types().u32Type();
+
+
+    auto& testExpression = m_callGraph.ast().astBuilder().construct<AST::BinaryExpression>(
+        SourceSpan::empty(),
+        testLhs,
+        testRhs,
+        AST::BinaryOperation::Equal
+    );
+    testExpression.m_inferredType = m_callGraph.ast().types().boolType();
+
+    auto& body = m_callGraph.ast().astBuilder().construct<AST::CompoundStatement>(
+        SourceSpan::empty(),
+        WTFMove(initializations)
+    );
+
+    auto& ifStatement = m_callGraph.ast().astBuilder().construct<AST::IfStatement>(
+        SourceSpan::empty(),
+        testExpression,
+        body,
+        nullptr,
+        AST::Attribute::List { }
+    );
+    m_callGraph.ast().insert(function.body().statements(), offset, std::reference_wrapper<AST::Statement>(ifStatement));
+}
+
+void RewriteGlobalVariables::insertWorkgroupBarrier(AST::Function& function, size_t offset)
+{
+    auto& callee = m_callGraph.ast().astBuilder().construct<AST::IdentifierExpression>(SourceSpan::empty(), AST::Identifier::make("workgroupBarrier"_s));
+    callee.m_inferredType = m_callGraph.ast().types().bottomType();
+
+    auto& call = m_callGraph.ast().astBuilder().construct<AST::CallExpression>(
+        SourceSpan::empty(),
+        callee,
+        AST::Expression::List { }
+    );
+    call.m_inferredType = m_callGraph.ast().types().voidType();
+
+    auto& callStatement = m_callGraph.ast().astBuilder().construct<AST::CallStatement>(
+        SourceSpan::empty(),
+        call
+    );
+    m_callGraph.ast().insert(function.body().statements(), offset, std::reference_wrapper<AST::Statement>(callStatement));
+}
+
+AST::Identifier& RewriteGlobalVariables::findOrInsertLocalInvocationIndex(AST::Function& function)
+{
+    for (auto& parameter : function.parameters()) {
+        if (auto builtin = parameter.builtin(); builtin.has_value() && *builtin == Builtin::LocalInvocationIndex)
+            return parameter.name();
+    }
+
+    auto& type = m_callGraph.ast().astBuilder().construct<AST::IdentifierExpression>(
+        SourceSpan::empty(),
+        AST::Identifier::make("u32"_s)
+    );
+    type.m_inferredType = m_callGraph.ast().types().u32Type();
+
+    auto& builtinAttribute = m_callGraph.ast().astBuilder().construct<AST::BuiltinAttribute>(
+        SourceSpan::empty(),
+        Builtin::LocalInvocationIndex
+    );
+
+    auto& parameter = m_callGraph.ast().astBuilder().construct<AST::Parameter>(
+        SourceSpan::empty(),
+        AST::Identifier::make("__localInvocationIndex"_s),
+        type,
+        AST::Attribute::List { builtinAttribute },
+        AST::ParameterRole::UserDefined
+    );
+
+    m_callGraph.ast().append(function.parameters(), parameter);
+
+    return parameter.name();
+}
+
+AST::Statement::List RewriteGlobalVariables::atomicStoreInitialValue(const Vector<AST::Variable*>& atomics)
+{
+    AST::Statement::List statements;
+    for (auto* variable : atomics) {
+        auto& callee = m_callGraph.ast().astBuilder().construct<AST::IdentifierExpression>(SourceSpan::empty(), AST::Identifier::make("atomicStore"_s));
+        callee.m_inferredType = m_callGraph.ast().types().bottomType();
+
+        auto& atomic = m_callGraph.ast().astBuilder().construct<AST::IdentifierExpression>(SourceSpan::empty(), AST::Identifier::make(variable->name()));
+        atomic.m_inferredType = m_callGraph.ast().types().bottomType();
+
+        auto& pointer = m_callGraph.ast().astBuilder().construct<AST::UnaryExpression>(
+            SourceSpan::empty(),
+            atomic,
+            AST::UnaryOperation::AddressOf
+        );
+        pointer.m_inferredType = m_callGraph.ast().types().bottomType();
+
+        auto& value = m_callGraph.ast().astBuilder().construct<AST::AbstractIntegerLiteral>(SourceSpan::empty(), 0);
+        value.m_inferredType = m_callGraph.ast().types().abstractIntType();
+
+        auto& call = m_callGraph.ast().astBuilder().construct<AST::CallExpression>(
+            SourceSpan::empty(),
+            callee,
+            AST::Expression::List { pointer, value }
+        );
+        call.m_inferredType = m_callGraph.ast().types().voidType();
+
+        auto& callStatement = m_callGraph.ast().astBuilder().construct<AST::CallStatement>(
+            SourceSpan::empty(),
+            call
+        );
+        statements.append(AST::Statement::Ref(callStatement));
+    }
+    return statements;
 }
 
 void RewriteGlobalVariables::def(const AST::Identifier& name, AST::Variable* variable)
