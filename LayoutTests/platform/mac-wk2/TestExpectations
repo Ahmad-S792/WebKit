@@ -1837,9 +1837,6 @@ imported/w3c/web-platform-tests/fetch/api/abort/serviceworker-intercepted.https.
 # rdar://99153669 ([ iOS macOS ] 4X imported/w3c/web-platform-tests/html/cross-origin-opener-policy/(Layout tests) are flaky failures (244358))
 imported/w3c/web-platform-tests/html/cross-origin-opener-policy/iframe-popup-same-origin-allow-popups-to-unsafe-none.https.html [ Pass Crash ]
 
-# Failing after OS migration rdar://112624778 (Migrate macOS Sonoma test expectations to OpenSource, add expectation files to Down-Levels (259373))
-editing/input/caret-at-the-edge-of-contenteditable.html [ Pass ImageOnlyFailure Failure ]
-
 webkit.org/b/261005 swipe/pushState-cached-back-swipe.html [ Pass Failure Timeout ]
 
 webkit.org/b/227761 imported/w3c/web-platform-tests/beacon/beacon-cors.https.window.html [ Pass Failure ]
@@ -1959,3 +1956,5 @@ webkit.org/b/266490 [ Sonoma+ ] fast/scrolling/overlay-scrollbars-scroll-corner.
 [ Sonoma+ Debug x86_64 ] inspector/timeline/timeline-event-TimerFire.html [ Pass Crash ]
 
 webkit.org/b/267384 [ Sonoma+ ] fast/selectors/text-field-selection-window-inactive-stroke-color.html [ Pass ImageOnlyFailure ]
+
+webkit.org/b/267595 [ Sonoma+ Debug  x86_64 ] imported/w3c/web-platform-tests/html/browsers/the-window-object/open-close/open-features-tokenization-noopener.html [ Crash ]
