@@ -703,12 +703,21 @@ void Options::notifyOptionsChanged()
     // https://webkit.org/b/239707
     Options::useFTLJIT() = false;
 #endif
-    
+
+#if CPU(ARM_THUMB2)
+    Options::useDFGJIT() = false;
+#endif
+
 #if !CPU(X86_64) && !CPU(ARM64)
     Options::useConcurrentGC() = false;
     Options::forceUnlinkedDFG() = false;
     Options::useWebAssemblySIMD() = false;
+#if !CPU(ARM_THUMB2)
     Options::useBBQJIT() = false;
+#endif
+#if CPU(ARM_THUMB2)
+    Options::useBBQTierUpChecks() = false;
+#endif
 #endif
     Options::useDataICInFTL() = false; // Currently, it is not completed. Disable forcefully.
     Options::forceUnlinkedDFG() = false; // Currently, IC is rapidly changing. We disable this until we get the final form of Data IC.

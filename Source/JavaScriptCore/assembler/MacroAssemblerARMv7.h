@@ -1317,6 +1317,17 @@ public:
         transfer32(src, dest);
     }
 
+    void transfer32(BaseIndex src, BaseIndex dest)
+    {
+        load32(src, dataTempRegister);
+        store32(dataTempRegister, dest);
+    }
+
+    void transferPtr(BaseIndex src, BaseIndex dest)
+    {
+        transfer32(src, dest);
+    }
+
     void storeCond8(RegisterID src, Address addr, RegisterID result)
     {
         ASSERT(!addr.offset);
@@ -1398,6 +1409,34 @@ public:
         // Don't let any more than 12 bits of an instruction word
         // be controlled by an attacker.
         return !immediate.isUInt12();
+    }
+
+    // Popcount (could be implemented via VCNT?)
+
+    static bool supportsCountPopulation() { return false; }
+
+    NO_RETURN_DUE_TO_CRASH void countPopulation32(RegisterID, RegisterID)
+    {
+        ASSERT(!supportsCountPopulation());
+        CRASH();
+    }
+
+    NO_RETURN_DUE_TO_CRASH void countPopulation32(RegisterID, RegisterID, FPRegisterID)
+    {
+        ASSERT(!supportsCountPopulation());
+        CRASH();
+    }
+
+    NO_RETURN_DUE_TO_CRASH void countPopulation64(RegisterID, RegisterID)
+    {
+        ASSERT(!supportsCountPopulation());
+        CRASH();
+    }
+
+    NO_RETURN_DUE_TO_CRASH void countPopulation64(RegisterID, RegisterID, FPRegisterID)
+    {
+        ASSERT(!supportsCountPopulation());
+        CRASH();
     }
 
     // Floating-point operations:
