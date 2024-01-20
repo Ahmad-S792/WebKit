@@ -194,6 +194,7 @@ class QualifiedName;
 class Quirks;
 class RTCNetworkManager;
 class Range;
+class RealtimeMediaSource;
 class Region;
 class RenderTreeBuilder;
 class RenderView;
@@ -562,7 +563,7 @@ public:
     WEBCORE_EXPORT void setXMLStandalone(bool);
     void setHasXMLDeclaration(bool hasXMLDeclaration) { m_hasXMLDeclaration = hasXMLDeclaration; }
 
-    String documentURI() const { return m_documentURI; }
+    WEBCORE_EXPORT String documentURI() const;
     WEBCORE_EXPORT void setDocumentURI(const String&);
 
     WEBCORE_EXPORT VisibilityState visibilityState() const;
@@ -1650,6 +1651,8 @@ public:
     void stopMediaCapture(MediaProducerMediaCaptureKind);
     void mediaStreamCaptureStateChanged();
     size_t activeMediaElementsWithMediaStreamCount() const { return m_activeMediaElementsWithMediaStreamCount; }
+    void addCaptureSource(Ref<RealtimeMediaSource>&&);
+    void updateVideoCaptureStateForMicrophoneInterruption(bool);
 #endif
 
 // FIXME: Find a better place for this functionality.
@@ -2014,6 +2017,11 @@ private:
 
     bool isObservingContentVisibilityTargets() const;
 
+#if ENABLE(MEDIA_STREAM)
+    void updateCaptureAccordingToMutedState();
+    MediaProducerMediaStateFlags computeCaptureState() const;
+#endif
+
     const Ref<const Settings> m_settings;
 
     UniqueRef<Quirks> m_quirks;
@@ -2043,7 +2051,7 @@ private:
     // takes precedence.
     //
     // This property is read-only from JavaScript, but writable from Objective C.
-    String m_documentURI;
+    std::variant<String, URL> m_documentURI;
 
     AtomString m_baseTarget;
 
@@ -2343,6 +2351,8 @@ private:
 #if ENABLE(MEDIA_STREAM)
     String m_idHashSalt;
     size_t m_activeMediaElementsWithMediaStreamCount { 0 };
+    HashSet<Ref<RealtimeMediaSource>> m_captureSources;
+    bool m_isUpdatingCaptureAccordingToMutedState { false };
 #endif
 
     struct PendingScrollEventTargetList;

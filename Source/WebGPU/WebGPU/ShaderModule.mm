@@ -214,6 +214,8 @@ Ref<ShaderModule> Device::createShaderModule(const WGPUShaderModuleDescriptor& d
             if (newRange.location == NSNotFound)
                 break;
             NSRange endRange = [nsWgsl rangeOfString:@":" options:NSLiteralSearch range:NSMakeRange(newRange.location, nsWgsl.length - newRange.location)];
+            if (endRange.location == NSNotFound)
+                break;
             auto startIndex = newRange.location + newRange.length;
             NSString* overrideName = [nsWgsl substringWithRange:NSMakeRange(startIndex, endRange.location - startIndex)];
             [overrideNames addObject:overrideName];
@@ -233,6 +235,8 @@ Ref<ShaderModule> Device::createShaderModule(const WGPUShaderModuleDescriptor& d
                     break;
 
                 NSRange endRange = [nsWgsl rangeOfString:@"(" options:NSLiteralSearch range:NSMakeRange(newRange.location, nsWgsl.length - newRange.location)];
+                if (endRange.location == NSNotFound)
+                    break;
                 auto startIndex = newRange.location + newRange.length;
                 NSString* functionName = [nsWgsl substringWithRange:NSMakeRange(startIndex, endRange.location - startIndex)];
                 currentRange = NSMakeRange(endRange.location + 1, nsWgsl.length - endRange.location - 1);
@@ -273,6 +277,8 @@ static MTLDataType metalDataTypeFromPrimitive(const WGSL::Types::Primitive *prim
             return MTLDataTypeHalf;
         case WGSL::Types::Primitive::F32:
             return MTLDataTypeFloat;
+        case WGSL::Types::Primitive::Bool:
+            return MTLDataTypeBool;
         default:
             RELEASE_ASSERT_NOT_REACHED();
         }
@@ -286,6 +292,8 @@ static MTLDataType metalDataTypeFromPrimitive(const WGSL::Types::Primitive *prim
             return MTLDataTypeHalf2;
         case WGSL::Types::Primitive::F32:
             return MTLDataTypeFloat2;
+        case WGSL::Types::Primitive::Bool:
+            return MTLDataTypeBool2;
         default:
             RELEASE_ASSERT_NOT_REACHED();
         }
@@ -299,6 +307,8 @@ static MTLDataType metalDataTypeFromPrimitive(const WGSL::Types::Primitive *prim
             return MTLDataTypeHalf3;
         case WGSL::Types::Primitive::F32:
             return MTLDataTypeFloat3;
+        case WGSL::Types::Primitive::Bool:
+            return MTLDataTypeBool3;
         default:
             RELEASE_ASSERT_NOT_REACHED();
         }
@@ -312,6 +322,8 @@ static MTLDataType metalDataTypeFromPrimitive(const WGSL::Types::Primitive *prim
             return MTLDataTypeHalf4;
         case WGSL::Types::Primitive::F32:
             return MTLDataTypeFloat4;
+        case WGSL::Types::Primitive::Bool:
+            return MTLDataTypeBool4;
         default:
             RELEASE_ASSERT_NOT_REACHED();
         }
