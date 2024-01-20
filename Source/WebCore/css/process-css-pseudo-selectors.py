@@ -57,7 +57,7 @@ KNOWN_KEY_TYPES = {
 # - an `-internal-` prefix for things only meant to be styled in the user agent stylesheet
 # - an `-apple-` prefix only exposed to certain Apple clients (there is a settings-flag requirement for using this prefix)
 WEBKIT_PREFIX_COUNTS_DO_NOT_INCREASE = {
-    'pseudo-classes': 10,
+    'pseudo-classes': 9,
     'pseudo-elements': 59,
 }
 
@@ -79,10 +79,6 @@ class InputValidator:
     def validate_fields(self, input_data, pseudo_type):
         def is_known_prefix(name):
             if not name.startswith('-'):
-                return True
-
-            # FIXME: Remove this case with `:-khtml-drag` alias.
-            if name.startswith('-khtml-'):
                 return True
 
             return name.startswith('-apple-') or name.startswith('-internal-') or name.startswith('-webkit-')
