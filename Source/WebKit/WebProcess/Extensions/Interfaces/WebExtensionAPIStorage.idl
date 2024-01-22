@@ -29,7 +29,7 @@
 ] interface WebExtensionAPIStorage {
 
     readonly attribute WebExtensionAPIStorageArea local;
-    readonly attribute WebExtensionAPIStorageArea session;
+    [Dynamic] readonly attribute WebExtensionAPIStorageArea session;
     readonly attribute WebExtensionAPIStorageArea sync;
 
     readonly attribute WebExtensionAPIEvent onChanged;

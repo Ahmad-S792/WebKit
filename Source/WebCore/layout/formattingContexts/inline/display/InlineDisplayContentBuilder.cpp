@@ -147,9 +147,9 @@ static inline bool computeInkOverflowForInlineBox(const InlineLevelBox& inlineBo
     auto hasVisualOverflow = computeInkOverflowForInlineLevelBox(style, inkOverflow);
 
     auto inflateWithAnnotation = [&] {
-        if (!inlineBox.hasAnnotation())
+        if (!inlineBox.hasTextEmphasis())
             return;
-        inkOverflow.inflate(0.f, inlineBox.annotationAbove().value_or(0.f), 0.f, inlineBox.annotationBelow().value_or(0.f));
+        inkOverflow.inflate(0.f, inlineBox.textEmphasisAbove().value_or(0.f), 0.f, inlineBox.textEmphasisBelow().value_or(0.f));
         hasVisualOverflow = true;
     };
     inflateWithAnnotation();
@@ -1162,6 +1162,7 @@ void InlineDisplayContentBuilder::applyRubyOverhang(InlineDisplay::Boxes& displa
         return;
 
     auto isHorizontalWritingMode = root().style().isHorizontalWritingMode();
+    auto lineLogicalHeight = lineBox().logicalRect().height();
     auto& formattingContext = this->formattingContext();
     for (auto startEndPair : interlinearRubyColumnRangeList) {
         ASSERT(startEndPair);
@@ -1173,8 +1174,8 @@ void InlineDisplayContentBuilder::applyRubyOverhang(InlineDisplay::Boxes& displa
         ASSERT(rubyBaseLayoutBox.isRubyBase());
         ASSERT(RubyFormattingContext::hasInterlinearAnnotation(rubyBaseLayoutBox));
 
-        auto beforeOverhang = RubyFormattingContext::overhangForAnnotationBefore(rubyBaseLayoutBox, rubyBaseStart, displayBoxes, formattingContext);
-        auto afterOverhang = RubyFormattingContext::overhangForAnnotationAfter(rubyBaseLayoutBox, { rubyBaseStart, startEndPair.end() }, displayBoxes, formattingContext);
+        auto beforeOverhang = RubyFormattingContext::overhangForAnnotationBefore(rubyBaseLayoutBox, rubyBaseStart, displayBoxes, lineLogicalHeight, formattingContext);
+        auto afterOverhang = RubyFormattingContext::overhangForAnnotationAfter(rubyBaseLayoutBox, { rubyBaseStart, startEndPair.end() }, displayBoxes, lineLogicalHeight, formattingContext);
 
         // FIXME: If this turns out to be a pref bottleneck, make sure we pass in the accumulated shift to overhangForAnnotationBefore/after and
         // offset all box geometry as we check for overlap.

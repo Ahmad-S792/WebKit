@@ -149,8 +149,8 @@ static const char* stringForRareDataUseType(NodeRareData::UseType useType)
         return "ScrollingPosition";
     case NodeRareData::UseType::ComputedStyle:
         return "ComputedStyle";
-    case NodeRareData::UseType::DisplayContentsStyle:
-        return "DisplayContentsStyle";
+    case NodeRareData::UseType::DisplayContentsOrNoneStyle:
+        return "DisplayContentsOrNoneStyle";
     case NodeRareData::UseType::EffectiveLang:
         return "EffectiveLang";
     case NodeRareData::UseType::Dataset:
@@ -2216,12 +2216,7 @@ void Node::moveNodeToNewDocument(Document& oldDocument, Document& newDocument)
     if (UNLIKELY(textManipulationController))
         textManipulationController->removeNode(*this);
 
-    if (auto* eventTargetData = this->eventTargetData()) {
-        eventTargetData->eventListenerMap.enumerateEventListenerTypes([&](auto& eventType, unsigned count) {
-            oldDocument.didRemoveEventListenersOfType(eventType, count);
-            newDocument.didAddEventListenersOfType(eventType, count);
-        });
-
+    if (hasEventTargetData()) {
         unsigned numWheelEventHandlers = 0;
         unsigned numTouchEventListeners = 0;
 #if ENABLE(TOUCH_EVENTS) && ENABLE(IOS_GESTURE_EVENTS)
@@ -2235,8 +2230,11 @@ void Node::moveNodeToNewDocument(Document& oldDocument, Document& newDocument)
 #endif
 
         auto& eventNames = WebCore::eventNames();
-        enumerateEventListenerTypes([&](const AtomString& name, unsigned count) {
-            auto typeInfo = eventNames.typeInfoForEvent(name);
+        enumerateEventListenerTypes([&](auto& eventType, unsigned count) {
+            oldDocument.didRemoveEventListenersOfType(eventType, count);
+            newDocument.didAddEventListenersOfType(eventType, count);
+
+            auto typeInfo = eventNames.typeInfoForEvent(eventType);
             if (typeInfo.isInCategory(EventCategory::Wheel))
                 numWheelEventHandlers += count;
             else if (typeInfo.isInCategory(touchEventCategory))
