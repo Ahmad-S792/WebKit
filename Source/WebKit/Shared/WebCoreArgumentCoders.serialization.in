@@ -1870,6 +1870,7 @@ header: <WebCore/ResourceRequest.h>
     [BitField] bool m_privacyProxyFailClosedForUnreachableNonMainHosts;
     [BitField] bool m_useAdvancedPrivacyProtections;
     [BitField] bool m_didFilterLinkDecoration;
+    [BitField] bool m_isPrivateTokenUsageByThirdPartyAllowed;
 };
 
 #if USE(SOUP)
@@ -7282,6 +7283,14 @@ enum class WebCore::GraphicsContextGLSurfaceBuffer : bool;
     InvalidValue,
     InvalidEnum
 };
+
+#if ENABLE(IMAGE_ANALYSIS) && ENABLE(DATA_DETECTION)
+header: <WebCore/TextRecognitionResult.h>
+[CustomHeader] struct WebCore::TextRecognitionDataDetector {
+    RetainPtr<DDScannerResult> result;
+    Vector<WebCore::FloatQuad> normalizedQuads;
+};
+#endif // ENABLE(IMAGE_ANALYSIS) && ENABLE(DATA_DETECTION)
 
 #if ENABLE(VIDEO)
 

@@ -1725,6 +1725,8 @@ webkit.org/b/251848 imported/w3c/web-platform-tests/css/css-images/image-set/ima
 webkit.org/b/214468 imported/w3c/web-platform-tests/css/css-fonts/font-language-override-02.html [ ImageOnlyFailure ]
 webkit.org/b/214468 imported/w3c/web-platform-tests/css/css-multicol/equal-gap-and-rule.html [ ImageOnlyFailure ]
 webkit.org/b/214468 imported/w3c/web-platform-tests/css/css-multicol/fixed-size-child-with-overflow.html [ ImageOnlyFailure ]
+webkit.org/b/214468 imported/w3c/web-platform-tests/css/css-pseudo/active-selection-041.html [ ImageOnlyFailure ]
+webkit.org/b/214468 imported/w3c/web-platform-tests/css/css-pseudo/highlight-styling-003.tentative.html [ ImageOnlyFailure ]
 webkit.org/b/214468 imported/w3c/web-platform-tests/css/css-pseudo/textpath-selection-011.html [ ImageOnlyFailure ]
 webkit.org/b/214468 imported/w3c/web-platform-tests/css/css-shapes/shape-outside/shape-image/shape-image-000.html [ ImageOnlyFailure ]
 webkit.org/b/214468 imported/w3c/web-platform-tests/css/css-shapes/shape-outside/shape-image/shape-image-004.html [ ImageOnlyFailure ]
@@ -2363,3 +2365,5 @@ fast/forms/switch/pointer-tracking-there-and-back-again.html [ Timeout ]
 fast/forms/switch/pointer-tracking.html [ Timeout ]
 
 webkit.org/b/267796 [ Release ] imported/w3c/web-platform-tests/requestidlecallback/deadline-max-rAF-dynamic.html [ Pass Failure ]
+
+webkit.org/b/267934 [ Debug ] fast/dom/Orientation/no-orientation-change-event-when-unparenting-view.html [ Crash ]

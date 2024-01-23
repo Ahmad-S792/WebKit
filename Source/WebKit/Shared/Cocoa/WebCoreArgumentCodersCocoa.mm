@@ -382,31 +382,6 @@ bool ArgumentCoder<WebCore::ApplePaySessionPaymentRequest::MerchantCapabilities>
     return true;
 }
 
-void ArgumentCoder<RefPtr<WebCore::ApplePayError>>::encode(Encoder& encoder, const RefPtr<WebCore::ApplePayError>& error)
-{
-    encoder << !!error;
-    if (error)
-        encoder << *error;
-}
-
-std::optional<RefPtr<WebCore::ApplePayError>> ArgumentCoder<RefPtr<WebCore::ApplePayError>>::decode(Decoder& decoder)
-{
-    std::optional<bool> isValid;
-    decoder >> isValid;
-    if (!isValid)
-        return std::nullopt;
-
-    if (!*isValid)
-        return { nullptr };
-
-    std::optional<Ref<WebCore::ApplePayError>> error;
-    decoder >> error;
-    if (!error)
-        return std::nullopt;
-
-    return error;
-}
-
 void ArgumentCoder<WebCore::PaymentSessionError>::encode(Encoder& encoder, const WebCore::PaymentSessionError& error)
 {
     encoder << error.platformError();
@@ -671,24 +646,6 @@ bool ArgumentCoder<WebCore::MediaPlaybackTargetContext>::decodePlatformData(Deco
 }
 #endif
 
-#if ENABLE(IMAGE_ANALYSIS) && ENABLE(DATA_DETECTION)
-
-void ArgumentCoder<WebCore::TextRecognitionDataDetector>::encodePlatformData(Encoder& encoder, const WebCore::TextRecognitionDataDetector& info)
-{
-    encoder << info.result.get();
-}
-
-bool ArgumentCoder<WebCore::TextRecognitionDataDetector>::decodePlatformData(Decoder& decoder, WebCore::TextRecognitionDataDetector& result)
-{
-    auto scannerResult = decoder.decodeWithAllowedClasses<DDScannerResult>();
-    if (!scannerResult)
-        return false;
-
-    result.result = WTFMove(*scannerResult);
-    return true;
-}
-
-#endif // ENABLE(IMAGE_ANALYSIS) && ENABLE(DATA_DETECTION)
 
 #if ENABLE(IMAGE_ANALYSIS_ENHANCEMENTS)
 
