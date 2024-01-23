@@ -1345,17 +1345,17 @@ void DocumentLoader::commitData(const SharedBuffer& data)
     }
 
 #if ENABLE(CONTENT_EXTENSIONS)
-    auto& extensionStyleSheets = m_frame->document()->extensionStyleSheets();
-
-    for (auto& pendingStyleSheet : m_pendingNamedContentExtensionStyleSheets)
-        extensionStyleSheets.maybeAddContentExtensionSheet(pendingStyleSheet.key, *pendingStyleSheet.value);
-    for (auto& pendingSelectorEntry : m_pendingContentExtensionDisplayNoneSelectors) {
-        for (const auto& pendingSelector : pendingSelectorEntry.value)
-            extensionStyleSheets.addDisplayNoneSelector(pendingSelectorEntry.key, pendingSelector.first, pendingSelector.second);
+    if (!m_pendingNamedContentExtensionStyleSheets.isEmpty() || !m_pendingContentExtensionDisplayNoneSelectors.isEmpty()) {
+        auto& extensionStyleSheets = m_frame->document()->extensionStyleSheets();
+        for (auto& pendingStyleSheet : m_pendingNamedContentExtensionStyleSheets)
+            extensionStyleSheets.maybeAddContentExtensionSheet(pendingStyleSheet.key, *pendingStyleSheet.value);
+        for (auto& pendingSelectorEntry : m_pendingContentExtensionDisplayNoneSelectors) {
+            for (const auto& pendingSelector : pendingSelectorEntry.value)
+                extensionStyleSheets.addDisplayNoneSelector(pendingSelectorEntry.key, pendingSelector.first, pendingSelector.second);
+        }
+        m_pendingNamedContentExtensionStyleSheets.clear();
+        m_pendingContentExtensionDisplayNoneSelectors.clear();
     }
-
-    m_pendingNamedContentExtensionStyleSheets.clear();
-    m_pendingContentExtensionDisplayNoneSelectors.clear();
 #endif
 
     ASSERT(m_frame->document()->parsing());
@@ -1495,7 +1495,7 @@ void DocumentLoader::attachToFrame()
     DOCUMENTLOADER_RELEASE_LOG("DocumentLoader::attachToFrame: m_frame=%p", m_frame.get());
 }
 
-void DocumentLoader::detachFromFrame(LoadWillContinueInAnotherProcess)
+void DocumentLoader::detachFromFrame(LoadWillContinueInAnotherProcess loadWillContinueInAnotherProcess)
 {
     DOCUMENTLOADER_RELEASE_LOG("DocumentLoader::detachFromFrame: m_frame=%p", m_frame.get());
 
@@ -1529,9 +1529,18 @@ void DocumentLoader::detachFromFrame(LoadWillContinueInAnotherProcess)
     if (!m_frame)
         return;
 
+    if (auto navigationID = std::exchange(m_navigationID, 0))
+        m_frame->loader().client().documentLoaderDetached(navigationID, loadWillContinueInAnotherProcess);
+
     InspectorInstrumentation::loaderDetachedFromFrame(*m_frame, *this);
 
     observeFrame(nullptr);
+}
+
+void DocumentLoader::setNavigationID(uint64_t navigationID)
+{
+    ASSERT(navigationID);
+    m_navigationID = navigationID;
 }
 
 void DocumentLoader::clearMainResourceLoader()

@@ -64,6 +64,12 @@
 #import <UIKit/UIColor.h>
 #endif
 
+// FIXME: We should rationalize these with the values in ViewGestureController.
+// For now, we'll leave them differing as they do in PDFPlugin.
+static constexpr CGFloat minimumZoomScale = 0.2;
+static constexpr CGFloat maximumZoomScale = 6.0;
+static constexpr CGFloat zoomIncrement = 1.18920;
+
 namespace WebKit {
 using namespace WebCore;
 
@@ -374,13 +380,6 @@ float UnifiedPDFPlugin::deviceScaleFactor() const
     return PDFPluginBase::deviceScaleFactor();
 }
 
-float UnifiedPDFPlugin::pageScaleFactor() const
-{
-    if (RefPtr page = this->page())
-        return m_view->pageScaleFactor();
-    return 1;
-}
-
 void UnifiedPDFPlugin::didBeginMagnificationGesture()
 {
     m_inMagnificationGesture = true;
@@ -522,6 +521,12 @@ FloatSize UnifiedPDFPlugin::pdfDocumentSizeForPrinting() const
 RefPtr<FragmentedSharedBuffer> UnifiedPDFPlugin::liveResourceData() const
 {
     return nullptr;
+}
+
+NSData *UnifiedPDFPlugin::liveData() const
+{
+    // FIXME: Handle annotations and re-generate the PDF if it's been mutated.
+    return originalData();
 }
 
 void UnifiedPDFPlugin::didChangeScrollOffset()
@@ -908,11 +913,37 @@ bool UnifiedPDFPlugin::handleMouseLeaveEvent(const WebMouseEvent&)
 }
 
 #if PLATFORM(MAC)
+UnifiedPDFPlugin::ContextMenuItemTag UnifiedPDFPlugin::contextMenuItemTagFromDisplayMode(const PDFDocumentLayout::DisplayMode& displayMode) const
+{
+    switch (displayMode) {
+    case PDFDocumentLayout::DisplayMode::SinglePage: return ContextMenuItemTag::SinglePage;
+    case PDFDocumentLayout::DisplayMode::Continuous: return ContextMenuItemTag::SinglePageContinuous;
+    case PDFDocumentLayout::DisplayMode::TwoUp: return ContextMenuItemTag::TwoPages;
+    case PDFDocumentLayout::DisplayMode::TwoUpContinuous: return ContextMenuItemTag::TwoPagesContinuous;
+    }
+}
+
+PDFDocumentLayout::DisplayMode UnifiedPDFPlugin::displayModeFromContextMenuItemTag(const ContextMenuItemTag& tag) const
+{
+    switch (tag) {
+    case ContextMenuItemTag::SinglePage: return PDFDocumentLayout::DisplayMode::SinglePage;
+    case ContextMenuItemTag::SinglePageContinuous: return PDFDocumentLayout::DisplayMode::Continuous;
+    case ContextMenuItemTag::TwoPages: return PDFDocumentLayout::DisplayMode::TwoUp;
+    case ContextMenuItemTag::TwoPagesContinuous: return PDFDocumentLayout::DisplayMode::TwoUpContinuous;
+    default:
+        ASSERT_NOT_REACHED();
+        return PDFDocumentLayout::DisplayMode::Continuous;
+    }
+}
+
 PDFContextMenu UnifiedPDFPlugin::createContextMenu(const IntPoint& contextMenuPoint) const
 {
     Vector<PDFContextMenuItem> menuItems;
 
-    // FIXME: We should also set the openInPreviewIndex when UnifiedPdfPlugin::openWithPreview is implemented.
+    auto addSeparator = [&] {
+        menuItems.append({ String(), 0, invalidContextMenuItemTag, ContextMenuItemEnablement::Disabled, ContextMenuItemHasAction::No, ContextMenuItemIsSeparator::Yes });
+    };
+
     menuItems.append({ WebCore::contextMenuItemPDFOpenWithPreview(), 0,
         enumToUnderlyingType(ContextMenuItemTag::OpenWithPreview),
         ContextMenuItemEnablement::Enabled,
@@ -920,18 +951,21 @@ PDFContextMenu UnifiedPDFPlugin::createContextMenu(const IntPoint& contextMenuPo
         ContextMenuItemIsSeparator::No
     });
 
-    menuItems.append({ String(), 0, invalidContextMenuItemTag, ContextMenuItemEnablement::Disabled, ContextMenuItemHasAction::No, ContextMenuItemIsSeparator::Yes });
+    addSeparator();
 
-    auto currentDisplayMode = contextMenuItemTagFromDisplyMode(m_documentLayout.displayMode());
+    auto currentDisplayMode = contextMenuItemTagFromDisplayMode(m_documentLayout.displayMode());
     menuItems.append({ WebCore::contextMenuItemPDFSinglePage(), currentDisplayMode == ContextMenuItemTag::SinglePage, enumToUnderlyingType(ContextMenuItemTag::SinglePage), ContextMenuItemEnablement::Enabled, ContextMenuItemHasAction::Yes, ContextMenuItemIsSeparator::No });
-
     menuItems.append({ WebCore::contextMenuItemPDFSinglePageContinuous(), currentDisplayMode == ContextMenuItemTag::SinglePageContinuous, enumToUnderlyingType(ContextMenuItemTag::SinglePageContinuous), ContextMenuItemEnablement::Enabled, ContextMenuItemHasAction::Yes, ContextMenuItemIsSeparator::No });
-
     menuItems.append({ WebCore::contextMenuItemPDFTwoPages(), currentDisplayMode == ContextMenuItemTag::TwoPages, enumToUnderlyingType(ContextMenuItemTag::TwoPages), ContextMenuItemEnablement::Enabled, ContextMenuItemHasAction::Yes, ContextMenuItemIsSeparator::No });
-
     menuItems.append({ WebCore::contextMenuItemPDFTwoPagesContinuous(), currentDisplayMode == ContextMenuItemTag::TwoPagesContinuous, enumToUnderlyingType(ContextMenuItemTag::TwoPagesContinuous), ContextMenuItemEnablement::Enabled, ContextMenuItemHasAction::Yes, ContextMenuItemIsSeparator::No });
 
-    return { contextMenuPoint, WTFMove(menuItems), { } };
+    addSeparator();
+
+    menuItems.append({ WebCore::contextMenuItemPDFZoomIn(), 0, enumToUnderlyingType(ContextMenuItemTag::ZoomIn), ContextMenuItemEnablement::Enabled, ContextMenuItemHasAction::Yes, ContextMenuItemIsSeparator::No });
+    menuItems.append({ WebCore::contextMenuItemPDFZoomOut(), 0, enumToUnderlyingType(ContextMenuItemTag::ZoomOut), ContextMenuItemEnablement::Enabled, ContextMenuItemHasAction::Yes, ContextMenuItemIsSeparator::No });
+    menuItems.append({ WebCore::contextMenuItemPDFActualSize(), 0, enumToUnderlyingType(ContextMenuItemTag::ActualSize), ContextMenuItemEnablement::Enabled, ContextMenuItemHasAction::Yes, ContextMenuItemIsSeparator::No });
+
+    return { contextMenuPoint, WTFMove(menuItems), { enumToUnderlyingType(ContextMenuItemTag::OpenWithPreview) } };
 }
 
 void UnifiedPDFPlugin::performContextMenuAction(ContextMenuItemTag tag)
@@ -943,10 +977,20 @@ void UnifiedPDFPlugin::performContextMenuAction(ContextMenuItemTag tag)
     case ContextMenuItemTag::SinglePageContinuous:
     case ContextMenuItemTag::TwoPagesContinuous:
     case ContextMenuItemTag::TwoPages:
-        if (tag != contextMenuItemTagFromDisplyMode(m_documentLayout.displayMode())) {
+        if (tag != contextMenuItemTagFromDisplayMode(m_documentLayout.displayMode())) {
             m_documentLayout.setDisplayMode(displayModeFromContextMenuItemTag(tag));
             updateLayout();
         }
+        break;
+    case ContextMenuItemTag::ZoomIn:
+        zoomIn();
+        break;
+    case ContextMenuItemTag::ZoomOut:
+        zoomOut();
+        break;
+    case ContextMenuItemTag::ActualSize:
+        setPageScaleFactor(1, std::nullopt);
+        break;
     }
 }
 #endif // PLATFORM(MAC)
@@ -1053,18 +1097,12 @@ id UnifiedPDFPlugin::accessibilityAssociatedPluginParentForElement(Element*) con
 
 void UnifiedPDFPlugin::zoomIn()
 {
+    setPageScaleFactor(std::clamp(m_scaleFactor * zoomIncrement, minimumZoomScale, maximumZoomScale), std::nullopt);
 }
 
 void UnifiedPDFPlugin::zoomOut()
 {
-}
-
-void UnifiedPDFPlugin::save(CompletionHandler<void(const String&, const URL&, const IPC::DataReference&)>&& completionHandler)
-{
-}
-
-void UnifiedPDFPlugin::openWithPreview(CompletionHandler<void(const String&, FrameInfoData&&, const IPC::DataReference&, const String&)>&& completionHandler)
-{
+    setPageScaleFactor(std::clamp(m_scaleFactor / zoomIncrement, minimumZoomScale, maximumZoomScale), std::nullopt);
 }
 
 #endif // ENABLE(PDF_HUD)

@@ -44,6 +44,7 @@
 #include "CachedResourceLoader.h"
 #include "CompositeOperation.h"
 #include "Document.h"
+#include "DocumentInlines.h"
 #include "ElementRuleCollector.h"
 #include "FrameSelection.h"
 #include "InspectorInstrumentation.h"
@@ -484,6 +485,8 @@ std::optional<ResolvedStyle> Resolver::styleForPseudoElement(const Element& elem
         return { };
 
     state.style()->setStyleType(pseudoElementRequest.pseudoId);
+    if (!pseudoElementRequest.nameIdentifier.isNull())
+        state.style()->setFunctionalPseudoElementArgument(pseudoElementRequest.nameIdentifier);
 
     applyMatchedProperties(state, collector.matchResult());
 
