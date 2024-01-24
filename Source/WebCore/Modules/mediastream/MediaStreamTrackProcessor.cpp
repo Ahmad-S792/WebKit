@@ -60,11 +60,12 @@ MediaStreamTrackProcessor::~MediaStreamTrackProcessor()
 ExceptionOr<Ref<ReadableStream>> MediaStreamTrackProcessor::readable(JSC::JSGlobalObject& globalObject)
 {
     if (!m_readable) {
-        auto readableStreamSource = Source::create(m_track.get(), *this);
-        auto readableOrException = ReadableStream::create(*JSC::jsCast<JSDOMGlobalObject*>(&globalObject), readableStreamSource.get());
-        if (readableOrException.hasException())
+        m_readableStreamSource = makeUniqueWithoutRefCountedCheck<Source>(m_track.get(), *this);
+        auto readableOrException = ReadableStream::create(*JSC::jsCast<JSDOMGlobalObject*>(&globalObject), *m_readableStreamSource);
+        if (readableOrException.hasException()) {
+            m_readableStreamSource = nullptr;
             return readableOrException.releaseException();
-        m_readableStreamSource = WTFMove(readableStreamSource);
+        }
         m_readable = readableOrException.releaseReturnValue();
         m_videoFrameObserverWrapper->start();
     }
@@ -100,22 +101,16 @@ void MediaStreamTrackProcessor::tryEnqueueingVideoFrame()
 
 Ref<MediaStreamTrackProcessor::VideoFrameObserverWrapper> MediaStreamTrackProcessor::VideoFrameObserverWrapper::create(ScriptExecutionContextIdentifier identifier, MediaStreamTrackProcessor& processor, Ref<RealtimeMediaSource>&& source, unsigned short maxVideoFramesCount)
 {
-    auto wrapper = adoptRef(*new VideoFrameObserverWrapper);
-    wrapper->initialize(identifier, processor, WTFMove(source), maxVideoFramesCount);
-    return wrapper;
-}
-
-MediaStreamTrackProcessor::VideoFrameObserverWrapper::VideoFrameObserverWrapper()
-{
-}
-
-void MediaStreamTrackProcessor::VideoFrameObserverWrapper::initialize(ScriptExecutionContextIdentifier identifier, MediaStreamTrackProcessor& processor, Ref<RealtimeMediaSource>&& source, unsigned short maxVideoFramesCount)
-{
 #if PLATFORM(COCOA)
     if (source->deviceType() == CaptureDevice::DeviceType::Camera)
         maxVideoFramesCount = 1;
 #endif
-    m_observer = makeUnique<VideoFrameObserver>(identifier, WeakPtr { processor }, WTFMove(source), maxVideoFramesCount);
+    return adoptRef(*new VideoFrameObserverWrapper(identifier, processor, WTFMove(source), maxVideoFramesCount));
+}
+
+MediaStreamTrackProcessor::VideoFrameObserverWrapper::VideoFrameObserverWrapper(ScriptExecutionContextIdentifier identifier, MediaStreamTrackProcessor& processor, Ref<RealtimeMediaSource>&& source, unsigned short maxVideoFramesCount)
+    : m_observer(makeUniqueRef<VideoFrameObserver>(identifier, processor, WTFMove(source), maxVideoFramesCount))
+{
 }
 
 void MediaStreamTrackProcessor::VideoFrameObserverWrapper::start()
@@ -180,6 +175,9 @@ void MediaStreamTrackProcessor::VideoFrameObserver::videoFrameAvailable(VideoFra
             protectedProcessor->tryEnqueueingVideoFrame();
     });
 }
+
+using MediaStreamTrackProcessorSource = MediaStreamTrackProcessor::Source;
+WTF_MAKE_ISO_ALLOCATED_IMPL(MediaStreamTrackProcessorSource);
 
 MediaStreamTrackProcessor::Source::Source(Ref<MediaStreamTrack>&& track, MediaStreamTrackProcessor& processor)
     : m_track(WTFMove(track))

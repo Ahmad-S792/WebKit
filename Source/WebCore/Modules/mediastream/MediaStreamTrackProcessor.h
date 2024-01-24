@@ -58,6 +58,44 @@ public:
 
     ExceptionOr<Ref<ReadableStream>> readable(JSC::JSGlobalObject&);
 
+    class Source final
+        : public ReadableStreamSource
+        , public MediaStreamTrackPrivate::Observer {
+        WTF_MAKE_ISO_ALLOCATED(Source);
+    public:
+        Source(Ref<MediaStreamTrack>&&, MediaStreamTrackProcessor&);
+        ~Source();
+
+        bool isWaiting() const;
+        void close();
+        void enqueue(WebCodecsVideoFrame&, ScriptExecutionContext&);
+
+        void ref() final { m_processor->ref(); };
+        void deref() final { m_processor->deref(); };
+
+    private:
+
+        // MediaStreamTrackPrivate::Observer
+        void trackEnded(MediaStreamTrackPrivate&) final;
+        void trackMutedChanged(MediaStreamTrackPrivate&) final { }
+        void trackSettingsChanged(MediaStreamTrackPrivate&) final { }
+        void trackEnabledChanged(MediaStreamTrackPrivate&) final { }
+
+        // ReadableStreamSource
+        void setActive() { };
+        void setInactive() { };
+        void doStart() final;
+        void doPull() final;
+        void doCancel() final;
+
+        bool m_isWaiting { false };
+        bool m_isCancelled { false };
+        Ref<MediaStreamTrack> m_track;
+        WeakPtr<MediaStreamTrackProcessor> m_processor;
+    };
+    using MediaStreamTrackProcessorSource = MediaStreamTrackProcessor::Source;
+
+
 private:
     MediaStreamTrackProcessor(ScriptExecutionContext&, Ref<MediaStreamTrack>&&, unsigned short maxVideoFramesCount);
 
@@ -98,48 +136,13 @@ private:
         RefPtr<WebCodecsVideoFrame> takeVideoFrame(ScriptExecutionContext& context) { return m_observer->takeVideoFrame(context); }
 
     private:
-        VideoFrameObserverWrapper();
+        VideoFrameObserverWrapper(ScriptExecutionContextIdentifier, MediaStreamTrackProcessor&, Ref<RealtimeMediaSource>&&, unsigned short maxVideoFramesCount);
 
-        void initialize(ScriptExecutionContextIdentifier, MediaStreamTrackProcessor&, Ref<RealtimeMediaSource>&&, unsigned short maxVideoFramesCount);
-
-        std::unique_ptr<VideoFrameObserver> m_observer;
-    };
-
-    class Source final
-        : public ReadableStreamSource
-        , public MediaStreamTrackPrivate::Observer {
-    public:
-        static Ref<Source> create(Ref<MediaStreamTrack>&& track, MediaStreamTrackProcessor& processor) { return adoptRef(*new Source(WTFMove(track), processor)); }
-        ~Source();
-
-        bool isWaiting() const;
-        void close();
-        void enqueue(WebCodecsVideoFrame&, ScriptExecutionContext&);
-
-    private:
-        Source(Ref<MediaStreamTrack>&&, MediaStreamTrackProcessor&);
-
-        // MediaStreamTrackPrivate::Observer
-        void trackEnded(MediaStreamTrackPrivate&) final;
-        void trackMutedChanged(MediaStreamTrackPrivate&) final { }
-        void trackSettingsChanged(MediaStreamTrackPrivate&) final { }
-        void trackEnabledChanged(MediaStreamTrackPrivate&) final { }
-
-        // ReadableStreamSource
-        void setActive() { };
-        void setInactive() { };
-        void doStart() final;
-        void doPull() final;
-        void doCancel() final;
-
-        bool m_isWaiting { false };
-        bool m_isCancelled { false };
-        Ref<MediaStreamTrack> m_track;
-        WeakPtr<MediaStreamTrackProcessor> m_processor;
+        UniqueRef<VideoFrameObserver> m_observer;
     };
 
     RefPtr<ReadableStream> m_readable;
-    RefPtr<Source> m_readableStreamSource;
+    std::unique_ptr<Source> m_readableStreamSource;
     RefPtr<VideoFrameObserverWrapper> m_videoFrameObserverWrapper;
     Ref<MediaStreamTrack> m_track;
 };
