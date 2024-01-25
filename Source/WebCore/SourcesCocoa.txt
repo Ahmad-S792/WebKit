@@ -155,7 +155,7 @@ crypto/mac/CommonCryptoDERUtilities.cpp
 crypto/mac/CryptoAlgorithmAES_CBCMac.cpp
 crypto/mac/CryptoAlgorithmAES_CFBMac.cpp
 crypto/mac/CryptoAlgorithmAES_CTRMac.cpp
-crypto/mac/CryptoAlgorithmAES_GCMMac.cpp
+crypto/mac/CryptoAlgorithmAES_GCMMac.mm
 crypto/mac/CryptoAlgorithmAES_KWMac.cpp
 crypto/mac/CryptoAlgorithmECDHMac.cpp
 crypto/mac/CryptoAlgorithmECDSAMac.cpp
@@ -515,7 +515,6 @@ platform/graphics/mac/controls/TextFieldMac.mm
 platform/graphics/mac/controls/ToggleButtonMac.mm
 platform/graphics/mac/controls/WebControlView.mm
 platform/graphics/opentype/OpenTypeCG.cpp
-platform/graphics/re/DynamicContentScalingResourceCache.mm
 platform/image-decoders/avif/AVIFImageDecoder.cpp
 platform/image-decoders/avif/AVIFImageReader.cpp
 platform/image-decoders/jpegxl/JPEGXLImageDecoder.cpp

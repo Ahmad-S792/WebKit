@@ -157,8 +157,10 @@ private:
     std::unique_ptr<WebCore::ThreadSafeImageBufferFlusher> m_imageBufferFlusher;
 };
 
-std::unique_ptr<ThreadSafeImageBufferSetFlusher> RemoteLayerWithInProcessRenderingBackingStore::createFlusher()
+std::unique_ptr<ThreadSafeImageBufferSetFlusher> RemoteLayerWithInProcessRenderingBackingStore::createFlusher(ThreadSafeImageBufferSetFlusher::FlushType flushType)
 {
+    if (flushType == ThreadSafeImageBufferSetFlusher::FlushType::BackendHandlesOnly)
+        return nullptr;
     m_frontBuffer.imageBuffer->flushDrawingContextAsync();
     return ImageBufferBackingStoreFlusher::create(m_frontBuffer.imageBuffer->createFlusher());
 }
@@ -258,11 +260,8 @@ RefPtr<WebCore::ImageBuffer> RemoteLayerWithInProcessRenderingBackingStore::allo
     creationContext.surfacePool = &WebCore::IOSurfacePool::sharedPool();
 
 #if ENABLE(RE_DYNAMIC_CONTENT_SCALING)
-    if (m_parameters.includeDisplayList == IncludeDisplayList::Yes) {
-        if (auto* context = m_layer->context())
-            creationContext.dynamicContentScalingResourceCache = context->ensureDynamicContentScalingResourceCache();
+    if (m_parameters.includeDisplayList == IncludeDisplayList::Yes)
         return allocateBufferInternal<DynamicContentScalingBifurcatedImageBuffer>(type(), size(), purpose, scale(), colorSpace(), pixelFormat(), creationContext);
-    }
 #endif
 
     return allocateBufferInternal<ImageBuffer>(type(), size(), purpose, scale(), colorSpace(), pixelFormat(), creationContext);
