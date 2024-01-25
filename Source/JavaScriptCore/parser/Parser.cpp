@@ -4838,7 +4838,6 @@ template <class TreeBuilder> TreeExpression Parser<LexerType>::parseObjectLitera
         tail = context.createPropertyList(propertyLocation, property, tail);
     }
 
-    location = tokenLocation();
     handleProductionOrFail2(CLOSEBRACE, "}", "end", "object literal");
 
     return context.createObjectLiteral(location, propertyList);
@@ -5311,14 +5310,13 @@ template <class TreeBuilder> TreeExpression Parser<LexerType>::parseMemberExpres
 {
     TreeExpression base = 0;
     JSTextPosition expressionStart = tokenStartPosition();
-    JSTokenLocation startLocation = tokenLocation();
+    JSTokenLocation location = tokenLocation();
     Vector<JSTextPosition> newTokenStartPositions;
     while (match(NEW)) {
         newTokenStartPositions.append(tokenStartPosition());
         next();
     }
     size_t newCount = newTokenStartPositions.size();
-    JSTokenLocation location = tokenLocation();
 
     bool baseIsSuper = match(SUPER);
     bool previousBaseWasSuper = false;
@@ -5337,7 +5335,7 @@ template <class TreeBuilder> TreeExpression Parser<LexerType>::parseMemberExpres
                 semanticFailIfFalse(!closestOrdinaryFunctionScope->isGlobalCode() || isFunctionEvalContextType || isClassFieldInitializer, "new.target is not valid inside arrow functions in global code");
                 currentScope()->setInnerArrowFunctionUsesNewTarget();
             }
-            base = context.createNewTargetExpr(startLocation);
+            base = context.createNewTargetExpr(location);
             newCount--;
             next();
         } else {
