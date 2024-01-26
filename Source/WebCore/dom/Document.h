@@ -136,6 +136,7 @@ class FontLoadRequest;
 class FormController;
 class FrameSelection;
 class FullscreenManager;
+class Frame;
 class GPUCanvasContext;
 class GraphicsClient;
 class HTMLAllCollection;
@@ -426,16 +427,17 @@ public:
     // not enough to keep it from removing its children. This allows a
     // node that outlives its document to still have a valid document
     // pointer without introducing reference cycles.
-    void incrementReferencingNodeCount()
+    ALWAYS_INLINE void incrementReferencingNodeCount(unsigned count = 1)
     {
         ASSERT(!m_deletionHasBegun);
-        ++m_referencingNodeCount;
+        m_referencingNodeCount += count;
     }
 
-    void decrementReferencingNodeCount()
+    ALWAYS_INLINE void decrementReferencingNodeCount(unsigned count = 1)
     {
         ASSERT(!m_deletionHasBegun || !m_referencingNodeCount);
-        --m_referencingNodeCount;
+        ASSERT(m_referencingNodeCount >= count || (!m_referencingNodeCount && m_deletionHasBegun));
+        m_referencingNodeCount -= count;
         if (!m_referencingNodeCount && !refCount()) {
 #if ASSERT_ENABLED
             m_deletionHasBegun = true;
@@ -845,7 +847,7 @@ public:
     WEBCORE_EXPORT void setRTCNetworkManager(Ref<RTCNetworkManager>&&);
 #endif
 
-    bool canNavigate(LocalFrame* targetFrame, const URL& destinationURL = URL());
+    bool canNavigate(Frame* targetFrame, const URL& destinationURL = URL());
 
     bool usesStyleBasedEditability() const;
     void setHasElementUsingStyleBasedEditability();
@@ -959,10 +961,12 @@ public:
 
     void attachNodeIterator(NodeIterator&);
     void detachNodeIterator(NodeIterator&);
+    inline bool hasNodeIterators() const;
     void moveNodeIteratorsToNewDocument(Node&, Document&);
 
     void attachRange(Range&);
     void detachRange(Range&);
+    bool hasRanges() { return !m_ranges.isEmpty(); }
 
     void updateRangesAfterChildrenChanged(ContainerNode&);
     // nodeChildrenWillBeRemoved is used when removing all node children at once.
@@ -1035,7 +1039,8 @@ public:
 
     void didAddEventListenersOfType(const AtomString&, unsigned = 1);
     void didRemoveEventListenersOfType(const AtomString&, unsigned = 1);
-    bool hasEventListnersOfType(const AtomString& type) const { return m_eventListenerCounts.inlineGet(type); }
+    bool hasNodeWithEventListeners() const { return !m_eventListenerCounts.isEmpty(); }
+    bool hasEventListenersOfType(const AtomString& type) const { return m_eventListenerCounts.inlineGet(type); }
 
     bool hasConnectedPluginElements() { return m_connectedPluginElementCount; }
     void didConnectPluginElement() { ++m_connectedPluginElementCount; }
@@ -1133,7 +1138,10 @@ public:
     //       domain.
     //
     const URL& firstPartyForCookies() const { return m_firstPartyForCookies; }
-    void setFirstPartyForCookies(const URL& url) { m_firstPartyForCookies = url; }
+    void setFirstPartyForCookies(const URL&);
+    std::optional<bool> cachedCookiesEnabled() const { return m_cachedCookiesEnabled; }
+    void setCachedCookiesEnabled(bool enabled) { m_cachedCookiesEnabled = enabled; }
+    WEBCORE_EXPORT void updateCachedCookiesEnabled();
 
     WEBCORE_EXPORT bool isFullyActive() const;
 
@@ -1884,7 +1892,7 @@ public:
 #endif
 
     virtual void didChangeViewSize() { }
-    bool isNavigationBlockedByThirdPartyIFrameRedirectBlocking(LocalFrame& targetFrame, const URL& destinationURL);
+    bool isNavigationBlockedByThirdPartyIFrameRedirectBlocking(Frame& targetFrame, const URL& destinationURL);
 
     void updateRelevancyOfContentVisibilityElements();
     void scheduleContentRelevancyUpdate(ContentRelevancy);
@@ -2010,7 +2018,7 @@ private:
     bool isDOMCookieCacheValid() const { return m_cookieCacheExpiryTimer.isActive(); }
     void didLoadResourceSynchronously(const URL&) final;
 
-    bool canNavigateInternal(LocalFrame& targetFrame);
+    bool canNavigateInternal(Frame& targetFrame);
 
 #if USE(QUICK_LOOK)
     bool shouldEnforceQuickLookSandbox() const;
@@ -2568,6 +2576,7 @@ private:
     RefPtr<ResizeObserver> m_resizeObserverForContainIntrinsicSize;
 
     const std::optional<FrameIdentifier> m_frameIdentifier;
+    std::optional<bool> m_cachedCookiesEnabled;
 };
 
 Element* eventTargetElementForDocument(Document*);

@@ -111,19 +111,6 @@
         "com.apple.mobileipod")
 )
 
-(define-once (media-capture-support)
-    ;; Media capture, microphone access
-    (with-filter (extension "com.apple.webkit.microphone")
-        (allow device-microphone))
-
-    ;; Media capture, camera access
-    (with-filter (extension "com.apple.webkit.camera")
-        (allow user-preference-read
-            (preference-domain "com.apple.coremedia"))
-        (allow file-read* (subpath "/Library/CoreMediaIO/Plug-Ins/DAL"))
-        (allow device-camera))
-)
-
 (define-once (accessibility-support)
     (allow mach-register
         (local-name "com.apple.iphone.axserver"))
@@ -885,6 +872,12 @@
 (deny mach-lookup
     (global-name "com.apple.mobilegestalt.xpc"))
 
+(allow mach-lookup (with telemetry)
+    (require-all
+        (require-not (webcontent-process-launched))
+        (extension "com.apple.webkit.extension.mach")
+        (global-name "com.apple.mobilegestalt.xpc")))
+
 (deny mach-lookup (with no-report)
     (xpc-service-name "com.apple.audio.toolbox.reporting.service"))
 
@@ -935,8 +928,7 @@
 (define (mach-extension-list)
     (global-name
         "com.apple.iconservices"
-        "com.apple.mobileassetd.v2"
-        "com.apple.mobilegestalt.xpc"))
+        "com.apple.mobileassetd.v2"))
 
 (allow mach-lookup (with telemetry-backtrace)
     (require-all
@@ -985,8 +977,6 @@
         (extension "com.apple.webkit.extension.mach")
         (xpc-service-name-prefix "com.apple.AGXCompilerService")))
 #endif // HAVE(AGX_COMPILER_SERVICE)
-
-(media-capture-support)
 
 ;; These services have been identified as unused during living-on.
 ;; This list overrides some definitions above and in common.sb.

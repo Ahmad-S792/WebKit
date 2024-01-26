@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2023 Apple Inc. All rights reserved.
+ * Copyright (C) 2024 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -23,20 +23,6 @@
  * THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#pragma once
-
-namespace WebCore {
-
-class NullVideoFullscreenInterface;
-class VideoFullscreenInterfaceIOS;
-class VideoFullscreenInterfaceMac;
-
-#if PLATFORM(WATCHOS)
-using PlatformVideoFullscreenInterface = NullVideoFullscreenInterface;
-#elif PLATFORM(IOS_FAMILY)
-using PlatformVideoFullscreenInterface = VideoFullscreenInterfaceIOS;
-#elif PLATFORM(MAC)
-using PlatformVideoFullscreenInterface = VideoFullscreenInterfaceMac;
-#endif
-
-} // namespace WebCore
+dictionary IdentityRequestProvider {
+    required IdentityCredentialProtocol protocol;
+};

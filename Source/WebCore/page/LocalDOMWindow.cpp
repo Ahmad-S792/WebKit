@@ -692,8 +692,13 @@ History& LocalDOMWindow::history()
 Navigation& LocalDOMWindow::navigation()
 {
     if (!m_navigation)
-        m_navigation = Navigation::create(scriptExecutionContext(), *this);
+        m_navigation = Navigation::create(protectedScriptExecutionContext().get(), *this);
     return *m_navigation;
+}
+
+Ref<Navigation> LocalDOMWindow::protectedNavigation()
+{
+    return navigation();
 }
 
 Crypto& LocalDOMWindow::crypto() const
@@ -1466,16 +1471,6 @@ int LocalDOMWindow::scrollY() const
         return 0;
 
     return viewAfterLayout->mapFromLayoutToCSSUnits(viewAfterLayout->contentsScrollPosition().y());
-}
-
-bool LocalDOMWindow::closed() const
-{
-    RefPtr frame = this->frame();
-    if (!frame)
-        return true;
-
-    RefPtr page = frame->page();
-    return !page || page->isClosing();
 }
 
 unsigned LocalDOMWindow::length() const

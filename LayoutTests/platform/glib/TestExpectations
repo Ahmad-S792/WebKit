@@ -612,6 +612,9 @@ webkit.org/b/232256 accessibility/auto-fill-crash.html [ Timeout ]
 # Times out due to missing AccessibilityUIElement::takeFocus
 http/tests/accessibility/focus-text-field-in-iframe.html [ Skip ]
 
+# Times out due to missing AccessibilityUIElement::linkedUIElementAtIndex() implementation.
+accessibility/combobox-linked-listbox-destroyed.html [ Skip ]
+
 #////////////////////////////////////////////////////////////////////////////////////////
 # End of Accessibility-related bugs
 #////////////////////////////////////////////////////////////////////////////////////////
@@ -1872,6 +1875,8 @@ webkit.org/b/187603 fast/mediastream/media-stream-track-source-failure.html [ Ti
 
 webkit.org/b/264803 fast/mediastream/mediastreamtrack-video-resize-event.html [ Failure ]
 
+http/wpt/mediastream/mediastreamtrackprocessor-videoframe-timestamp.html [ Failure ]
+
 # Adding transceivers without tracks is broken.
 webkit.org/b/265865 imported/w3c/web-platform-tests/webrtc-stats/rtp-stats-creation.html [ Skip ]
 
@@ -2036,6 +2041,8 @@ webkit.org/b/252878 webrtc/video-h264.html [ Pass Timeout ]
 
 imported/w3c/web-platform-tests/mediacapture-streams/GUM-required-constraint-with-ideal-value.https.html [ Pass Failure ]
 imported/w3c/web-platform-tests/mediacapture-streams/MediaStream-MediaElement-preload-none.https.html [ Pass Failure ]
+
+imported/w3c/web-platform-tests/mediacapture-insertable-streams/VideoTrackGenerator-with-window-tracks.https.html [ Skip ]
 
 # In these tests only one canvas frame is pushed towards the sender webrtcbin,
 # this is not enough for the receiver webrtcbin to create its video source pad,
