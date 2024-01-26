@@ -363,6 +363,7 @@ Page::Page(PageConfiguration&& pageConfiguration)
     , m_loadsSubresources(pageConfiguration.loadsSubresources)
     , m_shouldRelaxThirdPartyCookieBlocking(pageConfiguration.shouldRelaxThirdPartyCookieBlocking)
     , m_httpsUpgradeEnabled(pageConfiguration.httpsUpgradeEnabled)
+    , m_portsForUpgradingInsecureSchemeForTesting(WTFMove(pageConfiguration.portsForUpgradingInsecureSchemeForTesting))
     , m_storageProvider(WTFMove(pageConfiguration.storageProvider))
     , m_modelPlayerProvider(WTFMove(pageConfiguration.modelPlayerProvider))
 #if ENABLE(ATTACHMENT_ELEMENT)
@@ -753,6 +754,11 @@ void Page::setGroupName(const String& name)
 const String& Page::groupName() const
 {
     return m_group ? m_group->name() : nullAtom().string();
+}
+
+Ref<Settings> Page::protectedSettings() const
+{
+    return *m_settings;
 }
 
 Ref<BroadcastChannelRegistry> Page::protectedBroadcastChannelRegistry() const
@@ -2126,7 +2132,7 @@ void Page::prioritizeVisibleResources()
     if (!localMainFrame->document())
         return;
 
-    Vector<CachedResource*> toPrioritize;
+    Vector<CachedResourceHandle<CachedResource>> toPrioritize;
 
     forEachDocument([&] (Document& document) {
         toPrioritize.appendVector(document.cachedResourceLoader().visibleResourcesToPrioritize());
@@ -2154,7 +2160,7 @@ void Page::prioritizeVisibleResources()
     if (toPrioritize.isEmpty())
         return;
 
-    auto resourceLoaders = toPrioritize.map([](auto* resource) {
+    auto resourceLoaders = toPrioritize.map([](auto& resource) {
         return resource->loader();
     });
 
@@ -3380,6 +3386,11 @@ void Page::mainFrameLoadStarted(const URL& destinationURL, FrameLoadType type)
 
     m_navigationToLogWhenVisible = std::nullopt;
     logNavigation(navigation);
+}
+
+Ref<CookieJar> Page::protectedCookieJar() const
+{
+    return m_cookieJar;
 }
 
 PluginInfoProvider& Page::pluginInfoProvider()
@@ -4631,5 +4642,15 @@ void Page::setSceneIdentifier(String&& sceneIdentifier)
     m_sceneIdentifier = WTFMove(sceneIdentifier);
 }
 #endif
+
+void Page::setPortsForUpgradingInsecureSchemeForTesting(uint16_t upgradeFromInsecurePort, uint16_t upgradeToSecurePort)
+{
+    m_portsForUpgradingInsecureSchemeForTesting = { upgradeFromInsecurePort, upgradeToSecurePort };
+}
+
+std::optional<std::pair<uint16_t, uint16_t>> Page::portsForUpgradingInsecureSchemeForTesting() const
+{
+    return m_portsForUpgradingInsecureSchemeForTesting;
+}
 
 } // namespace WebCore
