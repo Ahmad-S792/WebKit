@@ -275,6 +275,10 @@ struct ViewportArguments;
 struct WheelEventHandlingResult;
 struct WindowFeatures;
 
+namespace TextExtraction {
+struct Item;
+}
+
 template<typename> class ProcessQualified;
 template<typename> class RectEdges;
 
@@ -305,6 +309,7 @@ using UserMediaRequestIdentifier = ObjectIdentifier<UserMediaRequestIdentifierTy
 OBJC_CLASS AMSUIEngagementTask;
 OBJC_CLASS CALayer;
 OBJC_CLASS NSArray;
+OBJC_CLASS NSData;
 OBJC_CLASS NSDictionary;
 OBJC_CLASS NSEvent;
 OBJC_CLASS NSFileWrapper;
@@ -1327,6 +1332,10 @@ public:
     RefPtr<WebCore::SharedBuffer> dataSelectionForPasteboard(const String& pasteboardType);
     void makeFirstResponder();
     void assistiveTechnologyMakeFirstResponder();
+
+#if ENABLE(MULTI_REPRESENTATION_HEIC)
+    void insertMultiRepresentationHEIC(NSData *);
+#endif
 #endif
 
     void pageScaleFactorDidChange(double);
@@ -2313,6 +2322,8 @@ public:
     const std::optional<MediaCapability>& mediaCapability() const;
     void updateMediaCapability();
 #endif
+
+    void requestTextExtraction(CompletionHandler<void(WebCore::TextExtraction::Item&&)>&&);
 
 private:
     WebPageProxy(PageClient&, WebProcessProxy&, Ref<API::PageConfiguration>&&);

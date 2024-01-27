@@ -23,21 +23,8 @@
  * THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#pragma once
+#import "config.h"
 
-#include "AbortSignal.h"
-#include "IdentityRequestProvider.h"
-#include <wtf/RefCounted.h>
-#include <wtf/RefPtr.h>
-#include <wtf/Vector.h>
-
-namespace WebCore {
-
-struct IdentityRequestProvider;
-
-struct IdentityRequestOptions {
-    RefPtr<AbortSignal> signal;
-    Vector<IdentityRequestProvider> providers;
-};
-
-} // namespace WebCore
+#if USE(APPLE_INTERNAL_SDK)
+#import <WebKitAdditions/WebMultiRepresentationHEICAttachmentTestsAdditions.mm>
+#endif
