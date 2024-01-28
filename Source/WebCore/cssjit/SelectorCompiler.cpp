@@ -108,9 +108,7 @@ using PseudoClassesSet = HashSet<CSSSelector::PseudoClass, IntHash<CSSSelector::
     v(operationIsWindowInactive) \
     v(operationMatchesFullscreenPseudoClass) \
     v(operationMatchesFullScreenDocumentPseudoClass) \
-    v(operationMatchesFullScreenAncestorPseudoClass) \
     v(operationMatchesFullScreenAnimatingFullScreenTransitionPseudoClass) \
-    v(operationMatchesFullScreenControlsHiddenPseudoClass) \
     v(operationMatchesPictureInPicturePseudoClass) \
     v(operationMatchesFutureCuePseudoClass) \
     v(operationMatchesPastCuePseudoClass) \
@@ -258,9 +256,7 @@ static JSC_DECLARE_JIT_OPERATION_WITHOUT_WTF_INTERNAL(operationMatchesLangPseudo
 #if ENABLE(FULLSCREEN_API)
 static JSC_DECLARE_JIT_OPERATION_WITHOUT_WTF_INTERNAL(operationMatchesFullscreenPseudoClass, bool, (const Element&));
 static JSC_DECLARE_JIT_OPERATION_WITHOUT_WTF_INTERNAL(operationMatchesFullScreenDocumentPseudoClass, bool, (const Element&));
-static JSC_DECLARE_JIT_OPERATION_WITHOUT_WTF_INTERNAL(operationMatchesFullScreenAncestorPseudoClass, bool, (const Element&));
 static JSC_DECLARE_JIT_OPERATION_WITHOUT_WTF_INTERNAL(operationMatchesFullScreenAnimatingFullScreenTransitionPseudoClass, bool, (const Element&));
-static JSC_DECLARE_JIT_OPERATION_WITHOUT_WTF_INTERNAL(operationMatchesFullScreenControlsHiddenPseudoClass, bool, (const Element&));
 #endif
 #if ENABLE(PICTURE_IN_PICTURE_API)
 static JSC_DECLARE_JIT_OPERATION_WITHOUT_WTF_INTERNAL(operationMatchesPictureInPicturePseudoClass, bool, (const Element&));
@@ -907,22 +903,10 @@ JSC_DEFINE_JIT_OPERATION(operationMatchesFullScreenDocumentPseudoClass, bool, (c
     return matchesFullScreenDocumentPseudoClass(element);
 }
 
-JSC_DEFINE_JIT_OPERATION(operationMatchesFullScreenAncestorPseudoClass, bool, (const Element& element))
-{
-    COUNT_SELECTOR_OPERATION(operationMatchesFullScreenAncestorPseudoClass);
-    return matchesFullScreenAncestorPseudoClass(element);
-}
-
 JSC_DEFINE_JIT_OPERATION(operationMatchesFullScreenAnimatingFullScreenTransitionPseudoClass, bool, (const Element& element))
 {
     COUNT_SELECTOR_OPERATION(operationMatchesFullScreenAnimatingFullScreenTransitionPseudoClass);
     return matchesFullScreenAnimatingFullScreenTransitionPseudoClass(element);
-}
-
-JSC_DEFINE_JIT_OPERATION(operationMatchesFullScreenControlsHiddenPseudoClass, bool, (const Element& element))
-{
-    COUNT_SELECTOR_OPERATION(operationMatchesFullScreenControlsHiddenPseudoClass);
-    return matchesFullScreenControlsHiddenPseudoClass(element);
 }
 #endif
 
@@ -1081,9 +1065,6 @@ static inline FunctionType addPseudoClassType(const CSSSelector& selector, Selec
     case CSSSelector::PseudoClass::FocusWithin:
         fragment.unoptimizedPseudoClasses.append(CodePtr<JSC::OperationPtrTag>(operationMatchesFocusWithinPseudoClass));
         return FunctionType::SimpleSelectorChecker;
-    case CSSSelector::PseudoClass::WebKitFullPageMedia:
-        fragment.unoptimizedPseudoClasses.append(CodePtr<JSC::OperationPtrTag>(operationIsMediaDocument));
-        return FunctionType::SimpleSelectorChecker;
     case CSSSelector::PseudoClass::InRange:
         fragment.unoptimizedPseudoClasses.append(CodePtr<JSC::OperationPtrTag>(operationIsInRange));
         return FunctionType::SimpleSelectorChecker;
@@ -1122,15 +1103,8 @@ static inline FunctionType addPseudoClassType(const CSSSelector& selector, Selec
     case CSSSelector::PseudoClass::WebKitFullScreenDocument:
         fragment.unoptimizedPseudoClasses.append(CodePtr<JSC::OperationPtrTag>(operationMatchesFullScreenDocumentPseudoClass));
         return FunctionType::SimpleSelectorChecker;
-    case CSSSelector::PseudoClass::WebKitFullScreenAncestor:
-        fragment.unoptimizedPseudoClasses.append(CodePtr<JSC::OperationPtrTag>(operationMatchesFullScreenAncestorPseudoClass));
-        return FunctionType::SimpleSelectorChecker;
     case CSSSelector::PseudoClass::InternalAnimatingFullScreenTransition:
         fragment.unoptimizedPseudoClasses.append(CodePtr<JSC::OperationPtrTag>(operationMatchesFullScreenAnimatingFullScreenTransitionPseudoClass));
-        return FunctionType::SimpleSelectorChecker;
-
-    case CSSSelector::PseudoClass::WebKitFullScreenControlsHidden:
-        fragment.unoptimizedPseudoClasses.append(CodePtr<JSC::OperationPtrTag>(operationMatchesFullScreenControlsHiddenPseudoClass));
         return FunctionType::SimpleSelectorChecker;
 #endif
 
@@ -1178,6 +1152,10 @@ static inline FunctionType addPseudoClassType(const CSSSelector& selector, Selec
 
     case CSSSelector::PseudoClass::InternalHTMLDocument:
         fragment.unoptimizedPseudoClasses.append(CodePtr<JSC::OperationPtrTag>(operationMatchesHtmlDocumentPseudoClass));
+        return FunctionType::SimpleSelectorChecker;
+
+    case CSSSelector::PseudoClass::InternalMediaDocument:
+        fragment.unoptimizedPseudoClasses.append(CodePtr<JSC::OperationPtrTag>(operationIsMediaDocument));
         return FunctionType::SimpleSelectorChecker;
 
     case CSSSelector::PseudoClass::PopoverOpen:
