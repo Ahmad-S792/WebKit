@@ -181,8 +181,10 @@ WebLocalFrameLoaderClient* WebFrame::localFrameLoaderClient() const
 
 WebFrameLoaderClient* WebFrame::frameLoaderClient() const
 {
-    if (m_coreFrame)
-        return static_cast<WebFrameLoaderClient*>(&m_coreFrame->loaderClient());
+    if (auto* localFrame = dynamicDowncast<LocalFrame>(m_coreFrame.get()))
+        return static_cast<WebLocalFrameLoaderClient*>(&localFrame->loader().client());
+    if (auto* remoteFrame = dynamicDowncast<RemoteFrame>(m_coreFrame.get()))
+        return static_cast<WebRemoteFrameClient*>(&remoteFrame->client());
     return nullptr;
 }
 
@@ -469,10 +471,13 @@ void WebFrame::invalidatePolicyListeners()
 
 void WebFrame::didReceivePolicyDecision(uint64_t listenerID, PolicyDecision&& policyDecision)
 {
+    if (m_page) {
 #if ENABLE(APP_BOUND_DOMAINS)
-    if (m_page)
         m_page->setIsNavigatingToAppBoundDomain(policyDecision.isNavigatingToAppBoundDomain, Ref { *this });
 #endif
+        if (auto& message = policyDecision.consoleMessage)
+            m_page->addConsoleMessage(m_frameID, message->messageSource, message->messageLevel, message->message);
+    }
 
     if (!m_coreFrame)
         return;
