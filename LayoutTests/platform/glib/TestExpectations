@@ -1875,7 +1875,8 @@ webkit.org/b/187603 fast/mediastream/media-stream-track-source-failure.html [ Ti
 
 webkit.org/b/264803 fast/mediastream/mediastreamtrack-video-resize-event.html [ Failure ]
 
-http/wpt/mediastream/mediastreamtrackprocessor-videoframe-timestamp.html [ Failure ]
+# Uncomment when webkit.org/b/268284 is fixed
+#http/wpt/mediastream/mediastreamtrackprocessor-videoframe-timestamp.html [ Failure ]
 
 # Adding transceivers without tracks is broken.
 webkit.org/b/265865 imported/w3c/web-platform-tests/webrtc-stats/rtp-stats-creation.html [ Skip ]
@@ -2151,7 +2152,6 @@ imported/w3c/web-platform-tests/WebCryptoAPI/wrapKey_unwrapKey/wrapKey_unwrapKey
 
 webkit.org/b/150806 imported/w3c/web-platform-tests/xhr/send-timeout-events.htm [ Failure Pass ]
 
-webkit.org/b/202736 http/tests/appcache/remove-cache.html [ DumpJSConsoleLogInStdErr ]
 webkit.org/b/202736 [ Release ] http/wpt/cache-storage/quota-third-party.https.html [ Pass Timeout ]
 
 webkit.org/b/203240 imported/w3c/web-platform-tests/css/css-shapes/shape-outside/shape-image/shape-image-025.html [ ImageOnlyFailure Pass ]
@@ -2894,9 +2894,6 @@ webkit.org/b/84692 fast/events/attempt-scroll-with-no-scrollbars.html [ Failure 
 
 # Started failing after it was added in r116473.
 webkit.org/b/85969 http/tests/loading/post-in-iframe-with-back-navigation.html [ Failure ]
-
-# Implement testRunner.setUseDeferredFrameLoading.
-webkit.org/b/93980 http/tests/appcache/load-from-appcache-defer-resume-crash.html [ Failure ]
 
 webkit.org/b/98146 accessibility/svg-bounds.html [ Failure ]
 webkit.org/b/98613 css3/masking/clip-path-reference.html [ ImageOnlyFailure ]
@@ -3749,10 +3746,14 @@ webrtc/datachannel/multiple-connections.html [ Timeout ]
 
 webkit.org/b/268068 imported/w3c/web-platform-tests/html/cross-origin-opener-policy [ Skip ]
 
+webkit.org/b/268281 imported/w3c/web-platform-tests/service-workers/service-worker/navigation-headers.https.html [ Pass Crash ]
+
 # Skip Merchant-Validation API test cases from GTK / WPE
 webkit.org/b/268238  imported/w3c/web-platform-tests/merchant-validation/complete-method.tentative.https.html [ Skip ]
 webkit.org/b/268238  imported/w3c/web-platform-tests/merchant-validation/constructor.tentative.https.html [ Skip ]
 webkit.org/b/268238  imported/w3c/web-platform-tests/merchant-validation/onmerchantvalidation-attribute.https.html [ Skip ]
+
+webkit.org/b/268284 http/wpt/mediastream/mediastreamtrackprocessor-videoframe-timestamp.html [ Failure Crash ]
 
 # End: Common failures between GTK and WPE.
 
