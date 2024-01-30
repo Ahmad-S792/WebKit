@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017 Apple Inc. All rights reserved.
+ * Copyright (C) 2022 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -25,48 +25,12 @@
 
 #pragma once
 
-#include <variant>
+namespace WebKit {
 
-typedef struct AudioStreamBasicDescription AudioStreamBasicDescription;
-
-namespace WebCore {
-
-struct PlatformDescription {
-    enum {
-        None,
-        CAAudioStreamBasicType,
-        GStreamerAudioStreamDescription,
-    } type { None };
-    std::variant<std::nullptr_t, const AudioStreamBasicDescription*> description;
-};
-
-class AudioStreamDescription {
-public:
-    virtual ~AudioStreamDescription() = default;
-
-    virtual const PlatformDescription& platformDescription() const = 0;
-
-    enum PCMFormat {
-        None,
-        Int16,
-        Int32,
-        Float32,
-        Float64
-    };
-    virtual PCMFormat format() const = 0;
-
-    virtual double sampleRate() const = 0;
-
-    virtual bool isPCM() const { return format() != None; }
-    virtual bool isInterleaved() const = 0;
-    virtual bool isSignedInteger() const = 0;
-    virtual bool isFloat() const = 0;
-    virtual bool isNativeEndian() const = 0;
-
-    virtual uint32_t numberOfInterleavedChannels() const = 0;
-    virtual uint32_t numberOfChannelStreams() const = 0;
-    virtual uint32_t numberOfChannels() const = 0;
-    virtual uint32_t sampleWordSize() const = 0;
+enum class RestrictedOpenerType : uint8_t {
+    Unrestricted,
+    NoOpener,
+    PostMessageAndClose,
 };
 
 }
