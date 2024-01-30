@@ -859,7 +859,8 @@ webkit.org/b/252878 fast/speechsynthesis/speech-synthesis-speak-empty-string.htm
 webkit.org/b/252878 fast/speechsynthesis/speech-synthesis-speak.html [ Crash Failure Pass ]
 webkit.org/b/252878 gamepad/gamepad-event-handlers.html [ Pass Timeout ]
 webkit.org/b/252878 http/tests/media/video-play-waiting.html [ Failure Pass ]
-webkit.org/b/252878 http/wpt/cross-origin-opener-policy/header-parsing-with-report-to.https.html [ Failure Pass Timeout ]
+# Uncomment when webkit.org/b/267992 is fixed
+#webkit.org/b/252878 http/wpt/cross-origin-opener-policy/header-parsing-with-report-to.https.html [ Failure Pass Timeout ]
 webkit.org/b/252878 http/wpt/fetch/fetch-in-pagehide.html [ Failure Pass ]
 webkit.org/b/252878 http/wpt/service-workers/controlled-sharedworker.https.html [ Failure Pass ]
 webkit.org/b/252878 imported/blink/compositing/squashing/squashing-does-not-stop-transform-propagation.html [ ImageOnlyFailure Pass ]
@@ -1522,7 +1523,6 @@ imported/w3c/web-platform-tests/html/semantics/scripting-1/the-script-element/js
 webkit.org/b/261024 fast/events/remove-child-onscroll.html [ Pass Timeout ]
 webkit.org/b/261024 fast/multicol/pagination/RightToLeft-rl-hittest.html [ Failure Missing Pass ]
 webkit.org/b/261024 http/tests/frame-throttling/raf-throttle-in-cross-origin-subframe.html [ Failure Pass ]
-webkit.org/b/261024 http/tests/navigation/page-cache-requestAnimationFrame.html [ Failure Pass ]
 webkit.org/b/261024 http/tests/notifications/notification.html [ Crash Pass ]
 webkit.org/b/261024 imported/w3c/web-platform-tests/css/selectors/invalidation/media-pseudo-classes-in-has.html [ Failure Pass ]
 webkit.org/b/261024 imported/w3c/web-platform-tests/encrypted-media/clearkey-mp4-playback-temporary-encrypted-clear-sources.https.html [ Crash Failure Pass ]
@@ -1614,6 +1614,7 @@ webkit.org/b/266577 webgl/2.0.0/conformance2/textures/video/tex-3d-srgb8_alpha8-
 webkit.org/b/266577 fast/canvas/webgl/texImage2D-mse-flipY-false.html [ Failure Crash ]
 webkit.org/b/266577 media/media-source/media-source-paint-after-display-none.html [ Timeout Crash ]
 webkit.org/b/266577 webgl/2.0.0/conformance2/textures/video/tex-2d-rgb16f-rgb-half_float.html [ Failure Crash ]
+webkit.org/b/266577 fast/canvas/webgl/texImage2D-mse-in-dom-flipY-false.html [ Failure Crash ]
 
 webkit.org/b/266671 http/wpt/webcodecs/videoFrame-rect.html [ Failure ]
 

@@ -494,15 +494,15 @@ void TypeChecker::visit(AST::Function& function)
     else
         m_returnType = m_types.voidType();
 
+    {
+        ContextScope functionContext(this);
+        for (unsigned i = 0; i < parameters.size(); ++i)
+            introduceValue(function.parameters()[i].name(), parameters[i]);
+        AST::Visitor::visit(function.body());
+    }
+
     const Type* functionType = m_types.functionType(WTFMove(parameters), m_returnType);
     introduceValue(function.name(), functionType);
-
-    ContextScope functionContext(this);
-    for (auto& parameter : function.parameters()) {
-        auto* parameterType = resolve(parameter.typeName());
-        introduceValue(parameter.name(), parameterType);
-    }
-    AST::Visitor::visit(function.body());
 }
 
 // Attributes
@@ -1598,6 +1598,11 @@ const Type* TypeChecker::resolve(AST::Expression& type)
         AST::Visitor::visit(type);
     ASSERT(m_inferredType);
 
+    if (std::holds_alternative<Types::TypeConstructor>(*m_inferredType)) {
+        typeError(InferBottom::No, type.span(), "type '", *m_inferredType, "' requires template arguments");
+        m_inferredType = m_types.bottomType();
+    }
+
     if (shouldDumpInferredTypes) {
         dataLog("> Type inference [type]: ");
         dumpNode(WTF::dataFile(), type);
@@ -1650,6 +1655,11 @@ bool TypeChecker::convertValue(const SourceSpan& span, const Type* type, std::op
 {
     if (!value)
         return true;
+
+    if (isBottom(type)) {
+        value = std::nullopt;
+        return false;
+    }
 
     if (UNLIKELY(!convertValueImpl(span, type, *value))) {
         StringPrintStream valueString;
@@ -1899,6 +1909,9 @@ void TypeChecker::allocateTextureStorageConstructor(ASCIILiteral name, Types::Te
 std::optional<TexelFormat> TypeChecker::texelFormat(AST::Expression& expression)
 {
     auto* formatType = infer(expression);
+    if (isBottom(formatType))
+        return std::nullopt;
+
     if (!unify(formatType, m_types.texelFormatType())) {
         typeError(InferBottom::No, expression.span(), "cannot use '", *formatType, "' as texel format");
         return std::nullopt;
@@ -1915,6 +1928,9 @@ std::optional<TexelFormat> TypeChecker::texelFormat(AST::Expression& expression)
 std::optional<AccessMode> TypeChecker::accessMode(AST::Expression& expression)
 {
     auto* accessType = infer(expression);
+    if (isBottom(accessType))
+        return std::nullopt;
+
     if (!unify(accessType, m_types.accessModeType())) {
         typeError(InferBottom::No, expression.span(), "cannot use '", *accessType, "' as access mode");
         return std::nullopt;
@@ -1931,6 +1947,9 @@ std::optional<AccessMode> TypeChecker::accessMode(AST::Expression& expression)
 std::optional<AddressSpace> TypeChecker::addressSpace(AST::Expression& expression)
 {
     auto* addressSpaceType = infer(expression);
+    if (isBottom(addressSpaceType))
+        return std::nullopt;
+
     if (!unify(addressSpaceType, m_types.addressSpaceType())) {
         typeError(InferBottom::No, expression.span(), "cannot use '", *addressSpaceType, "' as address space");
         return std::nullopt;
