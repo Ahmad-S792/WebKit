@@ -1931,6 +1931,7 @@ set(WebCore_PRIVATE_FRAMEWORK_HEADERS
     platform/graphics/GraphicsTypesGL.h
     platform/graphics/Icon.h
     platform/graphics/Image.h
+    platform/graphics/ImageAdapter.h
     platform/graphics/ImageBackingStore.h
     platform/graphics/ImageBuffer.h
     platform/graphics/ImageBufferAllocator.h
@@ -2362,14 +2363,16 @@ set(WebCore_PRIVATE_FRAMEWORK_HEADERS
     rendering/RenderTextControl.h
     rendering/RenderTextLineBoxes.h
     rendering/RenderTheme.h
-    rendering/RenderThemeCocoa.h
-    rendering/RenderThemeIOS.h
     rendering/RenderTreeAsText.h
     rendering/RenderVideo.h
     rendering/RenderView.h
     rendering/RenderWidget.h
     rendering/TextBoxSelectableRange.h
     rendering/TransformOperationData.h
+
+    rendering/cocoa/RenderThemeCocoa.h
+
+    rendering/ios/RenderThemeIOS.h
 
     rendering/line/LineWidth.h
     rendering/line/TrailingObjects.h

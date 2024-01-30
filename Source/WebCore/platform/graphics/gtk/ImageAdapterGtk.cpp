@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2006 Apple Inc.  All rights reserved.
+ * Copyright (C) 2006-2024 Apple Inc.  All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -24,6 +24,7 @@
  */
 
 #include "config.h"
+#include "ImageAdapter.h"
 
 #include "BitmapImage.h"
 #include "GdkCairoUtilities.h"
@@ -44,33 +45,35 @@ static Ref<Image> loadImageFromGResource(const char* iconName)
     return icon;
 }
 
-void BitmapImage::invalidatePlatformData()
-{
-}
-
-Ref<Image> Image::loadPlatformResource(const char* name)
+Ref<Image> ImageAdapter::loadPlatformResource(const char* name)
 {
     return loadImageFromGResource(name);
 }
 
-GRefPtr<GdkPixbuf> BitmapImage::gdkPixbuf()
+void ImageAdapter::invalidate()
 {
-    if (auto nativeImage = nativeImageForCurrentFrame()) {
-        auto& surface = nativeImage->platformImage();
-        return cairoSurfaceToGdkPixbuf(surface.get());
-    }
-    return nullptr;
+}
+
+GRefPtr<GdkPixbuf> ImageAdapter::gdkPixbuf()
+{
+    auto nativeImage = image().nativeImageForCurrentFrame();
+    if (!nativeImage)
+        return nullptr;
+
+    auto& surface = nativeImage->platformImage();
+    return cairoSurfaceToGdkPixbuf(surface.get());
 }
 
 #if USE(GTK4)
-GRefPtr<GdkTexture> BitmapImage::gdkTexture()
+GRefPtr<GdkTexture> ImageAdapter::gdkTexture()
 {
-    if (auto nativeImage = nativeImageForCurrentFrame()) {
-        auto& surface = nativeImage->platformImage();
-        return cairoSurfaceToGdkTexture(surface.get());
-    }
-    return nullptr;
+    auto nativeImage = image().nativeImageForCurrentFrame();
+    if (!nativeImage)
+        return nullptr;
+
+    auto& surface = nativeImage->platformImage();
+    return cairoSurfaceToGdkTexture(surface.get());
 }
 #endif
 
-}
+} // namespace WebCore

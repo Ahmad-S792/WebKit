@@ -865,6 +865,10 @@ fn testArray()
     { let x : array<u32, 1> = array<u32, 1>(u); }
     { let x : array<S, 2> = array<S, 2>(S(i), S(i)); }
     { _ = array<S, 2>(S(i), S(i)); }
+
+
+    var x1 = 0;
+    let x2 = array(x3, 0, 0i, x3);
 }
 
 // 16.1.2.2.
@@ -1354,6 +1358,8 @@ fn testBitcast()
     let i = 0i;
     let f = 0f;
     let h = 0h;
+
+    { const x =bitcast<vec2<i32>>(vec2(.659341217228384203)); }
 
     // @const @must_use fn bitcast<T>(e : T) -> T
     { const x: u32 = bitcast<u32>(5u); }

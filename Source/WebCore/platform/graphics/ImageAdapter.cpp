@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2006, 2007, 2008 Apple Inc.  All rights reserved.
+ * Copyright (C) 2024 Apple Inc.  All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -24,31 +24,49 @@
  */
 
 #include "config.h"
-#include "Image.h"
+#include "ImageAdapter.h"
 
 #include "BitmapImage.h"
-#include "SharedBuffer.h"
-#include "WebCoreBundleWin.h"
 
 namespace WebCore {
 
-void BitmapImage::invalidatePlatformData()
+#if !PLATFORM(COCOA) && !PLATFORM(GTK) && !PLATFORM(WIN)
+Ref<Image> ImageAdapter::loadPlatformResource(const char* resource)
 {
+    WTFLogAlways("WARNING: trying to load platform resource '%s'", resource);
+    return BitmapImage::create();
 }
 
-Ref<Image> Image::loadPlatformResource(const char *name)
+void ImageAdapter::invalidate()
 {
-    auto path = webKitBundlePath(StringView::fromLatin1(name), "png"_s, "icons"_s);
-    auto data = FileSystem::readEntireFile(path);
-    auto img = BitmapImage::create();
-    if (data)
-        img->setData(FragmentedSharedBuffer::create(WTFMove(*data)), true);
-    return img;
+}
+#endif // !PLATFORM(COCOA) && !PLATFORM(GTK) && !PLATFORM(WIN)
+
+RefPtr<NativeImage> ImageAdapter::nativeImageOfSize(const IntSize& size)
+{
+    unsigned count = image().frameCount();
+
+    for (unsigned i = 0; i < count; ++i) {
+        auto nativeImage = image().nativeImageAtIndexCacheIfNeeded(i);
+        if (nativeImage && nativeImage->size() == size)
+            return nativeImage;
+    }
+
+    // Fallback to the first frame image if we can't find the right size
+    return image().nativeImageAtIndex(0);
 }
 
-bool BitmapImage::getHBITMAP(HBITMAP bmp)
+Vector<Ref<NativeImage>> ImageAdapter::allNativeImages()
 {
-    return getHBITMAPOfSize(bmp, 0);
+    Vector<Ref<NativeImage>> nativeImages;
+    unsigned count = image().frameCount();
+
+    for (unsigned i = 0; i < count; ++i) {
+        if (auto nativeImage = image().nativeImageAtIndexCacheIfNeeded(i))
+            nativeImages.append(nativeImage.releaseNonNull());
+    }
+
+    return nativeImages;
 }
 
 } // namespace WebCore

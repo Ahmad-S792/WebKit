@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2008, 2013 Apple Inc.  All rights reserved.
+ * Copyright (C) 2008-2024 Apple Inc.  All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -24,22 +24,35 @@
  */
 
 #include "config.h"
-#include "Image.h"
+#include "ImageAdapter.h"
+
+#if PLATFORM(WIN)
+
 #include "BitmapImage.h"
 #include "GraphicsContextCairo.h"
-#include "RefPtrCairo.h"
-#include <cairo.h>
+#include "SharedBuffer.h"
+#include "WebCoreBundleWin.h"
 #include <cairo-win32.h>
-
+#include <cairo.h>
 #include <windows.h>
 #include <wtf/text/WTFString.h>
 
 namespace WebCore {
 
-RefPtr<BitmapImage> BitmapImage::create(HBITMAP hBitmap)
+Ref<Image> ImageAdapter::loadPlatformResource(const char *name)
+{
+    auto path = webKitBundlePath(StringView::fromLatin1(name), "png"_s, "icons"_s);
+    auto data = FileSystem::readEntireFile(path);
+    auto img = BitmapImage::create();
+    if (data)
+        img->setData(FragmentedSharedBuffer::create(WTFMove(*data)), true);
+    return img;
+}
+
+RefPtr<NativeImage> ImageAdapter::nativeImageOfHBITMAP(HBITMAP bmp)
 {
     DIBSECTION dibSection;
-    if (!GetObject(hBitmap, sizeof(DIBSECTION), &dibSection))
+    if (!GetObject(bmp, sizeof(DIBSECTION), &dibSection))
         return nullptr;
 
     ASSERT(dibSection.dsBm.bmBitsPixel == 32);
@@ -50,12 +63,20 @@ RefPtr<BitmapImage> BitmapImage::create(HBITMAP hBitmap)
     if (!dibSection.dsBm.bmBits)
         return nullptr;
 
-    RefPtr<cairo_surface_t> surface = adoptRef(cairo_win32_surface_create_with_dib(CAIRO_FORMAT_ARGB32, dibSection.dsBm.bmWidth, dibSection.dsBm.bmHeight));
-
-    return BitmapImage::create(WTFMove(surface));
+    auto surface = adoptRef(cairo_win32_surface_create_with_dib(CAIRO_FORMAT_ARGB32, dibSection.dsBm.bmWidth, dibSection.dsBm.bmHeight));
+    return NativeImage::create(WTFMove(surface));
 }
 
-bool BitmapImage::getHBITMAPOfSize(HBITMAP bmp, const IntSize* size)
+void ImageAdapter::invalidate()
+{
+}
+
+bool ImageAdapter::getHBITMAP(HBITMAP bmp)
+{
+    return getHBITMAPOfSize(bmp, 0);
+}
+
+bool ImageAdapter::getHBITMAPOfSize(HBITMAP bmp, const IntSize* size)
 {
     ASSERT(bmp);
 
@@ -68,39 +89,26 @@ bool BitmapImage::getHBITMAPOfSize(HBITMAP bmp, const IntSize* size)
         memset(bmpInfo.bmBits, 255, bufferSize);
     }
 
-    unsigned char* bmpdata = (unsigned char*)bmpInfo.bmBits + bmpInfo.bmWidthBytes*(bmpInfo.bmHeight-1);
+    unsigned char* bmpdata = (unsigned char*)bmpInfo.bmBits + bmpInfo.bmWidthBytes*(bmpInfo.bmHeight - 1);
 
-    RefPtr<cairo_surface_t> image = adoptRef(cairo_image_surface_create_for_data(bmpdata, CAIRO_FORMAT_ARGB32, bmpInfo.bmWidth, bmpInfo.bmHeight, -bmpInfo.bmWidthBytes));
+    auto platformImage = adoptRef(cairo_image_surface_create_for_data(bmpdata, CAIRO_FORMAT_ARGB32, bmpInfo.bmWidth, bmpInfo.bmHeight, -bmpInfo.bmWidthBytes));
 
-    GraphicsContextCairo gc(image.get());
+    GraphicsContextCairo gc(platformImage.get());
 
-    FloatSize imageSize = BitmapImage::size();
-    if (size)
-        drawFrameMatchingSourceSize(gc, FloatRect(0.0f, 0.0f, bmpInfo.bmWidth, bmpInfo.bmHeight), *size, CompositeOperator::Copy);
-    else
-        draw(gc, FloatRect(0.0f, 0.0f, bmpInfo.bmWidth, bmpInfo.bmHeight), FloatRect(0.0f, 0.0f, imageSize.width(), imageSize.height()), { CompositeOperator::Copy });
+    auto imageSize = image().size();
+    auto destinationRect = FloatRect(0.0f, 0.0f, bmpInfo.bmWidth, bmpInfo.bmHeight);
 
+    if (auto nativeImage = size ? nativeImageOfSize(*size) : nullptr) {
+        auto sourceRect = FloatRect { { }, *size };
+        gc.drawNativeImage(*nativeImage, destinationRect, sourceRect, { CompositeOperator::Copy });
+        return true;
+    }
+
+    auto sourceRect = FloatRect { { }, imageSize };
+    gc.drawImage(image(), destinationRect, sourceRect, { CompositeOperator::Copy });
     return true;
 }
 
-void BitmapImage::drawFrameMatchingSourceSize(GraphicsContext& ctxt, const FloatRect& dstRect, const IntSize& srcSize, CompositeOperator compositeOp)
-{
-    size_t frames = frameCount();
-    for (size_t i = 0; i < frames; ++i) {
-        auto nativeImage = frameImageAtIndex(i);
-        if (!nativeImage || nativeImage->size() != srcSize)
-            continue;
-
-        size_t currentFrame = m_currentFrame;
-        m_currentFrame = i;
-        draw(ctxt, dstRect, FloatRect(0.0f, 0.0f, srcSize.width(), srcSize.height()), { compositeOp });
-        m_currentFrame = currentFrame;
-        return;
-    }
-
-    // No image of the correct size was found, fallback to drawing the current frame
-    FloatSize imageSize = BitmapImage::size();
-    draw(ctxt, dstRect, FloatRect(0.0f, 0.0f, imageSize.width(), imageSize.height()), { compositeOp });
-}
-
 } // namespace WebCore
+
+#endif // PLATFORM(WIN)

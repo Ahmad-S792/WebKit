@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2004, 2005, 2006, 2008 Apple Inc. All rights reserved.
+ * Copyright (C) 2004-2024 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -24,8 +24,9 @@
  */
 
 #import "config.h"
-#import "BitmapImage.h"
+#import "ImageAdapter.h"
 
+#import "BitmapImage.h"
 #import "FloatRect.h"
 #import "GraphicsContext.h"
 #import "SharedBuffer.h"
@@ -45,18 +46,7 @@
 
 namespace WebCore {
 
-void BitmapImage::invalidatePlatformData()
-{
-    if (frameCount() != 1)
-        return;
-
-#if USE(APPKIT)
-    m_nsImage = nullptr;
-#endif
-    m_tiffRep = nullptr;
-}
-
-Ref<Image> Image::loadPlatformResource(const char *name)
+Ref<Image> ImageAdapter::loadPlatformResource(const char *name)
 {
     NSBundle *bundle = [NSBundle bundleForClass:[WebCoreBundleFinder class]];
     NSString *imagePath = [bundle pathForResource:[NSString stringWithUTF8String:name] ofType:@"png"];
@@ -74,7 +64,7 @@ Ref<Image> Image::loadPlatformResource(const char *name)
     return Image::nullImage();
 }
 
-RetainPtr<CFDataRef> BitmapImage::tiffRepresentation(const Vector<Ref<NativeImage>>& nativeImages)
+RetainPtr<CFDataRef> ImageAdapter::tiffRepresentation(const Vector<Ref<NativeImage>>& nativeImages)
 {
     // If nativeImages.size() is zero, we know for certain this image doesn't have valid data
     // Even though the call to CGImageDestinationCreateWithData will fail and we'll handle it gracefully,
@@ -98,21 +88,29 @@ ALLOW_DEPRECATED_DECLARATIONS_END
     return data;
 }
 
-CFDataRef BitmapImage::tiffRepresentation()
+void ImageAdapter::invalidate()
+{
+#if USE(APPKIT)
+    m_nsImage = nullptr;
+#endif
+    m_tiffRep = nullptr;
+}
+
+CFDataRef ImageAdapter::tiffRepresentation()
 {
     if (m_tiffRep)
         return m_tiffRep.get();
 
-    auto data = tiffRepresentation(framesNativeImages());
+    auto data = tiffRepresentation(allNativeImages());
     if (!data)
         return nullptr;
 
     m_tiffRep = data;
-    return m_tiffRep.get();    
+    return m_tiffRep.get();
 }
 
 #if USE(APPKIT)
-NSImage* BitmapImage::nsImage()
+NSImage* ImageAdapter::nsImage()
 {
     if (m_nsImage)
         return m_nsImage.get();
@@ -120,18 +118,18 @@ NSImage* BitmapImage::nsImage()
     CFDataRef data = tiffRepresentation();
     if (!data)
         return nullptr;
-    
+
     m_nsImage = adoptNS([[NSImage alloc] initWithData:(__bridge NSData *)data]);
     return m_nsImage.get();
 }
 
-RetainPtr<NSImage> BitmapImage::snapshotNSImage()
+RetainPtr<NSImage> ImageAdapter::snapshotNSImage()
 {
-    auto nativeImage = this->nativeImageForCurrentFrame();
+    auto nativeImage =  image().nativeImageForCurrentFrame();
     if (!nativeImage)
         return nullptr;
 
-    auto data = tiffRepresentation({ Ref { *nativeImage } });
+    auto data = tiffRepresentation({ nativeImage.releaseNonNull() });
     if (!data)
         return nullptr;
 
@@ -139,4 +137,4 @@ RetainPtr<NSImage> BitmapImage::snapshotNSImage()
 }
 #endif
 
-}
+} // namespace WebCore
