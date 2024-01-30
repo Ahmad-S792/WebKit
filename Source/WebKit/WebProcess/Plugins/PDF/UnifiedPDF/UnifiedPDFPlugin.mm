@@ -198,25 +198,44 @@ void UnifiedPDFPlugin::ensureLayers()
         m_overflowControlsContainer->setAnchorPoint({ });
         m_rootLayer->addChild(*m_overflowControlsContainer);
     }
+}
+
+ScrollingNodeID UnifiedPDFPlugin::scrollingNodeID() const
+{
+    if (!m_scrollingNodeID)
+        const_cast<UnifiedPDFPlugin*>(this)->createScrollingNodeIfNecessary();
+
+    return m_scrollingNodeID;
+}
+
+void UnifiedPDFPlugin::createScrollingNodeIfNecessary()
+{
+    if (m_scrollingNodeID)
+        return;
+
+    RefPtr page = this->page();
+    if (!page)
+        return;
 
     RefPtr scrollingCoordinator = page->scrollingCoordinator();
-    if (!m_scrollingNodeID && scrollingCoordinator) {
-        m_scrollingNodeID = scrollingCoordinator->uniqueScrollingNodeID();
-        scrollingCoordinator->createNode(ScrollingNodeType::PluginScrolling, m_scrollingNodeID);
+    if (!scrollingCoordinator)
+        return;
+
+    m_scrollingNodeID = scrollingCoordinator->uniqueScrollingNodeID();
+    scrollingCoordinator->createNode(ScrollingNodeType::PluginScrolling, m_scrollingNodeID);
 
 #if ENABLE(SCROLLING_THREAD)
-        m_scrollContainerLayer->setScrollingNodeID(m_scrollingNodeID);
+    m_scrollContainerLayer->setScrollingNodeID(m_scrollingNodeID);
 #endif
 
-        m_frame->coreLocalFrame()->protectedView()->setPluginScrollableAreaForScrollingNodeID(m_scrollingNodeID, *this);
+    m_frame->coreLocalFrame()->protectedView()->setPluginScrollableAreaForScrollingNodeID(m_scrollingNodeID, *this);
 
-        WebCore::ScrollingCoordinator::NodeLayers nodeLayers;
-        nodeLayers.layer = m_rootLayer.get();
-        nodeLayers.scrollContainerLayer = m_scrollContainerLayer.get();
-        nodeLayers.scrolledContentsLayer = m_scrolledContentsLayer.get();
+    WebCore::ScrollingCoordinator::NodeLayers nodeLayers;
+    nodeLayers.layer = m_rootLayer.get();
+    nodeLayers.scrollContainerLayer = m_scrollContainerLayer.get();
+    nodeLayers.scrolledContentsLayer = m_scrolledContentsLayer.get();
 
-        scrollingCoordinator->setNodeLayers(m_scrollingNodeID, nodeLayers);
-    }
+    scrollingCoordinator->setNodeLayers(m_scrollingNodeID, nodeLayers);
 }
 
 void UnifiedPDFPlugin::updateLayerHierarchy()
@@ -231,7 +250,7 @@ void UnifiedPDFPlugin::updateLayerHierarchy()
     m_scrollContainerLayer->setPosition(scrollContainerRect.location());
     m_scrollContainerLayer->setSize(scrollContainerRect.size());
 
-    m_contentsLayer->setSize(contentsSize());
+    m_contentsLayer->setSize(documentSize());
     m_contentsLayer->setNeedsDisplay();
 
     didChangeSettings();
@@ -415,8 +434,19 @@ void UnifiedPDFPlugin::setPageScaleFactor(double scale, std::optional<WebCore::I
     if (!m_inMagnificationGesture)
         m_rootLayer->noteDeviceOrPageScaleFactorChangedIncludingDescendants();
 
+    auto sidePadding = 0.0f;
+    if (m_scaleFactor < 1) {
+        auto availableWidth = availableContentsRect().size().width();
+        auto documentPresentationWidth = m_documentLayout.scaledContentsSize().width() * m_scaleFactor;
+
+        sidePadding = std::floor(std::max<float>(availableWidth - documentPresentationWidth, 0) / 2);
+        sidePadding /= m_scaleFactor;
+    }
+
     TransformationMatrix transform;
     transform.scale(m_scaleFactor);
+    transform.translate(sidePadding, 0);
+
     m_contentsLayer->setTransform(transform);
 
     if (!origin)
@@ -430,6 +460,7 @@ void UnifiedPDFPlugin::setPageScaleFactor(double scale, std::optional<WebCore::I
 
     auto delta = gestureOriginInNewContentsCoordinates - gestureOriginInContentsCoordinates;
     auto newPosition = oldScrollPosition + delta;
+    newPosition = newPosition.expandedTo({ 0, 0 });
 
     auto options = ScrollPositionChangeOptions::createUser();
     options.originalScrollDelta = delta;
@@ -492,6 +523,7 @@ IntSize UnifiedPDFPlugin::documentSize() const
 {
     if (isLocked())
         return { 0, 0 };
+
     auto size = m_documentLayout.scaledContentsSize();
     return expandedIntSize(size);
 }
@@ -500,6 +532,7 @@ IntSize UnifiedPDFPlugin::contentsSize() const
 {
     if (isLocked())
         return { 0, 0 };
+
     auto size = m_documentLayout.scaledContentsSize();
     size.scale(m_scaleFactor);
     return expandedIntSize(size);

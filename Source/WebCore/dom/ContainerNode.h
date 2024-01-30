@@ -32,9 +32,6 @@ class HTMLCollection;
 class RadioNodeList;
 class RenderElement;
 
-const int initialNodeVectorSize = 11; // Covers 99.5%. See webkit.org/b/80706
-typedef Vector<Ref<Node>, initialNodeVectorSize> NodeVector;
-
 class ContainerNode : public Node {
     WTF_MAKE_ISO_ALLOCATED(ContainerNode);
 public:
@@ -69,6 +66,8 @@ public:
     // They don't send DOM mutation events or handle reparenting.
     // However, arbitrary code may be run by beforeload handlers.
     void parserAppendChild(Node&);
+    void parserAppendChildIntoIsolatedTree(Node&);
+    void parserNotifyChildrenChanged();
     void parserRemoveChild(Node&);
     void parserInsertBefore(Node& newChild, Node& refChild);
 
@@ -141,6 +140,8 @@ public:
     ExceptionOr<void> replaceChildren(FixedVector<NodeOrString>&&);
 
     ExceptionOr<void> ensurePreInsertionValidity(Node& newChild, Node* refChild);
+    ExceptionOr<void> ensurePreInsertionValidityForPhantomDocumentFragment(NodeVector& newChildren, Node* refChild = nullptr);
+    ExceptionOr<void> insertChildrenBeforeWithoutPreInsertionValidityCheck(NodeVector&&, Node* nextChild = nullptr);
 
 protected:
     explicit ContainerNode(Document&, NodeType, OptionSet<TypeFlag> = { });
@@ -163,6 +164,7 @@ private:
 
     void removeBetween(Node* previousChild, Node* nextChild, Node& oldChild);
     ExceptionOr<void> appendChildWithoutPreInsertionValidityCheck(Node&);
+
     void insertBeforeCommon(Node& nextChild, Node& oldChild);
     void appendChildCommon(Node&);
 

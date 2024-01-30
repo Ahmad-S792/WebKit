@@ -62,7 +62,7 @@ private:
     ImageDecoderGStreamerSample(GRefPtr<GstSample>&& sample, const FloatSize& presentationSize)
         : MediaSampleGStreamer(WTFMove(sample), presentationSize, { })
     {
-        m_frame = VideoFrameGStreamer::createWrappedSample(platformSample().sample.gstSample, MediaTime::invalidTime());
+        m_frame = VideoFrameGStreamer::createWrappedSample(platformSample().sample.gstSample);
         m_image = m_frame->convertToImage();
     }
 
@@ -119,9 +119,8 @@ ImageDecoderGStreamer::ImageDecoderGStreamer(FragmentedSharedBuffer& data, const
 
         GRefPtr<GstElement> element = gst_element_factory_create(lookupResult.factory.get(), nullptr);
         configureVideoDecoderForHarnessing(element);
-        m_decoderHarness = GStreamerElementHarness::create(WTFMove(element), [this](auto& stream, const auto& outputBuffer) {
-            auto outputCaps = stream.outputCaps();
-            storeDecodedSample(adoptGRef(gst_sample_new(outputBuffer.get(), outputCaps.get(), nullptr, nullptr)));
+        m_decoderHarness = GStreamerElementHarness::create(WTFMove(element), [this](auto&, const auto& outputSample) {
+            storeDecodedSample(GRefPtr(outputSample));
         }, { });
         return m_decoderHarness;
     });

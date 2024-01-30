@@ -840,6 +840,13 @@ ValidatedFormListedElement* Element::asValidatedFormListedElement()
     return nullptr;
 }
 
+#if ENABLE(ATTACHMENT_ELEMENT)
+AttachmentAssociatedElement* Element::asAttachmentAssociatedElement()
+{
+    return nullptr;
+}
+#endif
+
 bool Element::isUserActionElementHasFocusWithin() const
 {
     ASSERT(isUserActionElement());
@@ -2141,7 +2148,7 @@ void Element::attributeChanged(const QualifiedName& name, const AtomString& oldV
     case AttributeNames::XML::langAttr:
     case AttributeNames::langAttr: {
         if (name == HTMLNames::langAttr)
-            setHasLangAttr(!newValue.isNull());
+            setHasLangAttr(!newValue.isNull() && (isHTMLElement() || isSVGElement()));
         else
             setHasXMLLangAttr(!newValue.isNull());
         Ref document = this->document();
@@ -3154,6 +3161,9 @@ void Element::removeAllEventListeners()
 
 void Element::finishParsingChildren()
 {
+    if (hasHeldBackChildrenChanged())
+        parserNotifyChildrenChanged();
+
     setIsParsingChildrenFinished();
 
     Style::ChildChangeInvalidation::invalidateAfterFinishedParsingChildren(*this);
