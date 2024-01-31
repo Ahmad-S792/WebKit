@@ -867,6 +867,7 @@ public:
     bool paintingFrequently() const { return m_paintFrequencyTracker.paintingFrequently(); }
     WEBCORE_EXPORT void purgeFrontBufferForTesting();
     WEBCORE_EXPORT void purgeBackBufferForTesting();
+    WEBCORE_EXPORT void markFrontBufferVolatileForTesting();
 
     WEBCORE_EXPORT bool isTransparentRespectingParentFrames() const;
 
@@ -881,7 +882,7 @@ public:
 
     void setIsHiddenByOverflowTruncation(bool);
 
-    void paintSVGResourceLayer(GraphicsContext&, GraphicsContextStateSaver&, const AffineTransform& contentTransform);
+    void paintSVGResourceLayer(GraphicsContext&, const AffineTransform& contentTransform);
 
 private:
 

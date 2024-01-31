@@ -25,6 +25,7 @@
 
 #pragma once
 
+#include "PseudoElementIdentifier.h"
 #include "RenderStyleConstants.h"
 #include <wtf/text/AtomString.h>
 
@@ -33,23 +34,30 @@ namespace WebCore::Style {
 class PseudoElementRequest {
 public:
     PseudoElementRequest(PseudoId pseudoId, std::optional<StyleScrollbarState> scrollbarState = std::nullopt)
-        : pseudoId(pseudoId)
-        , scrollbarState(scrollbarState)
+        : m_identifier({ pseudoId })
+        , m_scrollbarState(scrollbarState)
     {
     }
 
     PseudoElementRequest(PseudoId pseudoId, const AtomString& pseudoElementNameArgument)
-        : pseudoId(pseudoId)
-        , pseudoElementNameArgument(pseudoElementNameArgument)
+        : m_identifier({ pseudoId, pseudoElementNameArgument })
     {
         ASSERT(pseudoId == PseudoId::Highlight || pseudoId == PseudoId::ViewTransitionGroup || pseudoId == PseudoId::ViewTransitionImagePair || pseudoId == PseudoId::ViewTransitionOld || pseudoId == PseudoId::ViewTransitionNew);
     }
 
-    PseudoId pseudoId;
-    std::optional<StyleScrollbarState> scrollbarState;
+    PseudoElementRequest(const PseudoElementIdentifier& pseudoElementIdentifier)
+        : m_identifier(pseudoElementIdentifier)
+    {
+    }
 
-    // highlight name for ::highlight or view transition name for view transition pseudo elements.
-    AtomString pseudoElementNameArgument;
+    const PseudoElementIdentifier& identifier() const { return m_identifier; }
+    PseudoId pseudoId() const { return m_identifier.pseudoId; }
+    const AtomString& pseudoElementNameArgument() const { return m_identifier.pseudoElementNameArgument; }
+    const std::optional<StyleScrollbarState>& scrollbarState() const { return m_scrollbarState; }
+
+private:
+    PseudoElementIdentifier m_identifier;
+    std::optional<StyleScrollbarState> m_scrollbarState;
 };
 
 } // namespace WebCore

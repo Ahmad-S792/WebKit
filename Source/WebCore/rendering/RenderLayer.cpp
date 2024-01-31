@@ -2831,7 +2831,7 @@ static inline bool shouldSuppressPaintingLayer(RenderLayer* layer)
     return false;
 }
 
-void RenderLayer::paintSVGResourceLayer(GraphicsContext& context, GraphicsContextStateSaver&, const AffineTransform& layerContentTransform)
+void RenderLayer::paintSVGResourceLayer(GraphicsContext& context, const AffineTransform& layerContentTransform)
 {
 #if ENABLE(LAYER_BASED_SVG_ENGINE)
     bool wasPaintingSVGResourceLayer = m_isPaintingSVGResourceLayer;
@@ -5803,6 +5803,12 @@ void RenderLayer::purgeBackBufferForTesting()
 {
     if (backing())
         backing()->purgeBackBufferForTesting();
+}
+
+void RenderLayer::markFrontBufferVolatileForTesting()
+{
+    if (backing())
+        backing()->markFrontBufferVolatileForTesting();
 }
 
 RenderLayerScrollableArea* RenderLayer::scrollableArea() const
