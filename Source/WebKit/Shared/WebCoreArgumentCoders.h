@@ -64,11 +64,6 @@
 #include <WebCore/MediaPlaybackTargetContext.h>
 #endif
 
-#if ENABLE(ENCRYPTED_MEDIA)
-#include <WebCore/CDMInstance.h>
-#include <WebCore/CDMInstanceSession.h>
-#endif
-
 #if PLATFORM(IOS_FAMILY)
 #include <WebCore/InspectorOverlay.h>
 #endif
@@ -206,13 +201,6 @@ template<> struct ArgumentCoder<WebCore::CurlProxySettings> {
 };
 #endif
 
-#if !USE(COORDINATED_GRAPHICS)
-template<> struct ArgumentCoder<WebCore::FilterOperations> {
-    static void encode(Encoder&, const WebCore::FilterOperations&);
-    static WARN_UNUSED_RETURN bool decode(Decoder&, WebCore::FilterOperations&);
-};
-#endif
-
 #if ENABLE(WIRELESS_PLAYBACK_TARGET)
 template<> struct ArgumentCoder<WebCore::MediaPlaybackTargetContext> {
     static void encode(Encoder&, const WebCore::MediaPlaybackTargetContext&);
@@ -259,13 +247,6 @@ template<> struct ArgumentCoder<WebCore::DataDetectorElementInfo> {
     static std::optional<WebCore::DataDetectorElementInfo> decode(Decoder&);
 };
 
-#endif
-
-#if ENABLE(ENCRYPTED_MEDIA)
-template<> struct ArgumentCoder<WebCore::CDMInstanceSession::Message> {
-    static void encode(Encoder&, const WebCore::CDMInstanceSession::Message&);
-    static std::optional<WebCore::CDMInstanceSession::Message> decode(Decoder&);
-};
 #endif
 
 #if ENABLE(IMAGE_ANALYSIS_ENHANCEMENTS)
