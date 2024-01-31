@@ -1541,6 +1541,8 @@ editing/spelling/spelling-insert-html.html [ Pass Timeout ]
 editing/spelling/spellcheck-async.html [ Failure ]
 editing/spelling/spelling-unified-emulation.html [ Failure ]
 
+accessibility/tree-update-with-dirty-layout.html [ Skip ]
+
 # The inert attribute isn't making objects inaccessible on WK1.
 accessibility/node-only-inert-object.html [ Failure ]
 
@@ -2763,3 +2765,5 @@ fast/dom/no-scroll-when-command-click-fragment-URL.html [ Skip ]
 # webkit.org/b/267799 [ Ventura wk1 ] 2 tests in media/track are constant crash
 [ Ventura ] media/track/track-in-band-layout.html [ Crash ]
 [ Ventura ] media/track/track-paint-on-captions.html [ Crash ]
+
+webkit.org/b/268480 [ Debug ] http/tests/media/video-throttled-load-metadata.html [ Skip ]
