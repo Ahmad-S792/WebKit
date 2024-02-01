@@ -25,42 +25,57 @@
 
 #pragma once
 
-#if ENABLE(WEB_AUTHN)
+#if USE(CF)
 
-#include "BasicCredential.h"
-#include "IDLTypes.h"
-#include <JavaScriptCore/ArrayBuffer.h>
-#include <wtf/RefCounted.h>
-#include <wtf/RefPtr.h>
+#import <Security/SecCertificate.h>
+#import <wtf/RetainPtr.h>
 
-namespace WebCore {
+namespace WebKit {
 
-class DigitalCredential;
-template<typename IDLType> class DOMPromiseDeferred;
-
-using DigitalCredentialPromise = DOMPromiseDeferred<IDLInterface<DigitalCredential>>;
-
-class DigitalCredential final : public BasicCredential {
+class CoreIPCSecCertificate {
 public:
-    static Ref<DigitalCredential> create(Ref<ArrayBuffer>&& data);
-
-    virtual ~DigitalCredential();
-
-    ArrayBuffer* data() const
+    CoreIPCSecCertificate(SecCertificateRef certificate)
+        : m_certificateData(dataFromCertificate(certificate))
     {
-        return m_data.get();
-    };
+    }
+
+    CoreIPCSecCertificate(RetainPtr<CFDataRef> data)
+        : m_certificateData(data)
+    {
+    }
+
+    CoreIPCSecCertificate(const IPC::DataReference& data)
+        : m_certificateData(adoptCF(CFDataCreate(kCFAllocatorDefault, data.data(), data.size())))
+    {
+    }
+
+    RetainPtr<SecCertificateRef> createSecCertificate() const
+    {
+        auto certificate = adoptCF(SecCertificateCreateWithData(kCFAllocatorDefault, m_certificateData.get()));
+        ASSERT(certificate);
+        return certificate;
+    }
+
+    IPC::DataReference dataReference() const
+    {
+        RELEASE_ASSERT(m_certificateData);
+        CFDataRef data = m_certificateData.get();
+        RELEASE_ASSERT(data);
+        return { CFDataGetBytePtr(data), static_cast<size_t>(CFDataGetLength(data)) };
+    }
 
 private:
-    DigitalCredential(Ref<ArrayBuffer>&& data);
+    RetainPtr<CFDataRef> dataFromCertificate(SecCertificateRef certificate) const
+    {
+        ASSERT(certificate);
+        auto data = adoptCF(SecCertificateCopyData(certificate));
+        ASSERT(data);
+        return data;
+    }
 
-    Type credentialType() const final { return Type::DigitalCredential; }
-
-    RefPtr<ArrayBuffer> m_data;
+    RetainPtr<CFDataRef> m_certificateData;
 };
 
-} // namespace WebCore
+} // namespace WebKit
 
-SPECIALIZE_TYPE_TRAITS_BASIC_CREDENTIAL(DigitalCredential, BasicCredential::Type::DigitalCredential)
-
-#endif // ENABLE(WEB_AUTHN)
+#endif // USE(CF)

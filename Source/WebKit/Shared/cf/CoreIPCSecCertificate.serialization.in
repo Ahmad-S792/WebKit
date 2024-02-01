@@ -1,4 +1,4 @@
-# Copyright (C) 2023 Sony Interactive Entertainment Inc.
+# Copyright (C) 2023 Apple Inc. All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
 # modification, are permitted provided that the following conditions
@@ -20,26 +20,12 @@
 # OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-webkit_platform_headers: "SharedMemory.h" <wtf/ArgumentCoder.h> <wtf/RefCounted.h> "Encoder.h" "Decoder.h"
-#if USE(UNIX_DOMAIN_SOCKETS)
-webkit_platform_header: <wtf/unix/UnixFileDescriptor.h> "ArgumentCodersUnix.h"
-#endif
-#if OS(DARWIN)
-webkit_platform_header: <wtf/MachSendRight.h>
-#endif
-#if OS(WINDOWS)
-webkit_platform_header: <wtf/win/Win32Handle.h> "ArgumentCodersWin.h"
-#endif
+#if USE(CF)
 
-[CustomHeader, RValue, WebKitPlatform] class WebKit::SharedMemoryHandle {
-#if USE(UNIX_DOMAIN_SOCKETS)
-    [Validator='!!m_handle'] UnixFileDescriptor m_handle;
-#endif
-#if OS(DARWIN)
-    [Validator='!!m_handle'] MachSendRight m_handle;
-#endif
-#if OS(WINDOWS)
-    [Validator='!!m_handle'] Win32Handle m_handle;
-#endif
-    size_t m_size;
-};
+webkit_platform_headers: "CoreIPCSecCertificate.h"
+
+[WebKitPlatform, AdditionalEncoder=StreamConnectionEncoder] class WebKit::CoreIPCSecCertificate {
+    IPC::DataReference dataReference();
+}
+
+#endif // USE(CF)
