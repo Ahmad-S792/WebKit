@@ -128,6 +128,10 @@ static WebCore::IntDegrees deviceOrientationForUIInterfaceOrientation(UIInterfac
 - (BOOL)_isHostedInAnotherProcess;
 @end
 
+#if USE(APPLE_INTERNAL_SDK)
+#import <WebKitAdditions/WKWebViewPrivateAdditions.mm>
+#endif
+
 @implementation WKWebView (WKViewInternalIOS)
 
 - (void)setFrame:(CGRect)frame
@@ -4180,7 +4184,7 @@ static bool isLockdownModeWarningNeeded()
         if (!imageHandle)
             return completionHandler(nil);
 
-        auto bitmap = WebKit::ShareableBitmap::create(WTFMove(*imageHandle), WebKit::SharedMemory::Protection::ReadOnly);
+        auto bitmap = WebKit::ShareableBitmap::create(WTFMove(*imageHandle), WebCore::SharedMemory::Protection::ReadOnly);
 
         if (!bitmap)
             return completionHandler(nil);
