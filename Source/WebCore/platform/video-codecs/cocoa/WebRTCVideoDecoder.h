@@ -29,6 +29,9 @@
 
 #include <wtf/UniqueRef.h>
 
+typedef struct __CVBuffer* CVPixelBufferRef;
+using RTCVideoDecoderVTBAV1Callback = void (^)(CVPixelBufferRef, int64_t timeStamp, int64_t timeStampNs);
+
 namespace webrtc {
 using LocalDecoder = void*;
 }
@@ -49,10 +52,8 @@ public:
     virtual void setFrameSize(uint16_t width, uint16_t height) = 0;
 };
 
-}
+WEBCORE_EXPORT UniqueRef<WebRTCVideoDecoder> createAV1VTBDecoder(RTCVideoDecoderVTBAV1Callback);
 
-#if USE(APPLE_INTERNAL_SDK)
-#import <WebKitAdditions/WebRTCVideoDecoderAdditions.h>
-#endif
+}
 
 #endif // USE(LIBWEBRTC)

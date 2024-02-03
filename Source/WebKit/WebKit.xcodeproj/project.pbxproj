@@ -1331,6 +1331,7 @@
 		53BA47D11DC2EF5E004DF4AD /* NetworkDataTaskBlob.h in Headers */ = {isa = PBXBuildFile; fileRef = 539EB5471DC2EE40009D48CF /* NetworkDataTaskBlob.h */; };
 		53CFBBC82224D1B500266546 /* TextCheckerCompletion.h in Headers */ = {isa = PBXBuildFile; fileRef = 53CFBBC72224D1B000266546 /* TextCheckerCompletion.h */; };
 		561A54532B61E49E00073A72 /* CoreIPCSecCertificate.h in Headers */ = {isa = PBXBuildFile; fileRef = 561A54512B61E49E00073A72 /* CoreIPCSecCertificate.h */; };
+		562674F52B69B4C8008BB425 /* CoreIPCSecTrust.h in Headers */ = {isa = PBXBuildFile; fileRef = 562674F32B69B4C7008BB425 /* CoreIPCSecTrust.h */; };
 		570AB8F320AE3BD700B8BE87 /* SecKeyProxyStore.h in Headers */ = {isa = PBXBuildFile; fileRef = 570AB8F220AE3BD700B8BE87 /* SecKeyProxyStore.h */; };
 		570DAAAE23026F5C00E8FC04 /* NfcService.h in Headers */ = {isa = PBXBuildFile; fileRef = 570DAAAC23026F5C00E8FC04 /* NfcService.h */; };
 		570DAAC22303730300E8FC04 /* NfcConnection.h in Headers */ = {isa = PBXBuildFile; fileRef = 570DAAC02303730300E8FC04 /* NfcConnection.h */; };
@@ -4911,6 +4912,7 @@
 		3CAECB5E27465AE300AB78D0 /* UnifiedSource113.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = UnifiedSource113.cpp; sourceTree = "<group>"; };
 		3D3C75952B6452300013828A /* ObjectIdentifierReference.serialization.in */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text; path = ObjectIdentifierReference.serialization.in; sourceTree = "<group>"; };
 		3D3C75A22B6875120013828A /* MonotonicObjectIdentifier.serialization.in */ = {isa = PBXFileReference; lastKnownFileType = text; path = MonotonicObjectIdentifier.serialization.in; sourceTree = "<group>"; };
+		3D3C76402B6B1E280013828A /* ProcessQualified.serialization.in */ = {isa = PBXFileReference; lastKnownFileType = text; path = ProcessQualified.serialization.in; sourceTree = "<group>"; };
 		3F418EF51887BD97002795FD /* VideoPresentationManagerMessageReceiver.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = VideoPresentationManagerMessageReceiver.cpp; sourceTree = "<group>"; };
 		3F418EF61887BD97002795FD /* VideoPresentationManagerMessages.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = VideoPresentationManagerMessages.h; sourceTree = "<group>"; };
 		3F418EF71887BD97002795FD /* VideoPresentationManagerProxyMessageReceiver.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = VideoPresentationManagerProxyMessageReceiver.cpp; sourceTree = "<group>"; };
@@ -5652,6 +5654,8 @@
 		55AD09422408A02E00DE4D2F /* RemoteImageBuffer.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = RemoteImageBuffer.h; sourceTree = "<group>"; };
 		561A54512B61E49E00073A72 /* CoreIPCSecCertificate.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = CoreIPCSecCertificate.h; sourceTree = "<group>"; };
 		561A54522B61E49E00073A72 /* CoreIPCSecCertificate.serialization.in */ = {isa = PBXFileReference; lastKnownFileType = text; path = CoreIPCSecCertificate.serialization.in; sourceTree = "<group>"; };
+		562674F32B69B4C7008BB425 /* CoreIPCSecTrust.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = CoreIPCSecTrust.h; sourceTree = "<group>"; };
+		562674F42B69B4C8008BB425 /* CoreIPCSecTrust.serialization.in */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text; path = CoreIPCSecTrust.serialization.in; sourceTree = "<group>"; };
 		570AB8F220AE3BD700B8BE87 /* SecKeyProxyStore.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = SecKeyProxyStore.h; sourceTree = "<group>"; };
 		570AB90020B2517400B8BE87 /* AuthenticationChallengeProxyCocoa.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; path = AuthenticationChallengeProxyCocoa.mm; sourceTree = "<group>"; };
 		570AB90320B2541C00B8BE87 /* SecKeyProxyStore.mm */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.objcpp; path = SecKeyProxyStore.mm; sourceTree = "<group>"; };
@@ -8789,6 +8793,7 @@
 				E1CC1B8E12D7EADF00625838 /* PrintInfo.h */,
 				2D4EDA892AFA220B003396F7 /* PrintInfo.serialization.in */,
 				5C05FDF227AB4FA5003A2487 /* PrivateRelayed.h */,
+				3D3C76402B6B1E280013828A /* ProcessQualified.serialization.in */,
 				0FEC6E05280915CF008082AC /* ProcessTerminationReason.cpp */,
 				463FD4811EB94EAD00A2982C /* ProcessTerminationReason.h */,
 				517B5F94275EBA62002DC22D /* PushMessageForTesting.h */,
@@ -9010,6 +9015,8 @@
 				F4EFF36A2AF0267200479AB8 /* CoreIPCNumber.serialization.in */,
 				561A54512B61E49E00073A72 /* CoreIPCSecCertificate.h */,
 				561A54522B61E49E00073A72 /* CoreIPCSecCertificate.serialization.in */,
+				562674F32B69B4C7008BB425 /* CoreIPCSecTrust.h */,
+				562674F42B69B4C8008BB425 /* CoreIPCSecTrust.serialization.in */,
 			);
 			path = cf;
 			sourceTree = "<group>";
@@ -15217,6 +15224,7 @@
 			isa = PBXHeadersBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				562674F52B69B4C8008BB425 /* CoreIPCSecTrust.h in Headers */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

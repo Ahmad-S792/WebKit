@@ -28,6 +28,8 @@
 
 #if USE(LIBWEBRTC)
 
+#import "RTCVideoDecoderVTBAV1.h"
+
 ALLOW_UNUSED_PARAMETERS_BEGIN
 ALLOW_COMMA_BEGIN
 
@@ -35,10 +37,6 @@ ALLOW_COMMA_BEGIN
 
 ALLOW_UNUSED_PARAMETERS_END
 ALLOW_COMMA_END
-
-#if USE(APPLE_INTERNAL_SDK)
-#import <WebKitAdditions/WebRTCVideoDecoderAdditions.mm>
-#endif
 
 namespace WebCore {
 
@@ -68,7 +66,34 @@ UniqueRef<WebRTCVideoDecoder> WebRTCVideoDecoder::createFromLocalDecoder(webrtc:
     return makeUniqueRef<WebRTCLocalVideoDecoder>(decoder);
 }
 
+class WebRTCDecoderVTBAV1 final : public WebRTCVideoDecoder {
+    WTF_MAKE_FAST_ALLOCATED;
+public:
+    explicit WebRTCDecoderVTBAV1(RTCVideoDecoderVTBAV1Callback callback)
+        : m_decoder(adoptNS([[RTCVideoDecoderVTBAV1 alloc] init]))
+    {
+        [m_decoder setCallback:callback];
+    }
+
+    ~WebRTCDecoderVTBAV1()
+    {
+        [m_decoder releaseDecoder];
+    }
+
+private:
+    void flush() final { [m_decoder flush]; }
+    void setFormat(const uint8_t*, size_t, uint16_t width, uint16_t height) final { setFrameSize(width, height); }
+    int32_t decodeFrame(int64_t timeStamp, const uint8_t* data, size_t size) final { return [m_decoder decodeData:data size:size timeStamp:timeStamp]; }
+    void setFrameSize(uint16_t width, uint16_t height) final { [m_decoder setWidth:width height:height];; }
+
+    RetainPtr<RTCVideoDecoderVTBAV1> m_decoder;
+};
+
+UniqueRef<WebRTCVideoDecoder> createAV1VTBDecoder(RTCVideoDecoderVTBAV1Callback callback)
+{
+    return makeUniqueRef<WebRTCDecoderVTBAV1>(callback);
 }
 
-#endif
+}
 
+#endif //  USE(LIBWEBRTC)

@@ -425,6 +425,7 @@ set(WebKit_SERIALIZATION_IN_FILES
     Shared/PlatformPopupMenuData.serialization.in
     Shared/PolicyDecision.serialization.in
     Shared/PrintInfo.serialization.in
+    Shared/ProcessQualified.serialization.in
     Shared/RTCNetwork.serialization.in
     Shared/RTCPacketOptions.serialization.in
     Shared/RemoteWorkerInitializationData.serialization.in
@@ -666,18 +667,6 @@ endif ()
 
 if (ATOMICS_REQUIRE_LIBATOMIC)
     list(APPEND WebKit_PRIVATE_LIBRARIES atomic)
-endif ()
-
-if (UNIX)
-    check_function_exists(shm_open SHM_OPEN_EXISTS)
-    if (NOT SHM_OPEN_EXISTS)
-        set(CMAKE_REQUIRED_LIBRARIES rt)
-        check_function_exists(shm_open SHM_OPEN_REQUIRES_LIBRT)
-        if (SHM_OPEN_REQUIRES_LIBRT)
-            list(APPEND WebKit_PRIVATE_LIBRARIES rt)
-        endif ()
-        unset(CMAKE_REQUIRED_LIBRARIES)
-    endif ()
 endif ()
 
 macro(ADD_WEBKIT_PREFIX_HEADER _target)
