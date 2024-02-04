@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2020 Apple Inc. All rights reserved.
+ * Copyright (C) 2024 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -23,18 +23,35 @@
  * THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#pragma once
+#import "config.h"
+#import "CoreIPCCFArray.h"
 
-#include "ShadowRootMode.h"
-#include "SlotAssignmentMode.h"
+#if USE(CF)
 
-namespace WebCore {
+#import "CoreIPCCFType.h"
+#import "CoreIPCTypes.h"
+#import <wtf/cf/VectorCF.h>
 
-struct ShadowRootInit {
-    ShadowRootMode mode;
-    bool delegatesFocus { false };
-    bool clonable { false };
-    SlotAssignmentMode slotAssignment { SlotAssignmentMode::Named };
-};
+namespace WebKit {
 
+CoreIPCCFArray::CoreIPCCFArray(CFArrayRef array)
+{
+    CFIndex count = array ? CFArrayGetCount(array) : 0;
+    for (CFIndex i = 0; i < count; i++) {
+        CFTypeRef element = CFArrayGetValueAtIndex(array, i);
+        if (IPC::typeFromCFTypeRef(element) == IPC::CFType::Unknown)
+            continue;
+        m_array.append(makeUniqueRef<CoreIPCCFType>(element));
+    }
 }
+
+RetainPtr<CFArrayRef> CoreIPCCFArray::createCFArray() const
+{
+    return WTF::createCFArray(m_array, [] (const CoreIPCCFType& element) {
+        return element.toID();
+    });
+}
+
+} // namespace WebKit
+
+#endif // USE(CF)

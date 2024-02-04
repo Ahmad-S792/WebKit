@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2020 Apple Inc. All rights reserved.
+ * Copyright (C) 2024 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -25,16 +25,27 @@
 
 #pragma once
 
-#include "ShadowRootMode.h"
-#include "SlotAssignmentMode.h"
+#if USE(CF)
 
-namespace WebCore {
+#include <wtf/RetainPtr.h>
+#include <wtf/UniqueRef.h>
+#include <wtf/Vector.h>
 
-struct ShadowRootInit {
-    ShadowRootMode mode;
-    bool delegatesFocus { false };
-    bool clonable { false };
-    SlotAssignmentMode slotAssignment { SlotAssignmentMode::Named };
+namespace WebKit {
+
+class CoreIPCCFType;
+
+class CoreIPCCFArray {
+public:
+    CoreIPCCFArray(CFArrayRef);
+    CoreIPCCFArray(Vector<UniqueRef<CoreIPCCFType>>&& array)
+        : m_array(WTFMove(array)) { }
+    RetainPtr<CFArrayRef> createCFArray() const;
+    const Vector<UniqueRef<CoreIPCCFType>>& array() const { return m_array; }
+private:
+    Vector<UniqueRef<CoreIPCCFType>> m_array;
 };
 
-}
+} // namespace WebKit
+
+#endif // USE(CF)
