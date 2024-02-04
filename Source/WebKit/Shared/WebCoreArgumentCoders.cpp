@@ -234,37 +234,6 @@ bool ArgumentCoder<Credential>::decode(Decoder& decoder, Credential& credential)
     return true;
 }
 
-void ArgumentCoder<Image>::encode(Encoder& encoder, const Image& image)
-{
-    RefPtr bitmap = ShareableBitmap::create({ IntSize(image.size()) });
-    auto graphicsContext = bitmap->createGraphicsContext();
-    encoder << !!graphicsContext;
-    if (!graphicsContext)
-        return;
-
-    graphicsContext->drawImage(const_cast<Image&>(image), IntPoint());
-    
-    encoder << bitmap;
-}
-
-std::optional<Ref<Image>> ArgumentCoder<Image>::decode(Decoder& decoder)
-{
-    std::optional<bool> didCreateGraphicsContext;
-    decoder >> didCreateGraphicsContext;
-    if (!didCreateGraphicsContext || !*didCreateGraphicsContext)
-        return std::nullopt;
-
-    std::optional<RefPtr<WebCore::ShareableBitmap>> bitmap;
-    decoder >> bitmap;
-    if (!bitmap)
-        return std::nullopt;
-    
-    RefPtr image = bitmap.value()->createImage();
-    if (!image)
-        return std::nullopt;
-    return image.releaseNonNull();
-}
-
 void ArgumentCoder<WebCore::Font>::encode(Encoder& encoder, const WebCore::Font& font)
 {
     encoder << font.attributes();
@@ -541,68 +510,6 @@ std::optional<Ref<WebCore::FragmentedSharedBuffer>> ArgumentCoder<WebCore::Fragm
         return std::nullopt;
 
     return SharedBuffer::create(static_cast<unsigned char*>(sharedMemoryBuffer->data()), bufferSize);
-}
-
-void ArgumentCoder<WebCore::SharedBuffer>::encode(Encoder& encoder, const WebCore::SharedBuffer& buffer)
-{
-    encoder << static_cast<const WebCore::FragmentedSharedBuffer&>(buffer);
-}
-
-std::optional<Ref<WebCore::SharedBuffer>> ArgumentCoder<WebCore::SharedBuffer>::decode(Decoder& decoder)
-{
-    if (auto buffer = decoder.decode<Ref<FragmentedSharedBuffer>>())
-        return (*buffer)->makeContiguous();
-    return std::nullopt;
-}
-
-#if ENABLE(SHAREABLE_RESOURCE) && PLATFORM(COCOA)
-static std::optional<ShareableResource::Handle> tryConvertToShareableResourceHandle(const ScriptBuffer& script)
-{
-    if (!script.containsSingleFileMappedSegment())
-        return std::nullopt;
-
-    auto& segment = script.buffer()->begin()->segment;
-    auto sharedMemory = SharedMemory::wrapMap(const_cast<uint8_t*>(segment->data()), segment->size(), SharedMemory::Protection::ReadOnly);
-    if (!sharedMemory)
-        return std::nullopt;
-
-    auto shareableResource = ShareableResource::create(sharedMemory.releaseNonNull(), 0, segment->size());
-    if (!shareableResource)
-        return std::nullopt;
-
-    return shareableResource->createHandle();
-}
-#endif
-
-void ArgumentCoder<WebCore::ScriptBuffer>::encode(Encoder& encoder, const WebCore::ScriptBuffer& script)
-{
-#if ENABLE(SHAREABLE_RESOURCE) && PLATFORM(COCOA)
-    auto handle = tryConvertToShareableResourceHandle(script);
-    bool isShareableResourceHandle = !!handle;
-    encoder << WTFMove(handle);
-    if (isShareableResourceHandle)
-        return;
-#endif
-    encoder << RefPtr { script.buffer() };
-}
-
-std::optional<WebCore::ScriptBuffer> ArgumentCoder<WebCore::ScriptBuffer>::decode(Decoder& decoder)
-{
-#if ENABLE(SHAREABLE_RESOURCE) && PLATFORM(COCOA)
-    auto handle = decoder.decode<std::optional<ShareableResource::Handle>>();
-    if (UNLIKELY(!decoder.isValid()))
-        return std::nullopt;
-
-    if (*handle) {
-        if (auto buffer = WTFMove(**handle).tryWrapInSharedBuffer())
-            return WebCore::ScriptBuffer { WTFMove(buffer) };
-        return std::nullopt;
-    }
-#endif
-
-    if (auto buffer = decoder.decode<RefPtr<FragmentedSharedBuffer>>())
-        return WebCore::ScriptBuffer { WTFMove(*buffer) };
-    return std::nullopt;
 }
 
 } // namespace IPC

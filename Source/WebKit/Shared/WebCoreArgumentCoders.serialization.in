@@ -1464,7 +1464,6 @@ struct WebCore::WebLockManagerSnapshot {
 [CustomHeader] struct WebCore::AuthenticatorAttestationResponseData {
     RefPtr<JSC::ArrayBuffer> rawId;
     std::optional<WebCore::AuthenticationExtensionsClientOutputs> extensionOutputs;
-    RefPtr<JSC::ArrayBuffer> clientDataJSON;
     RefPtr<JSC::ArrayBuffer> attestationObject;
     Vector<WebCore::AuthenticatorTransport> transports;
 };
@@ -1472,7 +1471,6 @@ struct WebCore::WebLockManagerSnapshot {
 [CustomHeader] struct WebCore::AuthenticatorAssertionResponseData {
     RefPtr<JSC::ArrayBuffer> rawId;
     std::optional<WebCore::AuthenticationExtensionsClientOutputs> extensionOutputs;
-    RefPtr<JSC::ArrayBuffer> clientDataJSON;
     RefPtr<JSC::ArrayBuffer> authenticatorData;
     RefPtr<JSC::ArrayBuffer> signature;
     RefPtr<JSC::ArrayBuffer> userHandle;
@@ -5637,6 +5635,18 @@ struct WebCore::ServiceWorkerImportedScript {
     String mimeType;
 };
 
+#if ENABLE(SHAREABLE_RESOURCE) && PLATFORM(COCOA)
+[CreateUsing=fromIPCData] class WebCore::ScriptBuffer {
+    std::variant<WebCore::ShareableResourceHandle, RefPtr<WebCore::FragmentedSharedBuffer>> ipcData();
+};
+#endif
+
+#if !ENABLE(SHAREABLE_RESOURCE) || !PLATFORM(COCOA)
+[CreateUsing=fromIPCData] class WebCore::ScriptBuffer {
+    RefPtr<WebCore::FragmentedSharedBuffer> ipcData();
+};
+#endif
+
 header: <wtf/RobinHoodHashTable.h>
 struct WebCore::ServiceWorkerContextData {
     std::optional<WebCore::ServiceWorkerJobDataIdentifier> jobDataIdentifier;
@@ -7139,6 +7149,11 @@ headers: <JavaScriptCore/WasmModule.h> <WebCore/ImageBitmap.h> <WebCore/MessageP
     WebCore::SerializedScriptValue::Internals m_internals;
 };
 
+header: <WebCore/SharedBuffer.h>
+[RefCounted] class WebCore::SharedBuffer {
+    Ref<WebCore::FragmentedSharedBuffer> asFragmentedSharedBuffer();
+};
+
 #if !USE(COORDINATED_GRAPHICS)
 [RefCounted] class WebCore::FilterOperation subclasses {
     WebCore::BasicColorMatrixFilterOperation
@@ -7266,6 +7281,11 @@ enum class WebCore::WindowProxyProperty : uint8_t {
     Other,
     Closed,
     PostMessage,
+};
+
+header: <WebCore/Image.h>
+[RefCounted] class WebCore::Image {
+    RefPtr<WebCore::ShareableBitmap> toShareableBitmap();
 };
 
 struct WebCore::Length {
