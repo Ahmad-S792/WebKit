@@ -713,8 +713,8 @@ webkit.org/b/141085 http/tests/media/video-query-url.html [ Pass Timeout ]
 http/tests/inspector/network/local-resource-override-mapped-to-directory.html [ Pass ]
 http/tests/inspector/network/local-resource-override-mapped-to-file.html [ Pass ]
 
-# Network throttling is currently only enabled on Cocoa platforms.
-http/tests/inspector/network/setEmulatedConditions.html [ Pass ]
+# Network throttling is currently disabled pending rdar://122224142 (Per process network link conditioner SPI).
+http/tests/inspector/network/setEmulatedConditions.html [ Skip ]
 
 # Content Extensions tests must be enabled explicitly on mac-wk2.
 http/tests/contentextensions [ Pass ]
@@ -1888,7 +1888,7 @@ http/tests/webgpu/webgpu/api/operation/compute_pipeline/overrides.html [ Pass ]
 http/tests/webgpu/webgpu/api/operation/device/lost.html [ Pass ]
 http/tests/webgpu/webgpu/api/operation/rendering/stencil.html [ Pass ]
 http/tests/webgpu/webgpu/api/operation/rendering/indirect_draw.html [ Pass ]
-http/tests/webgpu/webgpu/api/operation/reflection.html [ Pass ]
+http/tests/webgpu/webgpu/api/operation/reflection.html [ Skip ]
 http/tests/webgpu/webgpu/api/operation/vertex_state/index_format.html [ Pass ]
 http/tests/webgpu/webgpu/api/operation/rendering/draw.html [ Pass ]
 http/tests/webgpu/webgpu/api/operation/sampling/filter_mode.html [ Skip ]
@@ -1896,7 +1896,7 @@ http/tests/webgpu/webgpu/api/operation/sampling/lod_clamp.html [ Pass ]
 http/tests/webgpu/webgpu/api/operation/sampling/anisotropy.html [ Pass ]
 http/tests/webgpu/webgpu/api/operation/adapter/requestAdapterInfo.html [ Pass ]
 http/tests/webgpu/webgpu/api/operation/adapter/requestAdapter.html [ Pass ]
-http/tests/webgpu/webgpu/api/operation/adapter/requestDevice.html [ Pass ]
+http/tests/webgpu/webgpu/api/operation/adapter/requestDevice.html [ Skip ]
 http/tests/webgpu/webgpu/api/operation/onSubmittedWorkDone.html [ Pass ]
 http/tests/webgpu/webgpu/api/operation/queue/writeBuffer.html [ Pass ]
 http/tests/webgpu/webgpu/api/operation/render_pipeline/culling_tests.html [ Pass ]
