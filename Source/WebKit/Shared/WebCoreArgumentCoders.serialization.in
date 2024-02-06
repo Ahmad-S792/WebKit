@@ -1464,6 +1464,7 @@ struct WebCore::WebLockManagerSnapshot {
 [CustomHeader] struct WebCore::AuthenticatorAttestationResponseData {
     RefPtr<JSC::ArrayBuffer> rawId;
     std::optional<WebCore::AuthenticationExtensionsClientOutputs> extensionOutputs;
+    RefPtr<JSC::ArrayBuffer> clientDataJSON;
     RefPtr<JSC::ArrayBuffer> attestationObject;
     Vector<WebCore::AuthenticatorTransport> transports;
 };
@@ -1471,6 +1472,7 @@ struct WebCore::WebLockManagerSnapshot {
 [CustomHeader] struct WebCore::AuthenticatorAssertionResponseData {
     RefPtr<JSC::ArrayBuffer> rawId;
     std::optional<WebCore::AuthenticationExtensionsClientOutputs> extensionOutputs;
+    RefPtr<JSC::ArrayBuffer> clientDataJSON;
     RefPtr<JSC::ArrayBuffer> authenticatorData;
     RefPtr<JSC::ArrayBuffer> signature;
     RefPtr<JSC::ArrayBuffer> userHandle;
@@ -6015,6 +6017,36 @@ class WebCore::ProtectionSpace {
     std::optional<WebCore::ProtectionSpace::PlatformData> getPlatformDataToSerialize();
 #endif
 };
+
+header: <WebCore/Credential.h>
+[Nested] struct WebCore::Credential::NonPlatformData {
+    String user;
+    String password;
+    WebCore::CredentialPersistence persistence;
+}
+
+#if PLATFORM(COCOA)
+[CreateUsing=fromIPCData] class WebCore::Credential {
+    std::variant<WebCore::Credential::NonPlatformData, RetainPtr<NSURLCredential>> ipcData();
+};
+#endif
+
+#if USE(SOUP)
+[Nested] struct WebCore::Credential::PlatformData {
+    GRefPtr<GTlsCertificate> certificate;
+    WebCore::CredentialPersistence persistence;
+};
+
+[CreateUsing=fromIPCData] class WebCore::Credential {
+    std::variant<WebCore::Credential::NonPlatformData, WebCore::Credential::PlatformData> ipcData();
+};
+#endif
+
+#if USE(CURL)
+class WebCore::Credential {
+    WebCore::Credential::NonPlatformData nonPlatformData();
+};
+#endif // USE(CURL)
 
 #if ENABLE(GPU_PROCESS)
 header: <WebCore/BarcodeDetectorOptionsInterface.h>
