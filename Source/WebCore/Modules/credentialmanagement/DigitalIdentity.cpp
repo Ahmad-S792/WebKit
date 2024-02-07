@@ -23,44 +23,26 @@
  * THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#pragma once
+#include "config.h"
+#include "DigitalIdentity.h"
 
 #if ENABLE(WEB_AUTHN)
 
-#include "BasicCredential.h"
-#include "IDLTypes.h"
-#include <JavaScriptCore/ArrayBuffer.h>
-#include <wtf/RefCounted.h>
-#include <wtf/RefPtr.h>
-
 namespace WebCore {
 
-class DigitalCredential;
-template<typename IDLType> class DOMPromiseDeferred;
+Ref<DigitalIdentity> DigitalIdentity::create(Ref<ArrayBuffer>&& data)
+{
+    return adoptRef(*new DigitalIdentity(WTFMove(data)));
+}
 
-using DigitalCredentialPromise = DOMPromiseDeferred<IDLInterface<DigitalCredential>>;
+DigitalIdentity::~DigitalIdentity() = default;
 
-class DigitalCredential final : public BasicCredential {
-public:
-    static Ref<DigitalCredential> create(Ref<ArrayBuffer>&& data);
-
-    virtual ~DigitalCredential();
-
-    ArrayBuffer* data() const
-    {
-        return m_data.get();
-    };
-
-private:
-    DigitalCredential(Ref<ArrayBuffer>&& data);
-
-    Type credentialType() const final { return Type::DigitalCredential; }
-
-    RefPtr<ArrayBuffer> m_data;
-};
+DigitalIdentity::DigitalIdentity(Ref<ArrayBuffer>&& data)
+    : BasicCredential(base64URLEncodeToString(data->data(), data->byteLength()), Type::DigitalIdentity, Discovery::CredentialStore)
+    , m_data(WTFMove(data))
+{
+}
 
 } // namespace WebCore
-
-SPECIALIZE_TYPE_TRAITS_BASIC_CREDENTIAL(DigitalCredential, BasicCredential::Type::DigitalCredential)
 
 #endif // ENABLE(WEB_AUTHN)

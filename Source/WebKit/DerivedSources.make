@@ -561,7 +561,6 @@ SERIALIZATION_DESCRIPTION_FILES = \
 	Shared/Cocoa/CoreIPCSecureCoding.serialization.in \
 	Shared/Cocoa/CoreIPCString.serialization.in \
 	Shared/Cocoa/CoreIPCURL.serialization.in \
-	Shared/Cocoa/CoreIPCCFCharacterSet.serialization.in \
 	Shared/Cocoa/DataDetectionResult.serialization.in \
 	Shared/Cocoa/InsertTextOptions.serialization.in \
 	Shared/Cocoa/RevealItem.serialization.in \
@@ -684,6 +683,8 @@ SERIALIZATION_DESCRIPTION_FILES = \
 	Shared/cf/CFTypes.serialization.in \
 	Shared/cf/CoreIPCBoolean.serialization.in \
 	Shared/cf/CoreIPCCFArray.serialization.in \
+	Shared/cf/CoreIPCCFDictionary.serialization.in \
+	Shared/cf/CoreIPCCGColorSpace.serialization.in \
 	Shared/cf/CoreIPCNumber.serialization.in \
 	Shared/cf/CoreIPCSecCertificate.serialization.in \
 	Shared/cf/CoreIPCSecKeychainItem.serialization.in \

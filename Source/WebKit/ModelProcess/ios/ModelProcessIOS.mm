@@ -23,11 +23,34 @@
  * THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-[
-    Exposed=Window,
-    SecureContext,
-    EnabledBySetting=DigitalCredentialsEnabled,
-    Conditional=WEB_AUTHN,
-] interface DigitalCredential : BasicCredential {
-    [SameObject] readonly attribute ArrayBuffer data;
-};
+#import "config.h"
+#import "ModelProcess.h"
+
+#if ENABLE(MODEL_PROCESS)
+
+#import "ModelProcessCreationParameters.h"
+#import "ModelProcessProxyMessages.h"
+#import "SandboxInitializationParameters.h"
+#import <WebCore/NotImplemented.h>
+#import <WebCore/WebCoreThreadSystemInterface.h>
+
+namespace WebKit {
+using namespace WebCore;
+
+void ModelProcess::initializeProcess(const AuxiliaryProcessInitializationParameters&)
+{
+    InitWebCoreThreadSystemInterface();
+}
+
+void ModelProcess::initializeProcessName(const AuxiliaryProcessInitializationParameters&)
+{
+    notImplemented();
+}
+
+void ModelProcess::initializeSandbox(const AuxiliaryProcessInitializationParameters&, SandboxInitializationParameters&)
+{
+}
+
+} // namespace WebKit
+
+#endif // ENABLE(MODEL_PROCESS)

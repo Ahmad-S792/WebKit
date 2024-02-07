@@ -300,124 +300,40 @@ std::optional<RetainPtr<CFTypeRef>> ArgumentCoder<RetainPtr<CFTypeRef>>::decode(
 }
 
 template<typename Encoder>
-void ArgumentCoder<CFDictionaryRef>::encode(Encoder& encoder, CFDictionaryRef dictionary)
+void ArgumentCoder<CFCharacterSetRef>::encode(Encoder& encoder, CFCharacterSetRef characterSet)
 {
-    if (!dictionary) {
-        encoder << true;
+    auto data = adoptCF(CFCharacterSetCreateBitmapRepresentation(nullptr, characterSet));
+    if (!data) {
+        encoder << false;
         return;
     }
 
-    encoder << false;
-
-    CFIndex size = CFDictionaryGetCount(dictionary);
-    Vector<CFTypeRef, 32> keys(size);
-    Vector<CFTypeRef, 32> values(size);
-    
-    CFDictionaryGetKeysAndValues(dictionary, keys.data(), values.data());
-
-    HashSet<CFTypeRef> invalidKeys;
-    for (CFIndex i = 0; i < size; ++i) {
-        ASSERT(keys[i]);
-        ASSERT(values[i]);
-
-        // Ignore keys/values we don't support.
-        if (typeFromCFTypeRef(keys[i]) == CFType::Unknown || typeFromCFTypeRef(values[i]) == CFType::Unknown)
-            invalidKeys.add(keys[i]);
-    }
-
-    encoder << static_cast<uint64_t>(size - invalidKeys.size());
-
-    for (CFIndex i = 0; i < size; ++i) {
-        if (invalidKeys.contains(keys[i]))
-            continue;
-
-        encoder << keys[i] << values[i];
-    }
+    encoder << true << data;
 }
 
-template void ArgumentCoder<CFDictionaryRef>::encode<Encoder>(Encoder&, CFDictionaryRef);
-template void ArgumentCoder<CFDictionaryRef>::encode<StreamConnectionEncoder>(StreamConnectionEncoder&, CFDictionaryRef);
+template void ArgumentCoder<CFCharacterSetRef>::encode<Encoder>(Encoder&, CFCharacterSetRef);
+template void ArgumentCoder<CFCharacterSetRef>::encode<StreamConnectionEncoder>(StreamConnectionEncoder&, CFCharacterSetRef);
 
-std::optional<RetainPtr<CFDictionaryRef>> ArgumentCoder<RetainPtr<CFDictionaryRef>>::decode(Decoder& decoder)
+std::optional<RetainPtr<CFCharacterSetRef>> ArgumentCoder<RetainPtr<CFCharacterSetRef>>::decode(Decoder& decoder)
 {
-    std::optional<bool> isNull;
-    decoder >> isNull;
-    if (!isNull)
+    std::optional<bool> hasData;
+    decoder >> hasData;
+    if (!hasData)
         return std::nullopt;
 
-    if (*isNull)
-        return {{ nullptr }};
+    if (!*hasData)
+        return { nullptr };
 
-    std::optional<uint64_t> size;
-    decoder >> size;
-    if (!size)
+    std::optional<RetainPtr<CFDataRef>> data;
+    decoder >> data;
+    if (!data)
         return std::nullopt;
 
-    RetainPtr<CFMutableDictionaryRef> dictionary = adoptCF(CFDictionaryCreateMutable(0, 0, &kCFTypeDictionaryKeyCallBacks, &kCFTypeDictionaryValueCallBacks));
-    for (uint64_t i = 0; i < *size; ++i) {
-        std::optional<RetainPtr<CFTypeRef>> key;
-        decoder >> key;
-        if (!key || !*key)
-            return std::nullopt;
-
-        std::optional<RetainPtr<CFTypeRef>> value;
-        decoder >> value;
-        if (!value || !*value)
-            return std::nullopt;
-
-        CFDictionarySetValue(dictionary.get(), key->get(), value->get());
-    }
-
-    return WTFMove(dictionary);
-}
-
-namespace {
-using CGColorSpaceSerialization = std::variant<WebCore::ColorSpace, RetainPtr<CFStringRef>, RetainPtr<CFTypeRef>>;
-}
-
-template<typename Encoder>
-void ArgumentCoder<CGColorSpaceRef>::encode(Encoder& encoder, CGColorSpaceRef cgColorSpace)
-{
-    if (auto colorSpace = colorSpaceForCGColorSpace(cgColorSpace)) {
-        encoder << CGColorSpaceSerialization { *colorSpace };
-        return;
-    }
-    if (RetainPtr<CFStringRef> name = CGColorSpaceGetName(cgColorSpace)) {
-        // This is a bit slow, hence we use the above if possible.
-        encoder << CGColorSpaceSerialization { WTFMove(name) };
-        return;
-    }
-    if (auto propertyList = adoptCF(CGColorSpaceCopyPropertyList(cgColorSpace))) {
-        encoder << CGColorSpaceSerialization { WTFMove(propertyList) };
-        return;
-    }
-    // FIXME: This should be removed once we can prove only non-null cgColorSpaces.
-    encoder << CGColorSpaceSerialization { WebCore::ColorSpace::SRGB };
-    ASSERT_NOT_REACHED(); // NOLINT
-}
-
-template void ArgumentCoder<CGColorSpaceRef>::encode<Encoder>(Encoder&, CGColorSpaceRef);
-template void ArgumentCoder<CGColorSpaceRef>::encode<StreamConnectionEncoder>(StreamConnectionEncoder&, CGColorSpaceRef);
-
-std::optional<RetainPtr<CGColorSpaceRef>> ArgumentCoder<RetainPtr<CGColorSpaceRef>>::decode(Decoder& decoder)
-{
-    auto colorSpaceFormat = decoder.decode<CGColorSpaceSerialization>();
-    if (UNLIKELY(!decoder.isValid()))
+    auto characterSet = adoptCF(CFCharacterSetCreateWithBitmapRepresentation(nullptr, data->get()));
+    if (!characterSet)
         return std::nullopt;
-    auto colorSpace = WTF::switchOn(*colorSpaceFormat,
-        [](WebCore::ColorSpace colorSpace) -> RetainPtr<CGColorSpaceRef> {
-            return RetainPtr { cachedNullableCGColorSpace(colorSpace) };
-        },
-        [](RetainPtr<CFStringRef> name) -> RetainPtr<CGColorSpaceRef> {
-            return adoptCF(CGColorSpaceCreateWithName(name.get()));
-        },
-        [](RetainPtr<CFTypeRef> propertyList) -> RetainPtr<CGColorSpaceRef> {
-            return adoptCF(CGColorSpaceCreateWithPropertyList(propertyList.get()));
-        }
-    );
-    if (UNLIKELY(!colorSpace))
-        return std::nullopt;
-    return colorSpace;
+
+    return WTFMove(characterSet);
 }
 
 #if HAVE(SEC_ACCESS_CONTROL)

@@ -23,26 +23,30 @@
  * THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#include "config.h"
-#include "DigitalCredential.h"
+#pragma once
 
-#if ENABLE(WEB_AUTHN)
+#import "config.h"
+#import "ModelProcess.h"
 
-namespace WebCore {
+#if ENABLE(MODEL_PROCESS)
 
-Ref<DigitalCredential> DigitalCredential::create(Ref<ArrayBuffer>&& data)
+#import "ModelConnectionToWebProcess.h"
+#import <wtf/RetainPtr.h>
+
+namespace WebKit {
+using namespace WebCore;
+
+#if ENABLE(CFPREFS_DIRECT_MODE)
+void ModelProcess::notifyPreferencesChanged(const String& domain, const String& key, const std::optional<String>& encodedValue)
 {
-    return adoptRef(*new DigitalCredential(WTFMove(data)));
+    preferenceDidUpdate(domain, key, encodedValue);
 }
 
-DigitalCredential::~DigitalCredential() = default;
-
-DigitalCredential::DigitalCredential(Ref<ArrayBuffer>&& data)
-    : BasicCredential(base64URLEncodeToString(data->data(), data->byteLength()), Type::DigitalCredential, Discovery::CredentialStore)
-    , m_data(WTFMove(data))
+void ModelProcess::dispatchSimulatedNotificationsForPreferenceChange(const String& key)
 {
 }
+#endif // ENABLE(CFPREFS_DIRECT_MODE)
 
-} // namespace WebCore
+} // namespace WebKit
 
-#endif // ENABLE(WEB_AUTHN)
+#endif // ENABLE(MODEL_PROCESS)

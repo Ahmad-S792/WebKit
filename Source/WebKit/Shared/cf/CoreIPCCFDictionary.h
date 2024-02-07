@@ -25,57 +25,29 @@
 
 #pragma once
 
-#if PLATFORM(COCOA)
+#if USE(CF)
 
-#include "ArgumentCodersCocoa.h"
 #include <wtf/RetainPtr.h>
+#include <wtf/Vector.h>
 
 namespace WebKit {
 
-class CoreIPCCFCharacterSet {
+class CoreIPCCFType;
+
+class CoreIPCCFDictionary {
 public:
-    CoreIPCCFCharacterSet(CFCharacterSetRef characterSet)
-        : m_cfCharacterSetData(dataFromCharacterSet(characterSet))
-    {
-        ASSERT(m_cfCharacterSetData);
-    }
+    using KeyValueVector = Vector<KeyValuePair<CoreIPCCFType, CoreIPCCFType>>;
 
-    CoreIPCCFCharacterSet(RetainPtr<CFDataRef> characterSetData)
-        : m_cfCharacterSetData(WTFMove(characterSetData))
-    {
-        ASSERT(m_cfCharacterSetData);
-    }
-
-    CoreIPCCFCharacterSet(const IPC::DataReference& data)
-        : m_cfCharacterSetData(adoptCF(CFDataCreate(kCFAllocatorDefault, data.data(), data.size())))
-    {
-    }
-
-    RetainPtr<CFCharacterSetRef> toCF() const
-    {
-        return adoptCF(CFCharacterSetCreateWithBitmapRepresentation(nullptr, m_cfCharacterSetData.get()));
-    }
-
-    IPC::DataReference dataReference() const
-    {
-        ASSERT(m_cfCharacterSetData);
-        CFDataRef data = m_cfCharacterSetData.get();
-        ASSERT(data);
-        return { CFDataGetBytePtr(data), static_cast<size_t>(CFDataGetLength(data)) };
-    }
-
+    CoreIPCCFDictionary(CFDictionaryRef);
+    CoreIPCCFDictionary(CoreIPCCFDictionary&&);
+    CoreIPCCFDictionary(std::unique_ptr<KeyValueVector>&&);
+    ~CoreIPCCFDictionary();
+    RetainPtr<CFDictionaryRef> createCFDictionary() const;
+    const std::unique_ptr<KeyValueVector>& vector() const { return m_vector; }
 private:
-    RetainPtr<CFDataRef> dataFromCharacterSet(CFCharacterSetRef characterSet)
-    {
-        ASSERT(characterSet);
-        auto data = adoptCF(CFCharacterSetCreateBitmapRepresentation(nullptr, characterSet));
-        ASSERT(data);
-        return data;
-    }
-
-    RetainPtr<CFDataRef> m_cfCharacterSetData;
+    std::unique_ptr<KeyValueVector> m_vector;
 };
 
 } // namespace WebKit
 
-#endif // PLATFORM(COCOA)
+#endif // USE(CF)
