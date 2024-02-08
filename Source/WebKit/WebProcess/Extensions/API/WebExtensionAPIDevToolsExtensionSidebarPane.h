@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2021 Apple Inc. All rights reserved.
+ * Copyright (C) 2024 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -25,31 +25,32 @@
 
 #pragma once
 
-#include "FormattingGeometry.h"
+#if ENABLE(WK_WEB_EXTENSIONS) && ENABLE(INSPECTOR_EXTENSIONS)
 
-namespace WebCore {
-namespace Layout {
+#include "JSWebExtensionAPIDevToolsExtensionSidebarPane.h"
+#include "WebExtensionAPIEvent.h"
+#include "WebExtensionAPIObject.h"
 
-class FlexFormattingContext;
+namespace WebKit {
 
-class FlexFormattingContext;
+class WebExtensionAPIDevToolsExtensionSidebarPane : public WebExtensionAPIObject, public JSWebExtensionWrappable {
+    WEB_EXTENSION_DECLARE_JS_WRAPPER_CLASS(WebExtensionAPIDevToolsExtensionSidebarPane, devToolsExtensionSidebarPane);
 
-// This class implements positioning and sizing for flex items.
-class FlexFormattingGeometry : public FormattingGeometry {
 public:
-    FlexFormattingGeometry(const FlexFormattingContext&);
+#if PLATFORM(COCOA)
+    void setPage(NSString *path, Ref<WebExtensionCallbackHandler>&&, NSString **outExceptionString);
+    void setExpression(NSString *expression, NSString *rootTitle, Ref<WebExtensionCallbackHandler>&&, NSString **outExceptionString);
+    void setObject(NSString *jsonObject, NSString *rootTitle, Ref<WebExtensionCallbackHandler>&&, NSString **outExceptionString);
 
-    IntrinsicWidthConstraints intrinsicWidthConstraints(const ElementBox&) const;
-
-    static bool isMainAxisParallelWithInlineAxis(const ElementBox& flexBox);
-    static bool isReversedToContentDirection(const ElementBox& flexBox);
+    WebExtensionAPIEvent& onShown();
+    WebExtensionAPIEvent& onHidden();
+#endif
 
 private:
-    const FlexFormattingContext& formattingContext() const { return downcast<FlexFormattingContext>(FormattingGeometry::formattingContext()); }
+    RefPtr<WebExtensionAPIEvent> m_onShown;
+    RefPtr<WebExtensionAPIEvent> m_onHidden;
 };
 
-}
-}
+} // namespace WebKit
 
-SPECIALIZE_TYPE_TRAITS_LAYOUT_FORMATTING_GEOMETRY(FlexFormattingGeometry, isFlexFormattingGeometry())
-
+#endif // ENABLE(WK_WEB_EXTENSIONS) && ENABLE(INSPECTOR_EXTENSIONS)
