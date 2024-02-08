@@ -64,6 +64,27 @@
 
 #include "PDFKitSoftLink.h"
 
+@interface WKPDFFormMutationObserver : NSObject {
+    WebKit::UnifiedPDFPlugin* _plugin;
+}
+@end
+
+@implementation WKPDFFormMutationObserver
+
+- (id)initWithPlguin:(WebKit::UnifiedPDFPlugin *)plugin
+{
+    if (!(self = [super init]))
+        return nil;
+    _plugin = plugin;
+    return self;
+}
+
+- (void)formChanged:(NSNotification *)notification
+{
+    _plugin->didMutatePDFDocument();
+}
+@end
+
 #if PLATFORM(IOS_FAMILY)
 #import <UIKit/UIColor.h>
 #endif
@@ -84,6 +105,7 @@ Ref<UnifiedPDFPlugin> UnifiedPDFPlugin::create(HTMLPlugInElement& pluginElement)
 
 UnifiedPDFPlugin::UnifiedPDFPlugin(HTMLPlugInElement& element)
     : PDFPluginBase(element)
+    , m_pdfMutationObserver(adoptNS([[WKPDFFormMutationObserver alloc] initWithPlguin:this]))
 {
     this->setVerticalScrollElasticity(ScrollElasticity::Automatic);
     this->setHorizontalScrollElasticity(ScrollElasticity::Automatic);
@@ -101,6 +123,12 @@ UnifiedPDFPlugin::UnifiedPDFPlugin(HTMLPlugInElement& element)
     }
 }
 
+static String mutationObserverNotificationString()
+{
+    static NeverDestroyed<String> notificationString = "PDFFormDidChangeValue"_s;
+    return notificationString;
+}
+
 void UnifiedPDFPlugin::teardown()
 {
     PDFPluginBase::teardown();
@@ -114,6 +142,8 @@ void UnifiedPDFPlugin::teardown()
         scrollingCoordinator->unparentChildrenAndDestroyNode(m_scrollingNodeID);
         m_frame->coreLocalFrame()->protectedView()->removePluginScrollableAreaForScrollingNodeID(m_scrollingNodeID);
     }
+    [[NSNotificationCenter defaultCenter] removeObserver:m_pdfMutationObserver.get() name:mutationObserverNotificationString() object:m_pdfDocument.get()];
+    m_pdfMutationObserver = nullptr;
 }
 
 GraphicsLayer* UnifiedPDFPlugin::graphicsLayer() const
@@ -140,6 +170,7 @@ void UnifiedPDFPlugin::installPDFDocument()
 
     if (m_view)
         m_view->layerHostingStrategyDidChange();
+    [[NSNotificationCenter defaultCenter] addObserver:m_pdfMutationObserver.get() selector:@selector(formChanged:) name:mutationObserverNotificationString() object:m_pdfDocument.get()];
 }
 
 RefPtr<GraphicsLayer> UnifiedPDFPlugin::createGraphicsLayer(const String& name, GraphicsLayer::Type layerType)
@@ -596,12 +627,25 @@ unsigned UnifiedPDFPlugin::firstPageHeight() const
 
 RefPtr<FragmentedSharedBuffer> UnifiedPDFPlugin::liveResourceData() const
 {
-    return nullptr;
+    NSData *pdfData = liveData();
+
+    if (!pdfData)
+        return nullptr;
+
+    return SharedBuffer::create(pdfData);
 }
 
 NSData *UnifiedPDFPlugin::liveData() const
 {
-    // FIXME: Handle annotations and re-generate the PDF if it's been mutated.
+#if PLATFORM(MAC)
+    if (m_activeAnnotation)
+        m_activeAnnotation->commit();
+#endif
+    // Save data straight from the resource instead of PDFKit if the document is
+    // untouched by the user, so that PDFs which PDFKit can't display will still be downloadable.
+    if (m_pdfDocumentWasMutated)
+        return [m_pdfDocument dataRepresentation];
+
     return originalData();
 }
 
@@ -1281,6 +1325,21 @@ auto UnifiedPDFPlugin::selectionGranularityForMouseEvent(const WebMouseEvent& ev
     return SelectionGranularity::Character;
 }
 
+void UnifiedPDFPlugin::extendCurrentSelectionIfNeeded()
+{
+    if (!m_currentSelection)
+        return;
+    PDFPage *firstPageOfCurrentSelection = [[m_currentSelection pages] firstObject];
+
+    auto oldStartPageIndex = std::exchange(m_selectionTrackingData.startPageIndex, [m_pdfDocument indexForPage:firstPageOfCurrentSelection]);
+    auto oldStartPagePoint = std::exchange(m_selectionTrackingData.startPagePoint, IntPoint { [m_currentSelection firstCharCenter] });
+    m_selectionTrackingData.selectionToExtendWith = WTFMove(m_currentSelection);
+
+    RetainPtr<PDFSelection> selection = [m_pdfDocument selectionFromPage:firstPageOfCurrentSelection atPoint:m_selectionTrackingData.startPagePoint toPage:m_documentLayout.pageAtIndex(oldStartPageIndex).get() atPoint:oldStartPagePoint];
+    [selection addSelection:m_selectionTrackingData.selectionToExtendWith.get()];
+    setCurrentSelection(WTFMove(selection));
+}
+
 void UnifiedPDFPlugin::beginTrackingSelection(PDFDocumentLayout::PageIndex pageIndex, const WebCore::IntPoint& pagePoint, SelectionGranularity selectionGranularity, OptionSet<WebEventModifier> mouseEventModifiers)
 {
     m_selectionTrackingData.granularity = selectionGranularity;
@@ -1290,9 +1349,8 @@ void UnifiedPDFPlugin::beginTrackingSelection(PDFDocumentLayout::PageIndex pageI
     m_selectionTrackingData.shouldMakeMarqueeSelection = mouseEventModifiers.contains(WebEventModifier::AltKey);
     m_selectionTrackingData.shouldExtendCurrentSelection = mouseEventModifiers.contains(WebEventModifier::ShiftKey);
 
-    // FIXME: <https://webkit.org/b/268617>  Selections should be extensible on shift-click.
     if (m_selectionTrackingData.shouldExtendCurrentSelection)
-        notImplemented();
+        extendCurrentSelectionIfNeeded();
 
     continueTrackingSelection(pageIndex, pagePoint);
 }

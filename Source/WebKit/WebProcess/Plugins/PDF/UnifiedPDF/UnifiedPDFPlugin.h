@@ -32,6 +32,8 @@
 #include <WebCore/GraphicsLayer.h>
 #include <wtf/OptionSet.h>
 
+OBJC_CLASS WKPDFFormMutationObserver;
+
 namespace WebCore {
 enum class DelegatedScrollingMode : uint8_t;
 }
@@ -175,14 +177,15 @@ private:
     static constexpr int invalidContextMenuItemTag { -1 };
 #endif
 
+    // Selections
     enum class SelectionGranularity : uint8_t {
         Character,
         Word,
         Line,
     };
-
     SelectionGranularity selectionGranularityForMouseEvent(const WebMouseEvent&) const;
     void beginTrackingSelection(PDFDocumentLayout::PageIndex, const WebCore::IntPoint& pagePoint, SelectionGranularity, OptionSet<WebEventModifier>);
+    void extendCurrentSelectionIfNeeded();
     void continueTrackingSelection(PDFDocumentLayout::PageIndex, const WebCore::IntPoint& pagePoint);
     void setCurrentSelection(RetainPtr<PDFSelection>&&);
 
@@ -292,6 +295,8 @@ private:
     };
     SelectionTrackingData m_selectionTrackingData;
     RetainPtr<PDFSelection> m_currentSelection;
+
+    RetainPtr<WKPDFFormMutationObserver> m_pdfMutationObserver;
 };
 
 } // namespace WebKit
