@@ -84,30 +84,16 @@ find_package(PNG 1.6.34 REQUIRED)
 find_package(SQLite3 3.23.1 REQUIRED)
 find_package(ZLIB 1.2.11 REQUIRED)
 find_package(LibPSL 0.20.2 REQUIRED)
+find_package(WebP REQUIRED COMPONENTS demux)
 
 # Optional packages
 find_package(AVIF 0.9.0)
 SET_AND_EXPOSE_TO_BUILD(USE_AVIF ${AVIF_FOUND})
 
-find_package(LCMS2)
-if (LCMS2_FOUND)
-    SET_AND_EXPOSE_TO_BUILD(USE_LCMS ON)
-endif ()
-
-find_package(OpenJPEG 2.3.1)
-if (OpenJPEG_FOUND)
-    SET_AND_EXPOSE_TO_BUILD(USE_OPENJPEG ON)
-endif ()
-
 find_package(WOFF2 1.0.2 COMPONENTS dec)
 if (WOFF2_FOUND)
     find_package(Brotli REQUIRED COMPONENTS dec)
     SET_AND_EXPOSE_TO_BUILD(USE_WOFF2 ON)
-endif ()
-
-find_package(WebP COMPONENTS demux)
-if (WebP_FOUND)
-    SET_AND_EXPOSE_TO_BUILD(USE_WEBP ON)
 endif ()
 
 WEBKIT_OPTION_BEGIN()
@@ -151,6 +137,7 @@ WEBKIT_OPTION_DEFAULT_PORT_VALUE(ENABLE_SMOOTH_SCROLLING PRIVATE OFF)
 WEBKIT_OPTION_DEFAULT_PORT_VALUE(ENABLE_WEBGL PRIVATE OFF)
 
 if (${WTF_CPU_X86})
+    WEBKIT_OPTION_DEFAULT_PORT_VALUE(USE_LCMS PRIVATE OFF)
     WEBKIT_OPTION_DEFAULT_PORT_VALUE(USE_JPEGXL PRIVATE OFF)
 endif ()
 
@@ -208,6 +195,13 @@ cmake_pop_check_state()
 
 if (ENABLE_XSLT)
     find_package(LibXslt 1.1.32 REQUIRED)
+endif ()
+
+if (USE_LCMS)
+    find_package(LCMS2)
+    if (NOT LCMS2_FOUND)
+        message(FATAL_ERROR "libcms2 is required for USE_LCMS.")
+    endif ()
 endif ()
 
 if (USE_JPEGXL)
