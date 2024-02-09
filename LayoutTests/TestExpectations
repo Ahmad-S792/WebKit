@@ -2315,8 +2315,6 @@ fast/images/animated-jpegxl-loop-count.html [ Skip ]
 # Experimental H265 support.
 webrtc/h265.html [ Pass Failure ]
 
-webrtc/vp9-vtb.html [ Skip ]
-
 webrtc/h264-baseline.html [ Slow ]
 webrtc/h264-high.html [ Slow ]
 
@@ -6076,17 +6074,6 @@ webkit.org/b/233267 imported/w3c/web-platform-tests/html/semantics/embedded-cont
 imported/w3c/web-platform-tests/html/semantics/scripting-1/the-script-element/css-module/charset.html [ Pass Failure ]
 imported/w3c/web-platform-tests/html/semantics/scripting-1/the-script-element/css-module/cors-crossorigin-requests.html [ Pass Failure ]
 imported/w3c/web-platform-tests/html/semantics/scripting-1/the-script-element/json-module/cors-crossorigin-requests.html [ Pass Failure ]
-
-# Disable ShadowRealm (while running to ensure we do not crash)
-imported/w3c/web-platform-tests/compression/idlharness-shadowrealm.window.html [ Pass Failure ]
-imported/w3c/web-platform-tests/dom/idlharness-shadowrealm.window.html [ Pass Failure ]
-imported/w3c/web-platform-tests/encoding/idlharness-shadowrealm.window.html [ Pass Failure ]
-imported/w3c/web-platform-tests/hr-time/idlharness-shadowrealm.window.html [ Pass Failure ]
-imported/w3c/web-platform-tests/html/dom/idlharness-shadowrealm.window.html [ Pass Failure ]
-imported/w3c/web-platform-tests/performance-timeline/idlharness-shadowrealm.window.html [ Pass Failure ]
-imported/w3c/web-platform-tests/streams/idlharness-shadowrealm.window.html [ Pass Failure ]
-imported/w3c/web-platform-tests/url/idlharness-shadowrealm.window.html [ Pass Failure ]
-imported/w3c/web-platform-tests/user-timing/idlharness-shadowrealm.window.html [ Pass Failure ]
 
 # modulepreload is not supported
 imported/w3c/web-platform-tests/import-maps/acquiring/modulepreload.html [ Skip ]

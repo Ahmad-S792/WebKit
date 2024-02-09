@@ -48,8 +48,8 @@ enum class WebMouseEventButton : int8_t;
 
 class AnnotationTrackingState {
 public:
-    void startAnnotationTracking(RetainPtr<PDFAnnotation>&&, const WebEventType&, const WebMouseEventButton&);
-    void finishAnnotationTracking(const WebEventType&, const WebMouseEventButton&);
+    void startAnnotationTracking(RetainPtr<PDFAnnotation>&&, WebEventType, WebMouseEventButton);
+    void finishAnnotationTracking(WebEventType, WebMouseEventButton);
     const PDFAnnotation *trackedAnnotation() const { return m_trackedAnnotation.get(); }
     bool isBeingHovered() const;
 private:
@@ -61,6 +61,10 @@ private:
 
 enum class WebEventModifier : uint8_t;
 
+enum class AnnotationSearchDirection : bool {
+    Forward,
+    Backward
+};
 class UnifiedPDFPlugin final : public PDFPluginBase, public WebCore::GraphicsLayerClient {
 public:
     static Ref<UnifiedPDFPlugin> create(WebCore::HTMLPlugInElement&);
@@ -82,6 +86,9 @@ public:
     void setActiveAnnotation(RetainPtr<PDFAnnotation>&&) final;
     void focusNextAnnotation() final;
     void focusPreviousAnnotation() final;
+#if PLATFORM(MAC)
+    RetainPtr<PDFAnnotation> nextTextAnnotation(AnnotationSearchDirection) const;
+#endif
 
     void attemptToUnlockPDF(const String& password) final;
     void windowActivityDidChange() final;
@@ -189,11 +196,22 @@ private:
         Word,
         Line,
     };
+
+    enum class ActiveStateChangeReason : uint8_t {
+        HandledContextMenuEvent,
+        BeganTrackingSelection,
+        SetCurrentSelection,
+        WindowActivityChanged,
+    };
+
     SelectionGranularity selectionGranularityForMouseEvent(const WebMouseEvent&) const;
-    void beginTrackingSelection(PDFDocumentLayout::PageIndex, const WebCore::IntPoint& pagePoint, SelectionGranularity, OptionSet<WebEventModifier>);
+    void beginTrackingSelection(PDFDocumentLayout::PageIndex, const WebCore::IntPoint& pagePoint, const WebMouseEvent&);
     void extendCurrentSelectionIfNeeded();
+    void updateCurrentSelectionForContextMenuEventIfNeeded();
     void continueTrackingSelection(PDFDocumentLayout::PageIndex, const WebCore::IntPoint& pagePoint);
     void setCurrentSelection(RetainPtr<PDFSelection>&&);
+    void repaintOnSelectionActiveStateChangeIfNeeded(ActiveStateChangeReason);
+    bool isSelectionActiveAfterContextMenuInteraction() const;
 
     String getSelectionString() const override;
     bool existingSelectionContainsPoint(const WebCore::FloatPoint&) const override;
@@ -218,7 +236,9 @@ private:
 
     void paintPDFContent(WebCore::GraphicsContext&, const WebCore::FloatRect& clipRect);
     void paintPDFOverlays(WebCore::GraphicsContext&);
+
     void ensureLayers();
+    void updatePageBackgroundLayers();
     void updateLayerHierarchy();
 
     void didChangeScrollOffset() override;
@@ -277,6 +297,7 @@ private:
     RefPtr<WebCore::GraphicsLayer> m_rootLayer;
     RefPtr<WebCore::GraphicsLayer> m_scrollContainerLayer;
     RefPtr<WebCore::GraphicsLayer> m_scrolledContentsLayer;
+    RefPtr<WebCore::GraphicsLayer> m_pageBackgroundsContainerLayer;
     RefPtr<WebCore::GraphicsLayer> m_contentsLayer;
 
     RefPtr<WebCore::GraphicsLayer> m_overflowControlsContainer;
@@ -294,6 +315,7 @@ private:
     struct SelectionTrackingData {
         bool shouldExtendCurrentSelection { false };
         bool shouldMakeMarqueeSelection { false };
+        bool lastHandledEventWasContextMenuEvent { false };
         SelectionGranularity granularity { SelectionGranularity::Character };
         PDFDocumentLayout::PageIndex startPageIndex;
         WebCore::IntPoint startPagePoint;
