@@ -40,6 +40,7 @@
 #include "SVGRenderingContext.h"
 #include "SVGResources.h"
 #include "SVGResourcesCache.h"
+#include "SVGVisitedRendererTracking.h"
 #include <wtf/IsoMallocInlines.h>
 #include <wtf/StackStats.h>
 
@@ -58,6 +59,11 @@ LegacyRenderSVGImage::LegacyRenderSVGImage(SVGImageElement& element, RenderStyle
 }
 
 LegacyRenderSVGImage::~LegacyRenderSVGImage() = default;
+
+CheckedRef<RenderImageResource> LegacyRenderSVGImage::checkedImageResource() const
+{
+    return *m_imageResource;
+}
 
 void LegacyRenderSVGImage::willBeDestroyed()
 {
@@ -220,12 +226,17 @@ bool LegacyRenderSVGImage::nodeAtFloatPoint(const HitTestRequest& request, HitTe
     PointerEventsHitRules hitRules(PointerEventsHitRules::HitTestingTargetType::SVGImage, request, style().effectivePointerEvents());
     bool isVisible = (style().visibility() == Visibility::Visible);
     if (isVisible || !hitRules.requireVisible) {
-        FloatPoint localPoint = valueOrDefault(localToParentTransform().inverse()).mapPoint(pointInParent);
-            
-        if (!SVGRenderSupport::pointInClippingArea(*this, localPoint))
+        static NeverDestroyed<SVGVisitedRendererTracking::VisitedSet> s_visitedSet;
+
+        SVGVisitedRendererTracking recursionTracking(s_visitedSet);
+        if (recursionTracking.isVisiting(*this))
             return false;
 
-        SVGHitTestCycleDetectionScope hitTestScope(*this);
+        SVGVisitedRendererTracking::Scope recursionScope(recursionTracking, *this);
+
+        FloatPoint localPoint = valueOrDefault(localToParentTransform().inverse()).mapPoint(pointInParent);
+        if (!SVGRenderSupport::pointInClippingArea(*this, localPoint))
+            return false;
 
         if (hitRules.canHitFill) {
             if (m_objectBoundingBox.contains(localPoint)) {
