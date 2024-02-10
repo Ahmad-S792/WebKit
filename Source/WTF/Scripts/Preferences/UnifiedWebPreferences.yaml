@@ -1439,17 +1439,17 @@ CSSTextWrapPrettyEnabled:
 
 CSSTextWrapStyleEnabled:
   type: bool
-  status: preview
+  status: stable
   category: css
   humanReadableName: "CSS text-wrap-style property"
   humanReadableDescription: "Enable the property text-wrap-style, defined in CSS Text 4"
   defaultValue:
     WebKitLegacy:
-      default: false
+      default: true
     WebKit:
-      default: false
+      default: true
     WebCore:
-      default: false
+      default: true
 
 CSSTransformStyleOptimized3DEnabled:
   type: bool
@@ -3175,6 +3175,20 @@ ICECandidateFilteringEnabled:
       default: true
     WebCore:
       default: true
+
+IPAddressMixedContentUpgradeTestingEnabled:
+  type: bool
+  status: testable
+  category: security
+  humanReadableName: "Upgrade IP address in mixed content"
+  humanReadableDescription: "Enable Upgrade IP address in mixed content"
+  defaultValue:
+    WebKitLegacy:
+      default: false
+    WebKit:
+      default: false
+    WebCore:
+      default: false
 
 IPCTestingAPIEnabled:
   type: bool
@@ -6901,6 +6915,20 @@ UpgradeKnownHostsToHTTPSEnabled:
   defaultValue:
     WebKit:
       default: true
+
+UpgradeMixedContentEnabled:
+  type: bool
+  status: unstable
+  category: networking
+  humanReadableName: "Upgrade upgradable mixed content"
+  humanReadableDescription: "Upgrade upgradable mixed content"
+  defaultValue:
+    WebKitLegacy:
+      default: false
+    WebKit:
+      default: false
+    WebCore:
+      default: false
 
 UseARKitForModel:
   type: bool
