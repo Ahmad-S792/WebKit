@@ -31,6 +31,7 @@
 #import "CoreIPCContacts.h"
 #import "CoreIPCData.h"
 #import "CoreIPCDate.h"
+#import "CoreIPCDateComponents.h"
 #import "CoreIPCDictionary.h"
 #import "CoreIPCError.h"
 #import "CoreIPCFont.h"

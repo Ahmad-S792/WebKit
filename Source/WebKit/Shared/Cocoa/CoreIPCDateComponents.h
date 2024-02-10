@@ -1,6 +1,5 @@
 /*
- * Copyright 2010, The Android Open Source Project
- * Copyright (C) 2012 Samsung Electronics. All rights reserved.
+ * Copyright (C) 2024 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -26,43 +25,28 @@
 
 #pragma once
 
-#include "Event.h"
-#include "LocalDOMWindow.h"
-#include "Supplementable.h"
-#include "Timer.h"
-#include <wtf/CheckedRef.h>
-#include <wtf/HashCountedSet.h>
+#include <wtf/ArgumentCoder.h>
+#include <wtf/RetainPtr.h>
+#include <wtf/text/WTFString.h>
 
-namespace WebCore {
+namespace WebKit {
 
-class DeviceClient;
-class Page;
-
-class DeviceController : public Supplement<Page>, public CanMakeCheckedPtr {
-    WTF_MAKE_FAST_ALLOCATED;
+class CoreIPCDateComponents {
 public:
-    explicit DeviceController(DeviceClient&);
-    virtual ~DeviceController() = default;
+    CoreIPCDateComponents(NSDateComponents *);
+    RetainPtr<id> toID() const;
 
-    void addDeviceEventListener(LocalDOMWindow&);
-    void removeDeviceEventListener(LocalDOMWindow&);
-    void removeAllDeviceEventListeners(LocalDOMWindow&);
-    bool hasDeviceEventListener(LocalDOMWindow&) const;
+    static bool hasCorrectNumberOfComponentValues(const Vector<NSInteger>&);
 
-    void dispatchDeviceEvent(Event&);
-    bool isActive() { return !m_listeners.isEmpty(); }
-    DeviceClient& client();
+private:
+    friend struct IPC::ArgumentCoder<CoreIPCDateComponents, void>;
+    CoreIPCDateComponents()
+    {
+    };
 
-    virtual bool hasLastData() { return false; }
-    virtual RefPtr<Event> getLastEvent() { return nullptr; }
-
-protected:
-    void fireDeviceEvent();
-
-    HashCountedSet<RefPtr<LocalDOMWindow>> m_listeners;
-    HashCountedSet<RefPtr<LocalDOMWindow>> m_lastEventListeners;
-    WeakRef<DeviceClient> m_client;
-    Timer m_timer;
+    String m_calendarIdentifier;
+    String m_timeZoneName;
+    Vector<NSInteger> m_componentValues;
 };
 
-} // namespace WebCore
+} // namespace WebKit
