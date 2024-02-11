@@ -134,6 +134,9 @@ constexpr ComparableCaseFoldingASCIILiteral supportedImageMIMETypeArray[] = {
     "image/vnd.switfview-jpeg",
 #endif
     "image/webp",
+#if ENABLE(MULTI_REPRESENTATION_HEIC)
+    MULTI_REPRESENTATION_HEIC_MIME_TYPE,
+#endif
 #if PLATFORM(IOS_FAMILY)
     "image/x-bmp",
 #endif
@@ -147,9 +150,6 @@ constexpr ComparableCaseFoldingASCIILiteral supportedImageMIMETypeArray[] = {
 #endif
 #if PLATFORM(IOS_FAMILY) || !USE(CG)
     "image/x-xbitmap",
-#endif
-#if ENABLE(MULTI_REPRESENTATION_HEIC)
-    MULTI_REPRESENTATION_HEIC_MIME_TYPE,
 #endif
 };
 

@@ -68,6 +68,7 @@
 #import <WebCore/LocalCurrentGraphicsContext.h>
 #import <WebCore/NetworkExtensionContentFilter.h>
 #import <WebCore/NotImplemented.h>
+#import <WebCore/NowPlayingInfo.h>
 #import <WebCore/RunLoopObserver.h>
 #import <WebCore/SearchPopupMenuCocoa.h>
 #import <WebCore/TextAlternativeWithRange.h>
@@ -839,7 +840,7 @@ void WebPageProxy::handleContextMenuTranslation(const TranslationContextMenuInfo
 #endif // HAVE(TRANSLATION_UI_SERVICES)
 #endif // ENABLE(CONTEXT_MENUS)
 
-void WebPageProxy::requestActiveNowPlayingSessionInfo(CompletionHandler<void(bool, bool, const String&, double, double, uint64_t)>&& callback)
+void WebPageProxy::requestActiveNowPlayingSessionInfo(CompletionHandler<void(bool, WebCore::NowPlayingInfo&&)>&& callback)
 {
     sendWithAsyncReply(Messages::WebPage::RequestActiveNowPlayingSessionInfo(), WTFMove(callback));
 }
@@ -924,14 +925,21 @@ bool WebPageProxy::isQuarantinedAndNotUserApproved(const String& fileURLString)
 #endif
 
 #if ENABLE(MULTI_REPRESENTATION_HEIC)
+
+static std::span<const uint8_t> span(NSData *data)
+{
+    return { static_cast<const uint8_t*>(data.bytes), data.length };
+}
+
 void WebPageProxy::insertMultiRepresentationHEIC(NSData *data)
 {
-    send(Messages::WebPage::InsertMultiRepresentationHEIC(IPC::DataReference(static_cast<const uint8_t*>([data bytes]), [data length])));
+    send(Messages::WebPage::InsertMultiRepresentationHEIC(span(data)));
 
 }
+
 #endif
 
-void WebPageProxy::replaceSelectionWithPasteboardData(const Vector<String>& types, const IPC::DataReference& data)
+void WebPageProxy::replaceSelectionWithPasteboardData(const Vector<String>& types, std::span<const uint8_t> data)
 {
     send(Messages::WebPage::ReplaceSelectionWithPasteboardData(types, data));
 }
@@ -948,7 +956,7 @@ void WebPageProxy::setCocoaView(WKWebView *view)
 
 #if ENABLE(IMAGE_ANALYSIS_ENHANCEMENTS)
 
-void WebPageProxy::replaceImageForRemoveBackground(const ElementContext& elementContext, const Vector<String>& types, const IPC::DataReference& data)
+void WebPageProxy::replaceImageForRemoveBackground(const ElementContext& elementContext, const Vector<String>& types, std::span<const uint8_t> data)
 {
     send(Messages::WebPage::ReplaceImageForRemoveBackground(elementContext, types, data));
 }

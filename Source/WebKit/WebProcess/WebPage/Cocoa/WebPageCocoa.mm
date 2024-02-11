@@ -66,6 +66,7 @@
 #import <WebCore/MutableStyleProperties.h>
 #import <WebCore/NetworkExtensionContentFilter.h>
 #import <WebCore/NodeRenderStyle.h>
+#import <WebCore/NowPlayingInfo.h>
 #import <WebCore/PaymentCoordinator.h>
 #import <WebCore/PlatformMediaSessionManager.h>
 #import <WebCore/Range.h>
@@ -149,24 +150,17 @@ void WebPage::platformDidReceiveLoadParameters(const LoadParameters& parameters)
     m_dataDetectionReferenceDate = parameters.dataDetectionReferenceDate;
 }
 
-void WebPage::requestActiveNowPlayingSessionInfo(CompletionHandler<void(bool, bool, const String&, double, double, uint64_t)>&& completionHandler)
+void WebPage::requestActiveNowPlayingSessionInfo(CompletionHandler<void(bool, WebCore::NowPlayingInfo&&)>&& completionHandler)
 {
-    bool hasActiveSession = false;
-    String title = emptyString();
-    double duration = NAN;
-    double elapsedTime = NAN;
-    uint64_t uniqueIdentifier = 0;
-    bool registeredAsNowPlayingApplication = false;
     if (auto* sharedManager = WebCore::PlatformMediaSessionManager::sharedManagerIfExists()) {
-        hasActiveSession = sharedManager->hasActiveNowPlayingSession();
-        title = sharedManager->lastUpdatedNowPlayingTitle();
-        duration = sharedManager->lastUpdatedNowPlayingDuration();
-        elapsedTime = sharedManager->lastUpdatedNowPlayingElapsedTime();
-        uniqueIdentifier = sharedManager->lastUpdatedNowPlayingInfoUniqueIdentifier().toUInt64();
-        registeredAsNowPlayingApplication = sharedManager->registeredAsNowPlayingApplication();
+        if (auto nowPlayingInfo = sharedManager->nowPlayingInfo()) {
+            bool registeredAsNowPlayingApplication = sharedManager->registeredAsNowPlayingApplication();
+            completionHandler(registeredAsNowPlayingApplication, WTFMove(*nowPlayingInfo));
+            return;
+        }
     }
 
-    completionHandler(hasActiveSession, registeredAsNowPlayingApplication, title, duration, elapsedTime, uniqueIdentifier);
+    completionHandler(false, { });
 }
 
 #if ENABLE(PDF_PLUGIN)
@@ -415,7 +409,7 @@ void WebPage::clearDictationAlternatives(Vector<DictationContext>&& contexts)
 
 void WebPage::accessibilityTransferRemoteToken(RetainPtr<NSData> remoteToken)
 {
-    IPC::DataReference dataToken = IPC::DataReference(reinterpret_cast<const uint8_t*>([remoteToken bytes]), [remoteToken length]);
+    std::span dataToken(reinterpret_cast<const uint8_t*>([remoteToken bytes]), [remoteToken length]);
     send(Messages::WebPageProxy::RegisterWebProcessAccessibilityToken(dataToken));
 }
 
@@ -637,7 +631,7 @@ class OverridePasteboardForSelectionReplacement {
     WTF_MAKE_NONCOPYABLE(OverridePasteboardForSelectionReplacement);
     WTF_MAKE_FAST_ALLOCATED;
 public:
-    OverridePasteboardForSelectionReplacement(const Vector<String>& types, const IPC::DataReference& data)
+    OverridePasteboardForSelectionReplacement(const Vector<String>& types, std::span<const uint8_t> data)
         : m_types(types)
     {
         for (auto& type : types)
@@ -656,7 +650,7 @@ private:
 
 #if ENABLE(IMAGE_ANALYSIS_ENHANCEMENTS)
 
-void WebPage::replaceImageForRemoveBackground(const ElementContext& elementContext, const Vector<String>& types, const IPC::DataReference& data)
+void WebPage::replaceImageForRemoveBackground(const ElementContext& elementContext, const Vector<String>& types, std::span<const uint8_t> data)
 {
     Ref frame = CheckedRef(m_page->focusController())->focusedOrMainFrame();
     auto element = elementForContext(elementContext);
@@ -723,7 +717,7 @@ void WebPage::replaceImageForRemoveBackground(const ElementContext& elementConte
 
 #endif // ENABLE(IMAGE_ANALYSIS_ENHANCEMENTS)
 
-void WebPage::replaceSelectionWithPasteboardData(const Vector<String>& types, const IPC::DataReference& data)
+void WebPage::replaceSelectionWithPasteboardData(const Vector<String>& types, std::span<const uint8_t> data)
 {
     OverridePasteboardForSelectionReplacement overridePasteboard { types, data };
     readSelectionFromPasteboard(replaceSelectionPasteboardName(), [](bool) { });
@@ -739,7 +733,7 @@ void WebPage::readSelectionFromPasteboard(const String& pasteboardName, Completi
 }
 
 #if ENABLE(MULTI_REPRESENTATION_HEIC)
-void WebPage::insertMultiRepresentationHEIC(const IPC::DataReference& data)
+void WebPage::insertMultiRepresentationHEIC(std::span<const uint8_t> data)
 {
     Ref frame = m_page->focusController().focusedOrMainFrame();
     if (frame->selection().isNone())

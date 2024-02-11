@@ -27,7 +27,6 @@
 
 #if ENABLE(PDF_PLUGIN)
 
-#include "DataReference.h"
 #include "FrameInfoData.h"
 #include "PDFPluginIdentifier.h"
 #include "PDFScriptEvaluator.h"
@@ -182,8 +181,8 @@ public:
 #if ENABLE(PDF_HUD)
     virtual void zoomIn() = 0;
     virtual void zoomOut() = 0;
-    void save(CompletionHandler<void(const String&, const URL&, const IPC::DataReference&)>&&);
-    void openWithPreview(CompletionHandler<void(const String&, FrameInfoData&&, const IPC::DataReference&, const String&)>&&);
+    void save(CompletionHandler<void(const String&, const URL&, std::span<const uint8_t>)>&&);
+    void openWithPreview(CompletionHandler<void(const String&, FrameInfoData&&, std::span<const uint8_t>, const String&)>&&);
 #endif
 
     void notifyCursorChanged(WebCore::PlatformCursorType);
@@ -212,6 +211,10 @@ public:
     void notifySelectionChanged();
 
     virtual void windowActivityDidChange() { }
+
+#if PLATFORM(MAC)
+    void writeItemsToPasteboard(NSString *pasteboardName, NSArray *items, NSArray *types);
+#endif
 
 private:
     bool documentFinishedLoading() const { return m_documentFinishedLoading; }
