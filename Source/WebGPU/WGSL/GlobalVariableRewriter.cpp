@@ -98,7 +98,7 @@ private:
     void collectGlobals();
     std::optional<Error> visitEntryPoint(const CallGraph::EntryPoint&);
     void visitCallee(const CallGraph::Callee&);
-    UsedGlobals determineUsedGlobals();
+    Result<UsedGlobals> determineUsedGlobals();
     void collectDynamicOffsetGlobals(const PipelineLayout&);
     void usesOverride(AST::Variable&);
     Vector<unsigned> insertStructs(const UsedResources&);
@@ -211,10 +211,14 @@ void RewriteGlobalVariables::visitCallee(const CallGraph::Callee& callee)
     const auto& updateCallSites = [&] {
         for (auto& read : m_reads) {
             for (auto& call : callee.callSites) {
-                m_callGraph.ast().append(call->arguments(), m_callGraph.ast().astBuilder().construct<AST::IdentifierExpression>(
+                auto it = m_globals.find(read);
+                RELEASE_ASSERT(it != m_globals.end());
+                auto& global = m_callGraph.ast().astBuilder().construct<AST::IdentifierExpression>(
                     SourceSpan::empty(),
                     AST::Identifier::make(read)
-                ));
+                );
+                global.m_inferredType = it->value.declaration->storeType();
+                m_callGraph.ast().append(call->arguments(), global);
             }
         }
     };
@@ -803,7 +807,10 @@ std::optional<Error> RewriteGlobalVariables::visitEntryPoint(const CallGraph::En
     if (m_reads.isEmpty())
         return std::nullopt;
 
-    auto usedGlobals = determineUsedGlobals();
+    auto maybeUsedGlobals = determineUsedGlobals();
+    if (!maybeUsedGlobals)
+        return maybeUsedGlobals.error();
+    auto usedGlobals = *maybeUsedGlobals;
     auto maybeGroups = m_generatedLayout ? Result<Vector<unsigned>>(insertStructs(usedGlobals.resources)) : insertStructs(*it->value, usedGlobals.resources);
     if (!maybeGroups)
         return maybeGroups.error();
@@ -1052,7 +1059,7 @@ static BindGroupLayoutEntry::BindingMember bindingMemberForGlobal(auto& global)
     });
 }
 
-auto RewriteGlobalVariables::determineUsedGlobals() -> UsedGlobals
+auto RewriteGlobalVariables::determineUsedGlobals() -> Result<UsedGlobals>
 {
     UsedGlobals usedGlobals;
     for (const auto& globalName : m_reads) {
@@ -1075,8 +1082,13 @@ auto RewriteGlobalVariables::determineUsedGlobals() -> UsedGlobals
         }
 
         auto group = global.resource->group;
-        auto result = usedGlobals.resources.add(group, IndexMap<Global*>());
-        result.iterator->value.add(global.resource->binding, &global);
+        auto binding = global.resource->binding;
+        auto groupResult = usedGlobals.resources.add(group, IndexMap<Global*>());
+        auto bindingResult = groupResult.iterator->value.add(binding, &global);
+
+        // FIXME: this check needs to occur during WGSL::staticCheck
+        if (!bindingResult.isNewEntry)
+            return makeUnexpected(Error(makeString("entry point '", m_entryPointInformation->originalName, "' uses variables '", bindingResult.iterator->value->declaration->originalName(), "' and '", variable.originalName(), "', both which use the same resource binding: @group(", String::number(group), ") @binding(", String::number(binding), ")"), SourceSpan::empty()));
     }
     return usedGlobals;
 }
@@ -1521,6 +1533,7 @@ Result<Vector<unsigned>> RewriteGlobalVariables::insertStructs(const PipelineLay
             if (variable) {
                 auto it = m_bufferLengthMap.find(variable);
                 RELEASE_ASSERT(it != m_bufferLengthMap.end());
+                serializedVariables.add(it->value);
                 entries.append({ binding, &createArgumentBufferEntry(binding, *it->value) });
             } else {
                 entries.append({

@@ -1162,8 +1162,9 @@ sub GenerateInvokeIndexedPropertySetter
     # The second argument of the indexed setter operation is the argument being converted.
     my $argument = @{$indexedSetterOperation->arguments}[1];
     my $nativeValue = JSValueToNative($interface, $argument, $value, $indexedSetterOperation->extendedAttributes->{Conditional}, "lexicalGlobalObject", "*lexicalGlobalObject", "thisObject", "", "");
-    
-    push(@$outputArray, $indent . "auto nativeValue = ${nativeValue};\n");
+   
+    my $storageType = ShouldStoreArgumentAsRefPtr($argument->type) ? "RefPtr" : "auto";
+    push(@$outputArray, $indent . "$storageType nativeValue = ${nativeValue};\n");
     push(@$outputArray, $indent . "RETURN_IF_EXCEPTION(throwScope, true);\n");
     
     my $indexedSetterFunctionName = $indexedSetterOperation->name || "setItem";
@@ -1900,6 +1901,10 @@ sub PassArgumentExpression
 
     my $type = $context->type;
 
+    if ($codeGenerator->IsInterfaceType($type)) {
+        return "${name}.get()" if $type->isNullable || (ref($context) eq "IDLArgument" && $context->isOptional);
+        return "*${name}";
+    }
     return "WTFMove(${name})" if $type->isNullable;
 
     if ($codeGenerator->IsBufferSourceType($type)) {
@@ -1915,11 +1920,6 @@ sub PassArgumentExpression
     if ($codeGenerator->IsCallbackInterface($type) || $codeGenerator->IsCallbackFunction($type)) {
         return "WTFMove(${name})" if ref($context) eq "IDLArgument" && $context->isOptional;
         return "${name}.releaseNonNull()";
-    }
-
-    if ($codeGenerator->IsWrapperType($type)) {
-        return "${name}" if ref($context) eq "IDLArgument" && $context->isOptional;
-        return "*${name}";
     }
 
     return "WTFMove(${name})";
@@ -3059,16 +3059,18 @@ sub GenerateHeader
         AddIncludesForImplementationTypeInHeader($implType);
         push(@headerContent, "    static $className* create(JSC::Structure* structure, JSDOMGlobalObject* globalObject, Ref<$implType>&& impl)\n");
         push(@headerContent, "    {\n");
-        push(@headerContent, "        globalObject->masqueradesAsUndefinedWatchpointSet().fireAll(globalObject->vm(), \"Allocated masquerading object\");\n");
-        push(@headerContent, "        $className* ptr = new (NotNull, JSC::allocateCell<$className>(globalObject->vm())) $className(structure, *globalObject, WTFMove(impl));\n");
-        push(@headerContent, "        ptr->finishCreation(globalObject->vm());\n");
+        push(@headerContent, "        Ref vm = globalObject->vm();\n");
+        push(@headerContent, "        globalObject->masqueradesAsUndefinedWatchpointSet().fireAll(vm, \"Allocated masquerading object\");\n");
+        push(@headerContent, "        $className* ptr = new (NotNull, JSC::allocateCell<$className>(vm)) $className(structure, *globalObject, WTFMove(impl));\n");
+        push(@headerContent, "        ptr->finishCreation(vm);\n");
         push(@headerContent, "        return ptr;\n");
         push(@headerContent, "    }\n\n");
     } elsif (!NeedsImplementationClass($interface)) {
         push(@headerContent, "    static $className* create(JSC::Structure* structure, JSDOMGlobalObject* globalObject)\n");
         push(@headerContent, "    {\n");
-        push(@headerContent, "        $className* ptr = new (NotNull, JSC::allocateCell<$className>(globalObject->vm())) $className(structure, *globalObject);\n");
-        push(@headerContent, "        ptr->finishCreation(globalObject->vm());\n");
+        push(@headerContent, "        Ref vm = globalObject->vm();\n");
+        push(@headerContent, "        $className* ptr = new (NotNull, JSC::allocateCell<$className>(vm)) $className(structure, *globalObject);\n");
+        push(@headerContent, "        ptr->finishCreation(vm);\n");
         push(@headerContent, "        return ptr;\n");
         push(@headerContent, "    }\n\n");  
     } else {
@@ -3077,8 +3079,9 @@ sub GenerateHeader
         }
         push(@headerContent, "    static $className* create(JSC::Structure* structure, JSDOMGlobalObject* globalObject, Ref<$implType>&& impl)\n");
         push(@headerContent, "    {\n");
-        push(@headerContent, "        $className* ptr = new (NotNull, JSC::allocateCell<$className>(globalObject->vm())) $className(structure, *globalObject, WTFMove(impl));\n");
-        push(@headerContent, "        ptr->finishCreation(globalObject->vm());\n");
+        push(@headerContent, "        Ref vm = globalObject->vm();\n");
+        push(@headerContent, "        $className* ptr = new (NotNull, JSC::allocateCell<$className>(vm)) $className(structure, *globalObject, WTFMove(impl));\n");
+        push(@headerContent, "        ptr->finishCreation(vm);\n");
         push(@headerContent, "        return ptr;\n");
         push(@headerContent, "    }\n\n");
     }
@@ -5763,7 +5766,8 @@ sub GenerateAttributeSetterBodyDefinition
             my $exceptionThrower = GetAttributeExceptionThrower($interface, $attribute);
 
             my $toNativeExpression = JSValueToNative($interface, $attribute, "value", $attribute->extendedAttributes->{Conditional}, "&lexicalGlobalObject", "lexicalGlobalObject", "thisObject", $globalObjectReference, $exceptionThrower);
-            push(@$outputArray, "    auto nativeValue = ${toNativeExpression};\n");
+            my $storageType = ShouldStoreArgumentAsRefPtr($attribute->type) ? "RefPtr" : "auto";
+            push(@$outputArray, "    $storageType nativeValue = ${toNativeExpression};\n");
             push(@$outputArray, "    RETURN_IF_EXCEPTION(throwScope, false);\n");
         }
 
@@ -5772,7 +5776,7 @@ sub GenerateAttributeSetterBodyDefinition
         my $callTracer = $attribute->extendedAttributes->{CallTracer} || $interface->extendedAttributes->{CallTracer};
         if ($callTracer) {
             my $indent = "    ";
-            my @callTracerArguments = ("nativeValue");
+            my @callTracerArguments = ShouldStoreArgumentAsRefPtr($attribute->type) ? ("nativeValue.get()") : ("nativeValue");
             GenerateCallTracer($outputArray, $callTracer, $attribute->name, \@callTracerArguments, $indent);
         }
 
@@ -6490,9 +6494,9 @@ sub GenerateParametersCheck
             $nativeValue = "${nativeValueCastFunction}(" . $nativeValue . ")" if defined $nativeValueCastFunction;
             $nativeValue = $optionalCheck . $nativeValue if defined $optionalCheck;
 
-            push(@$outputArray, $indent . "auto $name = ${nativeValue};\n");
+            my $storageType = ShouldStoreArgumentAsRefPtr($argument->type) ? "RefPtr" : "auto";
+            push(@$outputArray, $indent . "$storageType $name = ${nativeValue};\n");
             push(@$outputArray, $indent . "RETURN_IF_EXCEPTION(throwScope, encodedJSValue());\n");
-
             $value = PassArgumentExpression($name, $argument);
         }
 
@@ -6959,13 +6963,20 @@ sub GenerateWriteBarriersForArguments
     return $hasOutput;
 }
 
+sub ShouldStoreArgumentAsRefPtr
+{
+    my $type = shift;
+
+    return $codeGenerator->IsInterfaceType($type);
+}
+
 sub GenerateImplementationFunctionCall
 {
     my ($outputArray, $operation, $interface, $functionString, $indent, $hasThrowScope) = @_;
 
     my $callTracer = $operation->extendedAttributes->{CallTracer} || $interface->extendedAttributes->{CallTracer};
     if ($callTracer) {
-        my @callTracerArguments = map { $_->name } @{$operation->arguments};
+        my @callTracerArguments = map { ShouldStoreArgumentAsRefPtr($_->type) ? $_->name . ".get()" : $_->name } @{$operation->arguments};
         GenerateCallTracer($outputArray, $callTracer, $operation->name, \@callTracerArguments, $indent);
     }
 

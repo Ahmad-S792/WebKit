@@ -28,7 +28,6 @@
 
 #if PLATFORM(COCOA)
 
-#import "ArgumentCodersCF.h"
 #import "CoreIPCNSCFObject.h"
 #import "CoreIPCTypes.h"
 #import "CoreTextHelpers.h"
@@ -387,6 +386,8 @@ NSType typeFromObject(id object)
         return NSType::Locale;
     if ([object isKindOfClass:[NSNumber class]])
         return NSType::Number;
+    if ([object isKindOfClass:[NSNull class]])
+        return NSType::Null;
     if ([object isKindOfClass:[NSValue class]])
         return NSType::NSValue;
     if ([object isKindOfClass:[NSPersonNameComponents class]])
@@ -480,24 +481,6 @@ template<> void encodeObjectDirectly<NSObject<NSSecureCoding>>(Encoder& encoder,
 
 static bool shouldEnableStrictMode(Decoder& decoder, const HashSet<Class>& allowedClasses)
 {
-#if ENABLE(IMAGE_ANALYSIS) && HAVE(VK_IMAGE_ANALYSIS)
-    auto isDecodingKnownVKCImageAnalysisMessageFromUIProcess = [] (auto& decoder) {
-        auto messageName = decoder.messageName();
-        return messageName == IPC::MessageName::WebPage_UpdateWithTextRecognitionResult // UIP -> WCP
-            || messageName == IPC::MessageName::WebPageProxy_RequestTextRecognitionReply; // UIP -> WCP
-    };
-#endif
-
-#if ENABLE(IMAGE_ANALYSIS) && HAVE(VK_IMAGE_ANALYSIS)
-    // blocked by rdar://108673895
-    if (PAL::isVisionKitCoreFrameworkAvailable()
-        && PAL::getVKCImageAnalysisClass()
-        && allowedClasses.contains(PAL::getVKCImageAnalysisClass())
-        && isDecodingKnownVKCImageAnalysisMessageFromUIProcess(decoder)
-        && isInWebProcess())
-        return false;
-#endif
-
 #if HAVE(STRICT_DECODABLE_NSTEXTTABLE) \
     && HAVE(STRICT_DECODABLE_PKCONTACT) \
     && HAVE(STRICT_DECODABLE_CNCONTACT) \

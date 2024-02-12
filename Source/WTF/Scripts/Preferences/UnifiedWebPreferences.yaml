@@ -988,17 +988,17 @@ CSSContainmentEnabled:
 
 CSSContentVisibilityEnabled:
   type: bool
-  status: preview
+  status: stable
   category: css
   humanReadableName: "CSS Content Visibility"
   humanReadableDescription: "Enable CSS content-visibility"
   defaultValue:
     WebKitLegacy:
-      default: false
+      default: true
     WebKit:
-      default: false
+      default: true
     WebCore:
-      default: false
+      default: true
 
 CSSCounterStyleAtRuleImageSymbolsEnabled:
   type: bool
@@ -1341,17 +1341,17 @@ CSSStartingStyleAtRuleEnabled:
 
 CSSStyleQueriesEnabled:
   type: bool
-  status: testable
+  status: stable
   category: css
   humanReadableName: "CSS style queries"
   humanReadableDescription: "Enable CSS style queries for custom properties"
   defaultValue:
     WebKitLegacy:
-      default: false
+      default: true
     WebKit:
-      default: false
+      default: true
     WebCore:
-      default: false
+      default: true
 
 CSSTextBoxTrimEnabled:
   type: bool
@@ -2393,12 +2393,12 @@ DiagnosticLoggingEnabled:
     WebCore:
       default: false
 
-DigitalCredentialsEnabled:
+DigitalIdentityEnabled:
   type: bool
   status: unstable
   category: dom
-  humanReadableName: "Digital Credentials API"
-  humanReadableDescription: "Enable the experimental Digital Credentials API"
+  humanReadableName: "Digital Identity API"
+  humanReadableDescription: "Enable the experimental Digital Identity API"
   defaultValue:
     WebKitLegacy:
       default: false
@@ -3961,6 +3961,21 @@ LegacyOverflowScrollingTouchEnabled:
       default: true
     WebCore:
       default: true
+
+LinearMediaPlayerEnabled:
+  type: bool
+  status: unstable
+  category: media
+  humanReadableName: "Linear Media Player"
+  humanReadableDescription: "Enable LinearMediaPlayer for fullscreen video"
+  condition: ENABLE(LINEAR_MEDIA_PLAYER)
+  defaultValue:
+    WebKitLegacy:
+      default: false
+    WebKit:
+      default: false
+    WebCore:
+      default: false
 
 LinkModulePreloadEnabled:
   type: bool
