@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2013 Apple Inc. All rights reserved.
+ * Copyright (c) 2024 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -20,34 +20,17 @@
  * PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY
  * OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
- * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE. 
+ * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
 #pragma once
 
-#include "FilterOperations.h"
-#include "GraphicsTypes.h"
-#include "PlatformLayer.h"
-#include <wtf/RetainPtr.h>
+#include "WGSL.h"
 
-OBJC_CLASS NSValue;
+namespace WGSL {
 
-namespace WebCore {
+class ShaderModule;
 
-class PlatformCALayer;
+std::optional<FailedCheck> insertBoundsChecks(ShaderModule&);
 
-class PlatformCAFilters {
-public:
-    WEBCORE_EXPORT static void setFiltersOnLayer(PlatformLayer*, const FilterOperations&);
-    WEBCORE_EXPORT static void setBlendingFiltersOnLayer(PlatformLayer*, const BlendMode);
-    static bool isAnimatedFilterProperty(FilterOperation::Type);
-    static String animatedFilterPropertyName(FilterOperation::Type);
-    static bool isValidAnimatedFilterPropertyName(const String&);
-
-    WEBCORE_EXPORT static RetainPtr<NSValue> filterValueForOperation(const FilterOperation*);
-
-    // A null operation indicates that we should make a "no-op" filter of the given type.
-    static RetainPtr<NSValue> colorMatrixValueForFilter(FilterOperation::Type, const FilterOperation*);
-};
-
-}
+} // namespace WGSL
