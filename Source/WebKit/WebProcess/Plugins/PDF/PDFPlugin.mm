@@ -644,7 +644,8 @@ void PDFPlugin::installPDFDocument()
 
     notifyScrollPositionChanged(IntPoint([m_pdfLayerController scrollPosition]));
 
-    updatePDFHUDLocation();
+    updateHUDVisibility();
+    updateHUDLocation();
     updateScrollbars();
 
     tryRunScriptsInPDFDocument();
@@ -673,7 +674,8 @@ void PDFPlugin::attemptToUnlockPDF(const String& password)
     if (!isLocked()) {
         m_passwordField = nullptr;
 
-        updatePDFHUDLocation();
+        updateHUDVisibility();
+        updateHUDLocation();
         updateScrollbars();
     }
 }
@@ -809,7 +811,7 @@ bool PDFPlugin::geometryDidChange(const IntSize& pluginSize, const AffineTransfo
     CATransform3D transform = CATransform3DMakeScale(1, -1, 1);
     transform = CATransform3DTranslate(transform, 0, -pluginSize.height(), 0);
     
-    updatePDFHUDLocation();
+    updateHUDLocation();
     updateScrollbars();
 
     if (m_activeAnnotation)
@@ -1218,13 +1220,13 @@ void PDFPlugin::notifyContentScaleFactorChanged(CGFloat scaleFactor)
     if (handlesPageScaleFactor())
         m_view->setPageScaleFactor(scaleFactor, std::nullopt);
 
-    updatePDFHUDLocation();
+    updateHUDLocation();
     updateScrollbars();
 }
 
 void PDFPlugin::notifyDisplayModeChanged(int)
 {
-    updatePDFHUDLocation();
+    updateHUDLocation();
     updateScrollbars();
 }
 
@@ -1440,16 +1442,16 @@ static NSPoint pointInLayoutSpaceForPointInWindowSpace(PDFLayerController* pdfLa
     return NSPointFromCGPoint(newPoint);
 }
 
-std::tuple<String, PDFSelection *, NSDictionary *> PDFPlugin::lookupTextAtLocation(const WebCore::FloatPoint& locationInViewCoordinates, WebHitTestResultData& data) const
+std::pair<String, PDFSelection *> PDFPlugin::lookupTextAtLocation(const WebCore::FloatPoint& locationInViewCoordinates, WebHitTestResultData& data) const
 {
     auto selection = [m_pdfLayerController currentSelection];
     if (existingSelectionContainsPoint(locationInViewCoordinates))
-        return { selection.string, selection, nil };
+        return { selection.string, selection };
 
     IntPoint pointInPDFView = convertFromPluginToPDFView(convertFromRootViewToPlugin(roundedIntPoint(locationInViewCoordinates)));
     selection = [m_pdfLayerController getSelectionForWordAtPoint:pointInPDFView];
     if (!selection)
-        return { emptyString(), nil, nil };
+        return { emptyString(), nil };
 
     NSPoint pointInLayoutSpace = pointInLayoutSpaceForPointInWindowSpace(m_pdfLayerController.get(), pointInPDFView);
     PDFPage *currentPage = [[m_pdfLayerController layout] pageNearestPoint:pointInLayoutSpace currentPage:[m_pdfLayerController currentPage]];
@@ -1472,15 +1474,15 @@ ALLOW_DEPRECATED_DECLARATIONS_END
 
         data.absoluteLinkURL = url.absoluteString;
         data.linkLabel = selection.string;
-        return { selection.string, selection, nil };
+        return { selection.string, selection };
     }
 
-    auto [lookupText, options] = DictionaryLookup::stringForPDFSelection(selection);
+    NSString *lookupText = DictionaryLookup::stringForPDFSelection(selection);
     if (!lookupText.length)
-        return { emptyString(), selection, nil };
+        return { emptyString(), selection };
 
     [m_pdfLayerController setCurrentSelection:selection];
-    return { lookupText, selection, options };
+    return { lookupText, selection };
 }
 
 static NSRect rectInViewSpaceForRectInLayoutSpace(PDFLayerController* pdfLayerController, NSRect layoutSpaceRect)

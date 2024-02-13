@@ -42,6 +42,7 @@ enum class DelegatedScrollingMode : uint8_t;
 namespace WebKit {
 
 struct PDFContextMenu;
+class PDFPluginPasswordField;
 class WebFrame;
 class WebMouseEvent;
 enum class WebEventType : uint8_t;
@@ -141,7 +142,6 @@ private:
     unsigned firstPageHeight() const override;
     unsigned heightForPage(PDFDocumentLayout::PageIndex) const;
 
-
     void scheduleRenderingUpdate();
 
     void updateLayout();
@@ -174,11 +174,12 @@ private:
     bool takeFindStringFromSelection();
     bool forwardEditingCommandToEditor(const String& commandName, const String& argument) const;
     void selectAll();
-    bool performCopyEditingOperation() const;
+    [[maybe_unused]] bool performCopyEditingOperation() const;
 
     // Context Menu
     enum class ContextMenuItemTag : int8_t {
         Invalid = -1,
+        Copy,
         OpenWithPreview,
         SinglePage,
         SinglePageContinuous,
@@ -229,7 +230,7 @@ private:
     unsigned countFindMatches(const String& target, WebCore::FindOptions, unsigned maxMatchCount) override;
     bool findString(const String& target, WebCore::FindOptions, unsigned maxMatchCount) override;
     bool performDictionaryLookupAtLocation(const WebCore::FloatPoint&) override;
-    std::tuple<String, PDFSelection *, NSDictionary *> lookupTextAtLocation(const WebCore::FloatPoint&, WebHitTestResultData&) const override;
+    std::pair<String, PDFSelection *> lookupTextAtLocation(const WebCore::FloatPoint&, WebHitTestResultData&) const override;
 
     id accessibilityHitTest(const WebCore::IntPoint&) const override;
     id accessibilityObject() const override;
@@ -309,6 +310,10 @@ private:
 
     bool isTaggedPDF() const;
 
+#if PLATFORM(MAC)
+    void createPasswordEntryForm();
+#endif
+
     PDFDocumentLayout m_documentLayout;
     RefPtr<WebCore::GraphicsLayer> m_rootLayer;
     RefPtr<WebCore::GraphicsLayer> m_scrollContainerLayer;
@@ -346,6 +351,10 @@ private:
     RetainPtr<PDFSelection> m_currentSelection;
 
     RetainPtr<WKPDFFormMutationObserver> m_pdfMutationObserver;
+
+#if PLATFORM(MAC)
+    RefPtr<PDFPluginPasswordField> m_passwordField;
+#endif
 };
 
 } // namespace WebKit

@@ -149,7 +149,7 @@ public:
     virtual bool findString(const String& target, WebCore::FindOptions, unsigned maxMatchCount) = 0;
 
     virtual bool performDictionaryLookupAtLocation(const WebCore::FloatPoint&) = 0;
-    virtual std::tuple<String, PDFSelection *, NSDictionary *> lookupTextAtLocation(const WebCore::FloatPoint&, WebHitTestResultData&) const = 0;
+    virtual std::pair<String, PDFSelection *> lookupTextAtLocation(const WebCore::FloatPoint&, WebHitTestResultData&) const = 0;
 
     virtual id accessibilityHitTest(const WebCore::IntPoint&) const = 0;
     virtual id accessibilityObject() const = 0;
@@ -299,9 +299,11 @@ protected:
     virtual void destroyScrollbar(WebCore::ScrollbarOrientation);
 
 #if ENABLE(PDF_HUD)
-    void updatePDFHUDLocation();
+    void updateHUDLocation();
     WebCore::IntRect frameForHUDInRootViewCoordinates() const;
     bool hudEnabled() const;
+    bool shouldShowHUD() const;
+    void updateHUDVisibility();
 #endif
 
 #if !LOG_DISABLED

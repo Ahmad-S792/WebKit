@@ -31,6 +31,7 @@
 #include "PDFContextMenu.h"
 #include "PDFKitSPI.h"
 #include "PDFPluginAnnotation.h"
+#include "PDFPluginPasswordField.h"
 #include "PasteboardTypes.h"
 #include "PluginView.h"
 #include "WebEventConversion.h"
@@ -176,9 +177,51 @@ void UnifiedPDFPlugin::installPDFDocument()
 
     updateLayout();
 
+#if ENABLE(PDF_HUD)
+    updateHUDVisibility();
+#endif
+
+#if PLATFORM(MAC)
+    if (isLocked())
+        createPasswordEntryForm();
+#endif
+
     if (m_view)
         m_view->layerHostingStrategyDidChange();
     [[NSNotificationCenter defaultCenter] addObserver:m_pdfMutationObserver.get() selector:@selector(formChanged:) name:mutationObserverNotificationString() object:m_pdfDocument.get()];
+
+    scrollToFragmentIfNeeded();
+}
+
+#if PLATFORM(MAC)
+
+void UnifiedPDFPlugin::createPasswordEntryForm()
+{
+    if (!supportsForms())
+        return;
+
+    auto passwordField = PDFPluginPasswordField::create(this);
+    m_passwordField = passwordField.ptr();
+    passwordField->attach(m_annotationContainer.get());
+}
+
+#endif
+
+void UnifiedPDFPlugin::attemptToUnlockPDF(const String& password)
+{
+    if (![m_pdfDocument unlockWithPassword:password])
+        return;
+
+#if PLATFORM(MAC)
+    m_passwordField = nullptr;
+#endif
+
+    updateLayout();
+
+#if ENABLE(PDF_HUD)
+    updateHUDVisibility();
+    updateHUDLocation();
+#endif
 
     scrollToFragmentIfNeeded();
 }
@@ -255,6 +298,9 @@ void UnifiedPDFPlugin::updatePageBackgroundLayers()
 {
     RefPtr page = this->page();
     if (!page)
+        return;
+
+    if (isLocked())
         return;
 
     Vector<Ref<GraphicsLayer>> pageContainerLayers = m_pageBackgroundsContainerLayer->children();
@@ -1405,7 +1451,7 @@ void UnifiedPDFPlugin::scrollToPage(PDFDocumentLayout::PageIndex pageIndex)
 
 void UnifiedPDFPlugin::scrollToFragmentIfNeeded()
 {
-    if (!m_pdfDocument || !m_didAttachScrollingTreeNode)
+    if (!m_pdfDocument || !m_didAttachScrollingTreeNode || isLocked())
         return;
 
     if (m_didScrollToFragment)
@@ -1447,7 +1493,11 @@ void UnifiedPDFPlugin::scrollToFragmentIfNeeded()
         return;
     }
 
-    // FIXME (269224): Support named destinations.
+    if (auto remainder = remainderForPrefix("nameddest="_s)) {
+        if (auto destination = [m_pdfDocument namedDestination:remainder->createNSString().get()])
+            scrollToPDFDestination(destination);
+        return;
+    }
 }
 
 #pragma mark Context Menu
@@ -1479,6 +1529,7 @@ PDFDocumentLayout::DisplayMode UnifiedPDFPlugin::displayModeFromContextMenuItemT
 auto UnifiedPDFPlugin::toContextMenuItemTag(int tagValue) const -> ContextMenuItemTag
 {
     static constexpr std::array regularContextMenuItemTags {
+        ContextMenuItemTag::Copy,
         ContextMenuItemTag::OpenWithPreview,
         ContextMenuItemTag::SinglePage,
         ContextMenuItemTag::SinglePageContinuous,
@@ -1501,6 +1552,11 @@ PDFContextMenu UnifiedPDFPlugin::createContextMenu(const IntPoint& contextMenuPo
     auto addSeparator = [&] {
         menuItems.append({ String(), 0, enumToUnderlyingType(ContextMenuItemTag::Invalid), ContextMenuItemEnablement::Disabled, ContextMenuItemHasAction::No, ContextMenuItemIsSeparator::Yes });
     };
+
+    if ([m_pdfDocument allowsCopying] && m_currentSelection) {
+        menuItems.append({ WebCore::contextMenuItemPDFCopy(), 0, enumToUnderlyingType(ContextMenuItemTag::Copy), ContextMenuItemEnablement::Enabled, ContextMenuItemHasAction::Yes, ContextMenuItemIsSeparator::No });
+        addSeparator();
+    }
 
     menuItems.append({ WebCore::contextMenuItemPDFOpenWithPreview(), 0,
         enumToUnderlyingType(ContextMenuItemTag::OpenWithPreview),
@@ -1529,6 +1585,9 @@ PDFContextMenu UnifiedPDFPlugin::createContextMenu(const IntPoint& contextMenuPo
 void UnifiedPDFPlugin::performContextMenuAction(ContextMenuItemTag tag)
 {
     switch (tag) {
+    case ContextMenuItemTag::Copy:
+        performCopyEditingOperation();
+        break;
     // The OpenWithPreview action is handled in the UI Process.
     case ContextMenuItemTag::OpenWithPreview: return;
     case ContextMenuItemTag::SinglePage:
@@ -1817,7 +1876,7 @@ bool UnifiedPDFPlugin::performDictionaryLookupAtLocation(const FloatPoint&)
     return false;
 }
 
-std::tuple<String, PDFSelection *, NSDictionary *> UnifiedPDFPlugin::lookupTextAtLocation(const FloatPoint&, WebHitTestResultData&) const
+std::pair<String, PDFSelection *> UnifiedPDFPlugin::lookupTextAtLocation(const FloatPoint&, WebHitTestResultData&) const
 {
     return { };
 }
@@ -2032,10 +2091,6 @@ void AnnotationTrackingState::resetAnnotationTrackingState()
     ASSERT(m_trackedAnnotation);
     m_trackedAnnotation = nullptr;
     m_isBeingHovered = false;
-}
-
-void UnifiedPDFPlugin::attemptToUnlockPDF(const String& password)
-{
 }
 
 bool UnifiedPDFPlugin::isTaggedPDF() const
