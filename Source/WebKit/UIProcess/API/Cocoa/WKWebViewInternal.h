@@ -105,6 +105,7 @@ class ViewGestureController;
 @class WKPasswordView;
 @class WKSafeBrowsingWarning;
 @class WKScrollView;
+@class WKTextExtractionItem;
 @class WKWebViewContentProviderRegistry;
 @class _WKFrameHandle;
 
@@ -131,6 +132,12 @@ struct OverriddenLayoutParameters {
     CGSize viewLayoutSize { CGSizeZero };
     CGSize minimumUnobscuredSize { CGSizeZero };
     CGSize maximumUnobscuredSize { CGSizeZero };
+};
+
+struct OverriddenZoomScaleParameters {
+    CGFloat minimumZoomScale { 1 };
+    CGFloat maximumZoomScale { 1 };
+    BOOL allowUserScaling { YES };
 };
 
 // This holds state that should be reset when the web process exits.
@@ -248,6 +255,7 @@ struct PerWebProcessState {
     PerWebProcessState _perProcessState;
 
     std::optional<OverriddenLayoutParameters> _overriddenLayoutParameters;
+    std::optional<OverriddenZoomScaleParameters> _overriddenZoomScaleParameters;
     CGRect _inputViewBoundsInWindow;
 
     BOOL _fastClickingIsDisabled;
@@ -379,3 +387,7 @@ RetainPtr<NSError> nsErrorFromExceptionDetails(const WebCore::ExceptionDetails&)
 @property (nonatomic, readonly) id <_WKWebViewPrintProvider> _printProvider;
 @end
 #endif
+
+@interface WKWebView (WKTextExtraction)
+- (void)_requestTextExtraction:(CGRect)rect completionHandler:(void(^)(WKTextExtractionItem *))completionHandler;
+@end
