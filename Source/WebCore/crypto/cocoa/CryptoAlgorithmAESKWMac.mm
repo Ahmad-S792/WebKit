@@ -27,6 +27,7 @@
 #include "CryptoAlgorithmAESKW.h"
 
 #include "CryptoKeyAES.h"
+#include "WebCoreSwift-Swift.h"
 #include <CommonCrypto/CommonCrypto.h>
 
 namespace WebCore {
@@ -39,6 +40,17 @@ static ExceptionOr<Vector<uint8_t>> wrapKeyAESKW(const Vector<uint8_t>& key, con
         return Exception { ExceptionCode::OperationError };
 
     result.shrink(resultSize);
+    return WTFMove(result);
+}
+
+static ExceptionOr<Vector<uint8_t>> wrapKeyAESKWCryptoKit(const Vector<uint8_t>& key, const Vector<uint8_t>& data)
+{
+    Vector<uint8_t> result(data.size() + CryptoAlgorithmAESKW::s_extraSize);
+    uint64_t resultSize = result.size();
+    const WebCryptoAesKwReturnValue* rv = [WebCryptoAesKw wrap:key.data() keySize:key.size() data:data.data() dataSize:data.size() cipherText:result.data() cipherTextSize:resultSize];
+    if (WebCryptoErrorCodesSuccess != rv.errCode)
+        return Exception { ExceptionCode::OperationError };
+    result.shrink(rv.outputSize);
     return WTFMove(result);
 }
 
@@ -57,13 +69,30 @@ static ExceptionOr<Vector<uint8_t>> unwrapKeyAESKW(const Vector<uint8_t>& key, c
     return WTFMove(result);
 }
 
-ExceptionOr<Vector<uint8_t>> CryptoAlgorithmAESKW::platformWrapKey(const CryptoKeyAES& key, const Vector<uint8_t>& data)
+static ExceptionOr<Vector<uint8_t>> unwrapKeyAESKWCryptoKit(const Vector<uint8_t>& key, const Vector<uint8_t>& data)
 {
+    Vector<uint8_t> dataOut(data.size());
+    uint64_t dataOutSize = dataOut.size();
+    const WebCryptoAesKwReturnValue* rv = [WebCryptoAesKw unwrap:key.data() keySize:key.size() cipherText:data.data() cipherTextSize:data.size() data:dataOut.data() dataSize:dataOutSize];
+    if (WebCryptoErrorCodesSuccess != rv.errCode)
+        return Exception { ExceptionCode::OperationError };
+    if (rv.outputSize % 8)
+        return Exception { ExceptionCode::OperationError };
+    dataOut.shrink(rv.outputSize);
+    return WTFMove(dataOut);
+}
+
+ExceptionOr<Vector<uint8_t>> CryptoAlgorithmAESKW::platformWrapKey(const CryptoKeyAES& key, const Vector<uint8_t>& data, bool useCryptoKit)
+{
+    if (useCryptoKit)
+        return wrapKeyAESKWCryptoKit(key.key(), data);
     return wrapKeyAESKW(key.key(), data);
 }
 
-ExceptionOr<Vector<uint8_t>> CryptoAlgorithmAESKW::platformUnwrapKey(const CryptoKeyAES& key, const Vector<uint8_t>& data)
+ExceptionOr<Vector<uint8_t>> CryptoAlgorithmAESKW::platformUnwrapKey(const CryptoKeyAES& key, const Vector<uint8_t>& data, bool useCryptoKit)
 {
+    if (useCryptoKit)
+        return unwrapKeyAESKWCryptoKit(key.key(), data);
     return unwrapKeyAESKW(key.key(), data);
 }
 

@@ -32,6 +32,7 @@
 #include <WebCore/GraphicsLayer.h>
 #include <wtf/OptionSet.h>
 
+OBJC_CLASS PDFAction;
 OBJC_CLASS PDFDestination;
 OBJC_CLASS WKPDFFormMutationObserver;
 
@@ -47,6 +48,7 @@ class WebFrame;
 class WebMouseEvent;
 enum class WebEventType : uint8_t;
 enum class WebMouseEventButton : int8_t;
+enum class WebEventModifier : uint8_t;
 
 class AnnotationTrackingState {
 public:
@@ -61,12 +63,22 @@ private:
     bool m_isBeingHovered { false };
 };
 
-enum class WebEventModifier : uint8_t;
-
 enum class AnnotationSearchDirection : bool {
     Forward,
     Backward
 };
+
+struct PerPageInfo {
+    PDFDocumentLayout::PageIndex pageIndex { 0 };
+    WebCore::FloatRect pageBounds;
+};
+
+struct PDFPageCoverage {
+    Vector<PerPageInfo> pages;
+    float deviceScaleFactor { 1 };
+    float documentScale { 1 };
+};
+
 class UnifiedPDFPlugin final : public PDFPluginBase, public WebCore::GraphicsLayerClient {
 public:
     static Ref<UnifiedPDFPlugin> create(WebCore::HTMLPlugInElement&);
@@ -90,6 +102,7 @@ public:
     void focusPreviousAnnotation() final;
 #if PLATFORM(MAC)
     RetainPtr<PDFAnnotation> nextTextAnnotation(AnnotationSearchDirection) const;
+    void handlePDFActionForAnnotation(PDFAnnotation *);
 #endif
 
     void attemptToUnlockPDF(const String& password) final;
@@ -245,8 +258,11 @@ private:
     float pageScaleFactor() const override { return scaleFactor(); }
     bool layerNeedsPlatformContext(const WebCore::GraphicsLayer*) const override { return true; }
 
+    // Package up the data needed to paint a set of pages for the given clip, for use by UnifiedPDFPlugin::paintPDFContent and async rendering.
+    PDFPageCoverage pageCoverageForRect(const WebCore::FloatRect& clipRect) const;
+
     void paintPDFContent(WebCore::GraphicsContext&, const WebCore::FloatRect& clipRect);
-    void paintPDFOverlays(WebCore::GraphicsContext&);
+    void paintPDFOverlays(WebCore::GraphicsContext&, const WebCore::FloatRect& clipRect);
 
     void ensureLayers();
     void updatePageBackgroundLayers();
