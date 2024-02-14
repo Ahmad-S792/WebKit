@@ -66,7 +66,7 @@ namespace WebCore {
 #if ENABLE(CONTEXT_MENUS)
     WEBCORE_EXPORT String contextMenuItemTagOpenLinkInNewWindow();
     String contextMenuItemTagDownloadLinkToDisk();
-    String contextMenuItemTagCopyLinkToClipboard();
+    WEBCORE_EXPORT String contextMenuItemTagCopyLinkToClipboard();
     String contextMenuItemTagOpenImageInNewWindow();
     String contextMenuItemTagDownloadImageToDisk();
     String contextMenuItemTagCopyImageToClipboard();
@@ -74,7 +74,7 @@ namespace WebCore {
     String contextMenuItemTagCopyImageURLToClipboard();
 #endif
     String contextMenuItemTagOpenFrameInNewWindow();
-    String contextMenuItemTagCopy();
+    WEBCORE_EXPORT String contextMenuItemTagCopy();
     String contextMenuItemTagGoBack();
     String contextMenuItemTagGoForward();
     String contextMenuItemTagStop();
@@ -102,9 +102,9 @@ namespace WebCore {
     String contextMenuItemTagNoGuessesFound();
     String contextMenuItemTagIgnoreSpelling();
     String contextMenuItemTagLearnSpelling();
-    String contextMenuItemTagSearchWeb();
+    WEBCORE_EXPORT String contextMenuItemTagSearchWeb();
 #if PLATFORM(COCOA)
-    String contextMenuItemTagLookUpInDictionary(const String& selectedString);
+    WEBCORE_EXPORT String contextMenuItemTagLookUpInDictionary(const String& selectedString);
 #endif
     WEBCORE_EXPORT String contextMenuItemTagOpenLink();
     WEBCORE_EXPORT String contextMenuItemTagIgnoreGrammar();
@@ -179,7 +179,6 @@ namespace WebCore {
 #endif
 #if ENABLE(UNIFIED_PDF)
     WEBCORE_EXPORT String contextMenuItemPDFOpenWithPreview();
-    WEBCORE_EXPORT String contextMenuItemPDFCopy();
 #endif
 #if ENABLE(PDFJS) || ENABLE(UNIFIED_PDF)
     WEBCORE_EXPORT String contextMenuItemPDFSinglePage();
@@ -413,6 +412,10 @@ namespace WebCore {
     WEBCORE_EXPORT String contextMenuItemTagCopySubject();
     WEBCORE_EXPORT String contextMenuItemTitleRemoveBackground();
 #endif
+
+    WEBCORE_EXPORT String pdfPasswordFormTitle();
+    WEBCORE_EXPORT String pdfPasswordFormSubtitle();
+    WEBCORE_EXPORT String pdfPasswordFormInvalidPasswordSubtitle();
 
 #if PLATFORM(COCOA)
 #define WEB_UI_STRING(string, description) WebCore::localizedString(CFSTR(string))

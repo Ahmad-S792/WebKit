@@ -43,7 +43,9 @@ enum class DelegatedScrollingMode : uint8_t;
 namespace WebKit {
 
 struct PDFContextMenu;
+struct PDFContextMenuItem;
 class PDFPluginPasswordField;
+class PDFPluginPasswordForm;
 class WebFrame;
 class WebMouseEvent;
 enum class WebEventType : uint8_t;
@@ -102,7 +104,7 @@ public:
     void focusPreviousAnnotation() final;
 #if PLATFORM(MAC)
     RetainPtr<PDFAnnotation> nextTextAnnotation(AnnotationSearchDirection) const;
-    void handlePDFActionForAnnotation(PDFAnnotation *);
+    void handlePDFActionForAnnotation(PDFAnnotation *, unsigned currentPageIndex);
 #endif
 
     void attemptToUnlockPDF(const String& password) final;
@@ -190,9 +192,13 @@ private:
     [[maybe_unused]] bool performCopyEditingOperation() const;
 
     // Context Menu
+#if ENABLE(CONTEXT_MENUS)
     enum class ContextMenuItemTag : int8_t {
         Invalid = -1,
+        WebSearch,
+        DictionaryLookup,
         Copy,
+        CopyLink,
         OpenWithPreview,
         SinglePage,
         SinglePageContinuous,
@@ -204,8 +210,14 @@ private:
         Unknown,
     };
 
-#if PLATFORM(MAC)
-    PDFContextMenu createContextMenu(const WebCore::IntPoint& contextMenuPoint) const;
+    std::optional<PDFContextMenu> createContextMenu(const WebMouseEvent&) const;
+    PDFContextMenuItem contextMenuItem(ContextMenuItemTag) const;
+    String titleForContextMenuItemTag(ContextMenuItemTag) const;
+    bool isDisplayModeContextMenuItemTag(ContextMenuItemTag) const;
+    PDFContextMenuItem separatorContextMenuItem() const;
+    Vector<PDFContextMenuItem> selectionContextMenuItems(const WebCore::IntPoint& contextMenuPoint) const;
+    Vector<PDFContextMenuItem> displayModeContextMenuItems() const;
+    Vector<PDFContextMenuItem> scaleContextMenuItems() const;
     ContextMenuItemTag toContextMenuItemTag(int tagValue) const;
     void performContextMenuAction(ContextMenuItemTag);
 
@@ -262,7 +274,6 @@ private:
     PDFPageCoverage pageCoverageForRect(const WebCore::FloatRect& clipRect) const;
 
     void paintPDFContent(WebCore::GraphicsContext&, const WebCore::FloatRect& clipRect);
-    void paintPDFOverlays(WebCore::GraphicsContext&, const WebCore::FloatRect& clipRect);
 
     void ensureLayers();
     void updatePageBackgroundLayers();
@@ -311,17 +322,27 @@ private:
     void zoomOut() final;
 #endif
 
+    std::optional<PDFDocumentLayout::PageIndex> pageIndexWithHoveredAnnotation() const;
+    void paintHoveredAnnotationOnPage(PDFDocumentLayout::PageIndex, WebCore::GraphicsContext&, const WebCore::FloatRect& clipRect);
+
     void followLinkAnnotation(PDFAnnotation *);
 
     RefPtr<WebCore::GraphicsLayer> createGraphicsLayer(const String& name, WebCore::GraphicsLayer::Type);
 
     WebCore::IntPoint convertFromPluginToDocument(const WebCore::IntPoint&) const;
     WebCore::IntPoint convertFromDocumentToPlugin(const WebCore::IntPoint&) const;
-    std::optional<PDFDocumentLayout::PageIndex> pageIndexForDocumentPoint(const WebCore::IntPoint&) const;
-    RetainPtr<PDFAnnotation> annotationForRootViewPoint(const WebCore::IntPoint&) const;
+
     WebCore::IntPoint convertFromDocumentToPage(const WebCore::IntPoint&, PDFDocumentLayout::PageIndex) const;
     WebCore::IntPoint convertFromPageToDocument(const WebCore::IntPoint&, PDFDocumentLayout::PageIndex) const;
+    WebCore::FloatRect convertFromPageToDocument(const WebCore::FloatRect&, PDFDocumentLayout::PageIndex) const;
+
     WebCore::IntPoint convertFromPageToContents(const WebCore::IntPoint&, PDFDocumentLayout::PageIndex) const;
+    WebCore::FloatRect convertFromPageToContents(const WebCore::FloatRect&, PDFDocumentLayout::PageIndex) const;
+
+    std::optional<PDFDocumentLayout::PageIndex> pageIndexForDocumentPoint(const WebCore::IntPoint&) const;
+
+    RetainPtr<PDFAnnotation> annotationForRootViewPoint(const WebCore::IntPoint&) const;
+
     PDFElementTypes pdfElementTypesForPluginPoint(const WebCore::IntPoint&) const;
 
     bool isTaggedPDF() const;
@@ -370,6 +391,7 @@ private:
 
 #if PLATFORM(MAC)
     RefPtr<PDFPluginPasswordField> m_passwordField;
+    RefPtr<PDFPluginPasswordForm> m_passwordForm;
 #endif
 };
 

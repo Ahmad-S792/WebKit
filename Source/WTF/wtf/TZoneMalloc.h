@@ -32,6 +32,7 @@
 
 #include <wtf/FastMalloc.h>
 
+#define WTF_TZONE_REGISTER_TYPES(begin, end)
 #define WTF_MAKE_TZONE_ALLOCATED(name) WTF_MAKE_FAST_ALLOCATED
 #define WTF_MAKE_TZONE_ALLOCATED_EXPORT(name, exportMacro) WTF_MAKE_FAST_ALLOCATED
 #define WTF_MAKE_TZONE_NONALLOCATABLE(name) WTF_FORBID_HEAP_ALLOCATION
@@ -40,8 +41,13 @@
 
 #include <bmalloc/TZoneHeap.h>
 
+#if !BUSE(TZONE)
+#error "TZones enabled in WTF, but not enabled in bmalloc"
+#endif
+
 #define WTF_NOEXPORT
 
+#define WTF_TZONE_REGISTER_TYPES(begin, end) BTZONE_REGISTER_TYPES((const bmalloc_type*)begin, (const bmalloc_type*)end)
 #define WTF_MAKE_TZONE_ALLOCATED(name) MAKE_BTZONE_MALLOCED(name, WTF_NOEXPORT)
 #define WTF_MAKE_TZONE_ALLOCATED_EXPORT(name, exportMacro) MAKE_BTZONE_MALLOCED(name, exportMacro)
 #define WTF_MAKE_TZONE_NONALLOCATABLE(name) WTF_FORBID_HEAP_ALLOCATION

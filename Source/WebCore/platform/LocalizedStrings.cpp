@@ -515,11 +515,6 @@ String contextMenuItemPDFOpenWithPreview()
 {
     return WEB_UI_STRING("Open with Preview", "Open with Preview context menu item");
 }
-
-String contextMenuItemPDFCopy()
-{
-    return WEB_UI_STRING("Copy", "Copy context menu item");
-}
 #endif
 
 #if ENABLE(PDFJS) || ENABLE(UNIFIED_PDF)
@@ -1547,5 +1542,20 @@ String genericTouchIDPromptTitle()
     return WEB_UI_STRING("Continue with Touch ID.", "Continue with Touch ID.");
 }
 #endif // ENABLE(WEB_AUTHN)
+
+String pdfPasswordFormTitle()
+{
+    return WEB_UI_STRING("This document is password protected.", "Title when a PDF needs a password to be unlocked");
+}
+
+String pdfPasswordFormSubtitle()
+{
+    return WEB_UI_STRING("Please enter the password below.", "Subtitle when a PDF needs a password to be unlocked");
+}
+
+String pdfPasswordFormInvalidPasswordSubtitle()
+{
+    return WEB_UI_STRING("Invalid Password", "Message when a PDF fails to unlock with the given password");
+}
 
 } // namespace WebCore

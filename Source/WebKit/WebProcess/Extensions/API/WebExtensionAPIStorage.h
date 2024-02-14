@@ -52,7 +52,7 @@ public:
 private:
     friend class WebExtensionContextProxy;
 
-    WebExtensionAPIStorageArea& storageAreaForType(WebExtensionStorageType);
+    WebExtensionAPIStorageArea& storageAreaForType(WebExtensionDataType);
 
     RefPtr<WebExtensionAPIStorageArea> m_local;
     RefPtr<WebExtensionAPIStorageArea> m_session;

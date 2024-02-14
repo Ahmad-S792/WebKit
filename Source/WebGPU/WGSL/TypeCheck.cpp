@@ -88,6 +88,20 @@ static ASCIILiteral evaluationToString(Evaluation evaluation)
     }
 }
 
+static ASCIILiteral variableFlavorToString(AST::VariableFlavor flavor)
+{
+    switch (flavor) {
+    case AST::VariableFlavor::Var:
+        return "var"_s;
+    case AST::VariableFlavor::Let:
+        return "let"_s;
+    case AST::VariableFlavor::Const:
+        return "const"_s;
+    case AST::VariableFlavor::Override:
+        return "override"_s;
+    }
+}
+
 class TypeChecker : public AST::ScopedVisitor<Binding> {
     using Base  = AST::ScopedVisitor<Binding>;
     using Base::visit;
@@ -185,6 +199,8 @@ private:
     template<typename TargetConstructor, typename... Arguments>
     void allocateSimpleConstructor(ASCIILiteral, TargetConstructor, Arguments&&...);
     void allocateTextureStorageConstructor(ASCIILiteral, Types::TextureStorage::Kind);
+
+    bool isModuleScope() const;
 
     std::optional<AccessMode> accessMode(AST::Expression&);
     std::optional<TexelFormat> texelFormat(AST::Expression&);
@@ -500,7 +516,8 @@ void TypeChecker::visitVariable(AST::Variable& variable, VariableKind variableKi
                 result = initializerType;
             else {
                 result = concretize(initializerType, m_types);
-                RELEASE_ASSERT(result);
+                if (!result)
+                    return error("'", *initializerType, "' cannot be used as the type of a '", variableFlavorToString(variable.flavor()), "'");
                 variable.maybeInitializer()->m_inferredType = result;
             }
         } else if (unify(result, initializerType))
@@ -589,7 +606,7 @@ void TypeChecker::visitVariable(AST::Variable& variable, VariableKind variableKi
         if ((addressSpace == AddressSpace::Storage || addressSpace == AddressSpace::Uniform || addressSpace == AddressSpace::Handle || addressSpace == AddressSpace::Workgroup) && variable.maybeInitializer())
             return error("variables in the address space '", toString(addressSpace), "' cannot have an initializer");
         if (addressSpace != AddressSpace::Workgroup && result->containsOverrideArray())
-            return error("array with an 'override' element count can only be used as the store type of a 'var<workgroup>'");
+            return error("");
     }
 
     if (value && !isBottom(result))
@@ -640,6 +657,8 @@ void TypeChecker::visit(AST::Function& function)
 
     const Type* functionType = m_types.functionType(WTFMove(parameters), m_returnType);
     introduceFunction(function.name(), functionType);
+
+    m_returnType = nullptr;
 }
 
 // Attributes
@@ -1088,18 +1107,23 @@ void TypeChecker::visit(AST::BinaryExpression& binary)
 void TypeChecker::visit(AST::IdentifierExpression& identifier)
 {
     auto* binding = readVariable(identifier.identifier());
-    if (!binding) {
+    if (UNLIKELY(!binding)) {
         typeError(identifier.span(), "unresolved identifier '", identifier.identifier(), "'");
         return;
     }
 
-    if (binding->kind != Binding::Value) {
+    if (UNLIKELY(binding->kind != Binding::Value)) {
         typeError(identifier.span(), "cannot use ", bindingKindToString(binding->kind), " '", identifier.identifier(), "' as value");
         return;
     }
 
-    if (binding->evaluation > m_evaluation) {
+    if (UNLIKELY(binding->evaluation > m_evaluation)) {
         typeError(identifier.span(), "cannot use ", evaluationToString(binding->evaluation), " value in ", evaluationToString(m_evaluation), " expression");
+        return;
+    }
+
+    if (UNLIKELY(isModuleScope() && std::holds_alternative<Types::Reference>(*binding->type))) {
+        typeError(identifier.span(), "var '", identifier.identifier(), "' cannot be referenced at module scope");
         return;
     }
 
@@ -1185,12 +1209,17 @@ void TypeChecker::visit(AST::CallExpression& call)
                 auto& functionType = std::get<Types::Function>(*targetBinding->type);
                 auto numberOfArguments = call.arguments().size();
                 auto numberOfParameters = functionType.parameters.size();
-                if (m_evaluation < Evaluation::Runtime) {
+                if (UNLIKELY(m_evaluation < Evaluation::Runtime)) {
                     typeError(call.span(), "cannot call function from ", evaluationToString(m_evaluation), " context");
                     return;
                 }
 
-                if (numberOfArguments != numberOfParameters) {
+                if (UNLIKELY(isModuleScope())) {
+                    typeError(call.span(), "functions cannot be called at module scope");
+                    return;
+                }
+
+                if (UNLIKELY(numberOfArguments != numberOfParameters)) {
                     const char* errorKind = numberOfArguments < numberOfParameters ? "few" : "many";
                     typeError(call.span(), "funtion call has too ", errorKind, " arguments: expected ", String::number(numberOfParameters), ", found ", String::number(numberOfArguments));
                     return;
@@ -1279,6 +1308,11 @@ void TypeChecker::visit(AST::CallExpression& call)
                 return;
             }
 
+            if (!elementType->isConstructible()) {
+                typeError(array.span(), "'", *elementType, "' cannot be used as an element type of an array");
+                return;
+            }
+
             auto constantValue = array.maybeElementCount()->constantValue();
             if (!constantValue) {
                 typeError(call.span(), "array must have constant size in order to be constructed");
@@ -1315,8 +1349,15 @@ void TypeChecker::visit(AST::CallExpression& call)
             for (auto& argument : call.arguments()) {
                 if (!elementType) {
                     elementType = infer(argument, m_evaluation);
+
                     if (auto* reference = std::get_if<Types::Reference>(elementType))
                         elementType = reference->element;
+
+                    if (!elementType->isConstructible()) {
+                        typeError(array.span(), "'", *elementType, "' cannot be used as an element type of an array");
+                        return;
+                    }
+
                     continue;
                 }
                 auto* argumentType = infer(argument, m_evaluation);
@@ -1485,6 +1526,11 @@ void TypeChecker::visit(AST::ArrayTypeExpression& array)
     auto* elementType = resolve(*array.maybeElementType());
     if (isBottom(elementType)) {
         inferred(m_types.bottomType());
+        return;
+    }
+
+    if (!elementType->isConstructible()) {
+        typeError(array.span(), "'", *elementType, "' cannot be used as an element type of an array");
         return;
     }
 
@@ -2139,6 +2185,11 @@ void TypeChecker::setConstantValue(Node& expression, const Type* type, const Con
     }
     expression.setConstantValue(value);
     convertValue(expression.span(), type, expression.m_constantValue);
+}
+
+bool TypeChecker::isModuleScope() const
+{
+    return !m_returnType;
 }
 
 
