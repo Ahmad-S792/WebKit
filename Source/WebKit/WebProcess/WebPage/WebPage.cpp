@@ -753,6 +753,10 @@ WebPage::WebPage(PageIdentifier pageID, WebPageCreationParameters&& parameters)
     }
 #endif
 
+#if PLATFORM(MAC)
+    SandboxExtension::consumePermanently(parameters.renderServerMachExtensionHandle);
+#endif
+
 #if HAVE(STATIC_FONT_REGISTRY)
     if (parameters.fontMachExtensionHandles.size())
         WebProcess::singleton().switchFromStaticFontRegistryToUserFontRegistry(WTFMove(parameters.fontMachExtensionHandles));
@@ -1815,7 +1819,8 @@ void WebPage::close()
 #endif
 
     m_printContext = nullptr;
-    m_mainFrame->coreLocalFrame()->loader().detachFromParent();
+    if (RefPtr localFrame = m_mainFrame->coreLocalFrame())
+        localFrame->loader().detachFromParent();
 
 #if ENABLE(SCROLLING_THREAD)
     if (m_useAsyncScrolling)

@@ -4300,17 +4300,17 @@ MaskWebGLStringsEnabled:
 
 MasonryEnabled:
   type: bool
-  status: preview
+  status: stable
   category: css
   humanReadableName: "CSS Masonry Layout"
   humanReadableDescription: "Enable Masonry Layout for CSS Grid"
   defaultValue:
     WebKitLegacy:
-      default: false
+      default: true
     WebKit:
-      default: false
+      default: true
     WebCore:
-      default: false
+      default: true
 
 MathMLEnabled:
   type: bool
@@ -5551,6 +5551,20 @@ RequestIdleCallbackEnabled:
   category: dom
   humanReadableName: "requestIdleCallback"
   humanReadableDescription: "Enable requestIdleCallback support"
+  defaultValue:
+    WebKitLegacy:
+      default: false
+    WebKit:
+      default: false
+    WebCore:
+      default: false
+
+RequestStorageAccessThrowsExceptionUntilReload:
+  type: bool
+  status: unstable
+  category: dom
+  humanReadableName: "requestStorageAccess throws execption until reload"
+  humanReadableDescription: "requestStorageAccess throws execption until reload"
   defaultValue:
     WebKitLegacy:
       default: false

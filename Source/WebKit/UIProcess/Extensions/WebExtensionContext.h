@@ -387,6 +387,7 @@ public:
 
     void didShowInspectorExtensionPanel(API::InspectorExtension&, const Inspector::ExtensionTabID&, WebCore::FrameIdentifier) const;
     void didHideInspectorExtensionPanel(API::InspectorExtension&, const Inspector::ExtensionTabID&) const;
+    void inspectedPageDidNavigate(API::InspectorExtension&, const URL&);
 #endif
 
     WebExtensionAction& defaultAction();
@@ -653,6 +654,8 @@ private:
 #if ENABLE(INSPECTOR_EXTENSIONS)
     // DevTools APIs
     void devToolsPanelsCreate(WebPageProxyIdentifier, const String& title, const String& iconPath, const String& pagePath, CompletionHandler<void(Expected<Inspector::ExtensionTabID, String>)>&&);
+    void devToolsInspectedWindowEval(WebPageProxyIdentifier, const String& scriptSource, const std::optional<URL>& frameURL, CompletionHandler<void(Expected<Expected<std::span<const uint8_t>, WebCore::ExceptionDetails>, String>)>&&);
+    void devToolsInspectedWindowReload(WebPageProxyIdentifier, const std::optional<bool>& ignoreCache);
 #endif
 
     // Event APIs

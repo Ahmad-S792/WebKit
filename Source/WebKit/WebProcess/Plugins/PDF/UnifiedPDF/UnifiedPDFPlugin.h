@@ -82,6 +82,7 @@ struct PDFPageCoverage {
 };
 
 class UnifiedPDFPlugin final : public PDFPluginBase, public WebCore::GraphicsLayerClient {
+    friend class AsyncPDFRenderer;
 public:
     static Ref<UnifiedPDFPlugin> create(WebCore::HTMLPlugInElement&);
 
@@ -340,8 +341,10 @@ private:
 
     WebCore::IntPoint convertFromDocumentToPage(const WebCore::IntPoint&, PDFDocumentLayout::PageIndex) const;
     WebCore::IntPoint convertFromPageToDocument(const WebCore::IntPoint&, PDFDocumentLayout::PageIndex) const;
+    WebCore::IntRect convertFromPageToDocument(const WebCore::IntRect&, PDFDocumentLayout::PageIndex) const;
 
     WebCore::IntPoint convertFromPageToContents(const WebCore::IntPoint&, PDFDocumentLayout::PageIndex) const;
+    WebCore::IntRect convertFromPageToContents(const WebCore::IntRect&, PDFDocumentLayout::PageIndex) const;
 
     std::optional<PDFDocumentLayout::PageIndex> pageIndexForDocumentPoint(const WebCore::IntPoint&) const;
 
