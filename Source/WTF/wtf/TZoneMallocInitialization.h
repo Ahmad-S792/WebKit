@@ -30,20 +30,29 @@
 #if USE(SYSTEM_MALLOC) || !USE(TZONE_MALLOC)
 
 #define WTF_TZONE_EXTRA_MAIN_ARGS
+#define WTF_TZONE_EXTRA_MAIN_PARAMS
 #define WTF_TZONE_INIT(seed)
 #define WTF_TZONE_REGISTRATION_DONE()
+#define WTF_TZONE_IS_READY() true
 
 #else
 
-#include <_simple.h>
 #include <bmalloc/TZoneHeapManager.h>
+
+#if USE(DARWIN_TZONE_SEED)
+#include <WebKitAdditions/TZoneAdditions.h>
+#else
+#define GET_TZONE_SEED_FROM_ENV(x) nullptr
+#endif
 
 #if !BUSE(TZONE)
 #error "TZones enabled in WTF, but not enabled in bmalloc"
 #endif
 
 #define WTF_TZONE_EXTRA_MAIN_ARGS , [[maybe_unused]] const char**, [[maybe_unused]] const char** darwinEnvp
+#define WTF_TZONE_EXTRA_MAIN_PARAMS , nullptr, darwinEnvp
 #define WTF_TZONE_INIT(seed) BTZONE_INIT(seed)
 #define WTF_TZONE_REGISTRATION_DONE() BTZONE_REGISTRATION_DONE()
+#define WTF_TZONE_IS_READY() BTZONE_IS_READY()
 
 #endif
