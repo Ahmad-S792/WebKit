@@ -95,6 +95,7 @@
 - (PDFPoint)firstCharCenter;
 - (/*nullable*/ NSString *)html;
 - (/*nullable*/ NSData *)webArchive;
+- (NSAttributedString *)attributedStringScaled:(CGFloat)scale;
 @end
 
 #endif // HAVE(PDFKIT)
@@ -113,6 +114,13 @@
 #if ENABLE(UNIFIED_PDF)
 @interface PDFDocument (IPI)
 - (PDFDestination *)namedDestination:(NSString *)name;
+@end
+
+@interface PDFDocument ()
+- (NSArray *)accessibilityChildren:(id)parent;
+- (NSArray *)accessibilityVisibleChildren:(NSArray<PDFPage *>*)visiblePages;
+- (void)resetAccessibilityTree;
+- (NSArray *)accessibilityPageElements;
 @end
 
 @interface PDFPage (IPI)

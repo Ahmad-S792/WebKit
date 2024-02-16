@@ -268,11 +268,14 @@ private:
     unsigned countFindMatches(const String& target, WebCore::FindOptions, unsigned maxMatchCount) override;
     bool findString(const String& target, WebCore::FindOptions, unsigned maxMatchCount) override;
     bool performDictionaryLookupAtLocation(const WebCore::FloatPoint&) override;
+    [[maybe_unused]] bool searchInDictionary(const RetainPtr<PDFSelection>&);
+    std::optional<WebCore::IntRect> selectionBoundsForFirstPageInDocumentSpace(const RetainPtr<PDFSelection>&) const;
+    bool showDefinitionForAttributedString(RetainPtr<NSAttributedString>&&, const WebCore::IntRect& rectInDocumentSpace);
     LookupTextResult lookupTextAtLocation(const WebCore::FloatPoint&, WebHitTestResultData&) override;
 
     id accessibilityHitTest(const WebCore::IntPoint&) const override;
     id accessibilityObject() const override;
-    id accessibilityAssociatedPluginParentForElement(WebCore::Element*) const override;
+    id accessibilityHitTestIntPoint(const WebCore::IntPoint&) const;
 
     void paint(WebCore::GraphicsContext&, const WebCore::IntRect&) override;
 
