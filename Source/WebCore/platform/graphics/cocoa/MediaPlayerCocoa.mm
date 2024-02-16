@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2020 Apple Inc. All rights reserved.
+ * Copyright (C) 2024 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -23,12 +23,20 @@
  * THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#pragma once
+#import "config.h"
+#import "MediaPlayer.h"
 
-#include <wtf/spi/darwin/XPCSPI.h>
+#if ENABLE(VIDEO) && PLATFORM(COCOA)
 
-namespace WebKit {
+#import "MediaPlayerPrivate.h"
 
-void handleXPCEndpointMessages(xpc_object_t event, const char* messageName);
+namespace WebCore {
 
+void MediaPlayer::setVideoReceiverEndpoint(const VideoReceiverEndpoint& endpoint)
+{
+    m_private->setVideoReceiverEndpoint(endpoint);
 }
+
+} // namespace WebCore
+
+#endif // ENABLE(VIDEO) && PLATFORM(COCOA)

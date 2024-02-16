@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2020 Apple Inc. All rights reserved.
+ * Copyright (C) 2024 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -23,31 +23,38 @@
  * THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#import "config.h"
-#import "HandleXPCEndpointMessages.h"
+#pragma once
 
-#import "LaunchServicesDatabaseManager.h"
-#import "LaunchServicesDatabaseXPCConstants.h"
-#import "XPCEndpoint.h"
+#if ENABLE(LINEAR_MEDIA_PLAYER)
 
-#import <wtf/text/WTFString.h>
+#include <WebCore/MediaPlayerIdentifier.h>
+#include <WebCore/ProcessIdentifier.h>
+#include <WebCore/VideoReceiverEndpoint.h>
+#include <wtf/OSObjectPtr.h>
+#include <wtf/text/ASCIILiteral.h>
 
 namespace WebKit {
 
-void handleXPCEndpointMessages(xpc_object_t event, const char* messageName)
-{
-    ASSERT_UNUSED(event, xpc_get_type(event) == XPC_TYPE_DICTIONARY);
-    ASSERT_UNUSED(messageName, messageName);
+class VideoReceiverEndpointMessage {
+public:
+    VideoReceiverEndpointMessage(WebCore::ProcessIdentifier, WebCore::MediaPlayerIdentifier, WebCore::VideoReceiverEndpoint);
 
-#if HAVE(LSDATABASECONTEXT)
-    if (!strcmp(messageName, LaunchServicesDatabaseXPCConstants::xpcLaunchServicesDatabaseXPCEndpointMessageName)) {
-        auto xpcEndPoint = xpc_dictionary_get_value(event, LaunchServicesDatabaseXPCConstants::xpcLaunchServicesDatabaseXPCEndpointNameKey);
-        if (!xpcEndPoint || xpc_get_type(xpcEndPoint) != XPC_TYPE_ENDPOINT)
-            return;
-        LaunchServicesDatabaseManager::singleton().setEndpoint(xpcEndPoint);
-        return;
-    }
-#endif
-}
+    static ASCIILiteral messageName() { return "video-receiver-endpoint"_s; }
+    static VideoReceiverEndpointMessage decode(xpc_object_t);
+    OSObjectPtr<xpc_object_t> encode() const;
 
-}
+    const WebCore::ProcessIdentifier& processIdentifier() const { return m_processIdentifier; }
+    const WebCore::MediaPlayerIdentifier& playerIdentifier() const { return m_playerIdentifier; }
+    const WebCore::VideoReceiverEndpoint& endpoint() const { return m_endpoint; }
+
+private:
+    VideoReceiverEndpointMessage() = default;
+
+    WebCore::ProcessIdentifier m_processIdentifier;
+    WebCore::MediaPlayerIdentifier m_playerIdentifier;
+    WebCore::VideoReceiverEndpoint m_endpoint;
+};
+
+} // namespace WebKit
+
+#endif // ENABLE(LINEAR_MEDIA_PLAYER)

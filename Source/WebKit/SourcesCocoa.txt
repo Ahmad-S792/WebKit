@@ -96,6 +96,7 @@ Platform/cocoa/WebPrivacyHelpers.mm
 Platform/ios/PaymentAuthorizationController.mm
 Platform/ios/PlaybackSessionInterfaceLMK.mm @no-unify
 Platform/ios/VideoPresentationInterfaceLMK.mm
+Platform/ios/VideoReceiverEndpointMessage.mm
 
 Platform/mac/MenuUtilities.mm
 Platform/mac/StringUtilities.mm
@@ -186,6 +187,7 @@ Shared/Cocoa/WebPreferencesDefaultValuesCocoa.mm
 
 Shared/Daemon/DaemonUtilities.mm
 
+Shared/EntryPointUtilities/Cocoa/XPCService/XPCEndpointMessages.mm
 Shared/EntryPointUtilities/Cocoa/XPCService/XPCServiceEntryPoint.mm
 Shared/EntryPointUtilities/Cocoa/XPCService/XPCServiceMain.mm
 
@@ -695,6 +697,7 @@ WebProcess/Plugins/PDF/PDFPluginTextAnnotation.mm
 WebProcess/Plugins/PDF/PDFScriptEvaluator.mm
 WebProcess/Plugins/PDF/UnifiedPDF/AsyncPDFRenderer.mm
 WebProcess/Plugins/PDF/UnifiedPDF/PDFDocumentLayout.mm
+WebProcess/Plugins/PDF/UnifiedPDF/PDFPageCoverage.mm
 WebProcess/Plugins/PDF/UnifiedPDF/UnifiedPDFPlugin.mm
 
 WebProcess/WebCoreSupport/WebCaptionPreferencesDelegate.cpp
