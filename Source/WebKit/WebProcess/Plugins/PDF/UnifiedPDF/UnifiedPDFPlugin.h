@@ -58,15 +58,23 @@ enum class WebEventType : uint8_t;
 enum class WebMouseEventButton : int8_t;
 enum class WebEventModifier : uint8_t;
 
+enum class RepaintRequirement : uint8_t {
+    PDFContent      = 1 << 0,
+    Selection       = 1 << 1,
+    HoverOverlay    = 1 << 2
+};
+
 class AnnotationTrackingState {
 public:
-    void startAnnotationTracking(RetainPtr<PDFAnnotation>&&, WebEventType, WebMouseEventButton);
-    void finishAnnotationTracking(WebEventType, WebMouseEventButton);
+    OptionSet<RepaintRequirement> startAnnotationTracking(RetainPtr<PDFAnnotation>&&, WebEventType, WebMouseEventButton);
+    OptionSet<RepaintRequirement> finishAnnotationTracking(WebEventType, WebMouseEventButton);
+
     PDFAnnotation *trackedAnnotation() const { return m_trackedAnnotation.get(); }
     bool isBeingHovered() const;
+
 private:
-    void handleMouseDraggedOffTrackedAnnotation();
     void resetAnnotationTrackingState();
+
     RetainPtr<PDFAnnotation> m_trackedAnnotation;
     bool m_isBeingHovered { false };
 };
@@ -102,6 +110,8 @@ public:
     RetainPtr<PDFAnnotation> nextTextAnnotation(AnnotationSearchDirection) const;
     void handlePDFActionForAnnotation(PDFAnnotation *, unsigned currentPageIndex);
 #endif
+    enum class IsAnnotationCommit : bool { No, Yes };
+    static OptionSet<RepaintRequirement> repaintRequirementsForAnnotation(PDFAnnotation *, IsAnnotationCommit = IsAnnotationCommit::No);
 
     void attemptToUnlockPDF(const String& password) final;
     void windowActivityDidChange() final;
@@ -266,6 +276,7 @@ private:
     Vector<WebCore::FloatRect> rectsForTextMatchesInRect(const WebCore::IntRect&) const final;
     bool drawsFindOverlay() const final { return false; }
     void collectFindMatchRects(const String&, WebCore::FindOptions);
+    RefPtr<WebCore::TextIndicator> textIndicatorForSelection(OptionSet<WebCore::TextIndicatorOption>, WebCore::TextIndicatorPresentationTransition) final;
     bool performDictionaryLookupAtLocation(const WebCore::FloatPoint&) override;
     [[maybe_unused]] bool searchInDictionary(const RetainPtr<PDFSelection>&);
     std::optional<WebCore::IntRect> selectionBoundsForFirstPageInDocumentSpace(const RetainPtr<PDFSelection>&) const;
@@ -274,7 +285,9 @@ private:
 
     id accessibilityHitTest(const WebCore::IntPoint&) const override;
     id accessibilityObject() const override;
-    id accessibilityAssociatedPluginParentForElement(WebCore::Element*) const override;
+#if PLATFORM(MAC)
+    id accessibilityHitTestIntPoint(const WebCore::IntPoint&) const;
+#endif
 
     void paint(WebCore::GraphicsContext&, const WebCore::IntRect&) override;
 
@@ -288,11 +301,13 @@ private:
     // Package up the data needed to paint a set of pages for the given clip, for use by UnifiedPDFPlugin::paintPDFContent and async rendering.
     PDFPageCoverage pageCoverageForRect(const WebCore::FloatRect& clipRect) const;
 
-    void paintPDFContent(WebCore::GraphicsContext&, const WebCore::FloatRect& clipRect);
+    enum class PaintingBehavior : uint8_t { All, PageContentsOnly };
+    void paintPDFContent(WebCore::GraphicsContext&, const WebCore::FloatRect& clipRect, PaintingBehavior = PaintingBehavior::All);
 
     void ensureLayers();
     void updatePageBackgroundLayers();
     void updateLayerHierarchy();
+    void updateLayerPositions();
 
     void didChangeScrollOffset() override;
     void didChangeIsInWindow();
@@ -348,14 +363,23 @@ private:
     std::optional<PDFDocumentLayout::PageIndex> pageIndexWithHoveredAnnotation() const;
     void paintHoveredAnnotationOnPage(PDFDocumentLayout::PageIndex, WebCore::GraphicsContext&, const WebCore::FloatRect& clipRect);
 
+    WebCore::FloatRect documentRectForAnnotation(PDFAnnotation *) const;
+
     void followLinkAnnotation(PDFAnnotation *);
 
+    void startTrackingAnnotation(RetainPtr<PDFAnnotation>&&, WebEventType, WebMouseEventButton);
+    void finishTrackingAnnotation(WebEventType, WebMouseEventButton, OptionSet<RepaintRequirement> = { });
+
     RefPtr<WebCore::GraphicsLayer> createGraphicsLayer(const String& name, WebCore::GraphicsLayer::Type);
+
+    void setNeedsRepaintInDocumentRect(OptionSet<RepaintRequirement>, const WebCore::FloatRect&);
 
     WebCore::IntPoint convertFromRootViewToDocument(const WebCore::IntPoint&) const;
     WebCore::IntPoint convertFromPluginToDocument(const WebCore::IntPoint&) const;
     WebCore::IntPoint convertFromDocumentToPlugin(const WebCore::IntPoint&) const;
     WebCore::IntRect convertFromDocumentToPlugin(const WebCore::IntRect&) const;
+    WebCore::IntRect convertFromDocumentToContents(const WebCore::IntRect&) const;
+    WebCore::IntPoint convertFromDocumentToContents(const WebCore::IntPoint&) const;
     WebCore::IntPoint convertFromDocumentToPage(const WebCore::IntPoint&, PDFDocumentLayout::PageIndex) const;
     WebCore::IntRect convertFromPageToRootView(const WebCore::IntRect&, PDFDocumentLayout::PageIndex) const;
     WebCore::IntPoint convertFromPageToDocument(const WebCore::IntPoint&, PDFDocumentLayout::PageIndex) const;
@@ -363,12 +387,10 @@ private:
     WebCore::IntPoint convertFromPageToContents(const WebCore::IntPoint&, PDFDocumentLayout::PageIndex) const;
     WebCore::IntRect convertFromPageToContents(const WebCore::IntRect&, PDFDocumentLayout::PageIndex) const;
 
-    WebCore::IntPoint convertFromDocumentToContents(WebCore::IntPoint) const;
-
     WebCore::IntPoint offsetContentsSpacePointByPageMargins(WebCore::IntPoint pointInContentsSpace) const;
 
     std::optional<PDFDocumentLayout::PageIndex> pageIndexForDocumentPoint(const WebCore::IntPoint&) const;
-    std::optional<PDFDocumentLayout::PageIndex> indexForCurrentPageInView() const;
+    PDFDocumentLayout::PageIndex indexForCurrentPageInView() const;
 
     RetainPtr<PDFAnnotation> annotationForRootViewPoint(const WebCore::IntPoint&) const;
 

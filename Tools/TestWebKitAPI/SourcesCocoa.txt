@@ -328,6 +328,7 @@ Tests/WebKitCocoa/WKWebViewDoesNotLogDuringInitialization.mm
 Tests/WebKitCocoa/WKWebViewEditActions.mm
 Tests/WebKitCocoa/WKWebViewEvaluateJavaScript.mm
 Tests/WebKitCocoa/WKWebViewFindString.mm
+Tests/WebKitCocoa/WKWebViewFindStringFindDelegate.mm
 Tests/WebKitCocoa/WKWebViewFirstResponderTests.mm
 Tests/WebKitCocoa/WKWebViewGetContents.mm
 Tests/WebKitCocoa/WKWebViewInspection.mm
@@ -352,6 +353,7 @@ Tests/WebKitCocoa/WebSQLBasics.mm
 Tests/WebKitCocoa/WebSocket.mm
 Tests/WebKitCocoa/WebsiteDataStoreCustomPaths.mm
 Tests/WebKitCocoa/WebsitePolicies.mm
+Tests/WebKitCocoa/WritingSuggestions.mm
 Tests/WebKitCocoa/YoutubeReplacementPlugin.mm
 Tests/WebKitCocoa/_WKInputDelegate.mm
 Tests/WebKitCocoa/_WKWebAuthenticationPanel.mm

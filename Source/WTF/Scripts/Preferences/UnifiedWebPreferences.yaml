@@ -1511,20 +1511,20 @@ CSSTypedOMEnabled:
 
 CSSUnprefixedBackdropFilterEnabled:
   type: bool
-  status: testable
+  status: embedder
   category: css
   humanReadableName: "CSS Unprefixed Backdrop Filter"
   humanReadableDescription: "Enable unprefixed backdrop-filter CSS property"
   defaultValue:
     WebKitLegacy:
       "ENABLE(UNPREFIXED_BACKDROP_FILTER)": true
-      default: false
+      default: true
     WebKit:
       "ENABLE(UNPREFIXED_BACKDROP_FILTER)": true
-      default: false
+      default: true
     WebCore:
       "ENABLE(UNPREFIXED_BACKDROP_FILTER)": true
-      default: false
+      default: true
 
 CSSWordBreakAutoPhraseEnabled:
   type: bool
@@ -8322,6 +8322,21 @@ WriteRichTextDataWhenCopyingOrDragging:
       default: true
     WebKit:
       "PLATFORM(IOS_FAMILY)": WebKit::defaultWriteRichTextDataWhenCopyingOrDragging()
+      default: true
+    WebCore:
+      default: true
+
+WritingSuggestionsAttributeEnabled:
+  type: bool
+  status: stable
+  category: dom
+  humanReadableName: "Writing Suggestions"
+  humanReadableDescription: "Enable the writingsuggestions attribute"
+  condition: ENABLE(WRITING_SUGGESTIONS)
+  defaultValue:
+    WebKitLegacy:
+      default: true
+    WebKit:
       default: true
     WebCore:
       default: true

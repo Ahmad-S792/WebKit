@@ -1044,6 +1044,8 @@ webkit.org/b/208577 [ Release ] fast/hidpi/image-srcset-relative-svg-canvas.html
 
 webkit.org/b/208590 [ Debug ] fast/events/beforeunload-prompt.html [ Pass Crash ]
 
+webkit.org/b/208889 fast/images/decode-render-animated-image.html [ Pass ImageOnlyFailure ]
+
 webkit.org/b/209006 imported/w3c/web-platform-tests/html/semantics/scripting-1/the-script-element/execution-timing/085.html [ Pass Failure ]
 
 webkit.org/b/209077 svg/custom/object-sizing-explicit-width.xhtml [ Pass Failure ]
@@ -1989,8 +1991,6 @@ webkit.org/b/268836 [ Monterey+ Debug ] loader/stateobjects/pushstate-size-ifram
 [ Monterey+ Release ] media/audio-session-category.html [ Pass Failure ]
 [ Monterey+ Release ] imported/w3c/web-platform-tests/preload/preload-in-data-doc.html [ Pass ImageOnlyFailure ]
 [ Monterey+ Release ] fast/speechrecognition/start-recognition-after-denied-gum.html [ Pass Timeout ]
-
-webkit.org/b/269251 [ Monterey+ Debug ] http/tests/site-isolation/iframe-process-termination-after-navigation-completed.html [ Skip ]
 
 #webkit.org/b/269301  (2X imported/w3c/web-platform-tests/webcodecs/videoFrame (layout-tests) are constant failures)
 [ Monterey+ x86_64 ] imported/w3c/web-platform-tests/webcodecs/videoFrame-createImageBitmap.https.any.html [ Failure ]

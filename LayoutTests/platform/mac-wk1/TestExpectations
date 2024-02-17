@@ -1452,7 +1452,6 @@ http/tests/inspector/network/fetch-response-body-304.html [ Skip ]
 # Async image decoding is WK2 only
 fast/images/async-image-background-change.html
 fast/images/async-image-src-change.html
-fast/images/async-image-composited-show.html
 http/tests/multipart/multipart-async-image.html
 
 css3/masking/mask-repeat-space-padding.html [ ImageOnlyFailure ]
@@ -2538,7 +2537,6 @@ imported/w3c/web-platform-tests/websockets/interfaces/WebSocket/bufferedAmount/b
 imported/w3c/web-platform-tests/websockets/interfaces/WebSocket/bufferedAmount/bufferedAmount-unicode.html?wss [ Pass Failure ]
 
 #webkit.org/b/248537 Batch mark expectations for Ventura test failures
-[ Ventura+ ] transitions/extra-transition.html [ Pass Failure ]
 [ Ventura+ arm64 ] svg/transforms/transformed-text-fill-pattern.html [ ImageOnlyFailure ]
 [ Ventura+ ] media/accessiblity-describes-video.html [ Crash ]
 [ Ventura+ ] media/track/track-mode.html  [ Crash ]

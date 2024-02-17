@@ -157,6 +157,7 @@ public:
     // isTextField && !isPasswordField.
     WEBCORE_EXPORT bool isText() const;
     bool isTextType() const;
+    bool supportsWritingSuggestions() const;
     WEBCORE_EXPORT bool isEmailField() const;
     WEBCORE_EXPORT bool isFileUpload() const;
     bool isImageButton() const;
@@ -344,6 +345,8 @@ public:
     bool isSwitchVisuallyOn() const;
     float switchAnimationPressedProgress() const;
 
+    void parserInitializeInputType();
+
 protected:
     HTMLInputElement(const QualifiedName&, Document&, HTMLFormElement*, bool createdByParser);
 
@@ -389,7 +392,6 @@ private:
     void attributeChanged(const QualifiedName&, const AtomString& oldValue, const AtomString& newValue, AttributeModificationReason = AttributeModificationReason::Directly) final;
     bool hasPresentationalHintsForAttribute(const QualifiedName&) const final;
     void collectPresentationalHintsForAttribute(const QualifiedName&, const AtomString&, MutableStyleProperties&) final;
-    void parserDidSetAttributes() final;
 
     void copyNonAttributePropertiesFromElement(const Element&) final;
 
@@ -432,7 +434,6 @@ private:
     bool computeWillValidate() const final;
     void requiredStateChanged() final;
 
-    void initializeInputType();
     void updateType(const AtomString& typeAttributeValue);
     void runPostTypeUpdateTasks();
 

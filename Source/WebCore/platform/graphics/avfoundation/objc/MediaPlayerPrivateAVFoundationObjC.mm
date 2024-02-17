@@ -1149,6 +1149,10 @@ void MediaPlayerPrivateAVFoundationObjC::createAVPlayer()
 #endif
     }
 
+#if HAVE(SPATIAL_TRACKING_LABEL)
+    [m_avPlayer _setSTSLabel:m_spatialTrackingLabel];
+#endif
+
     if (m_avPlayerItem)
         setAVPlayerItem(m_avPlayerItem.get());
 
@@ -3978,6 +3982,59 @@ void MediaPlayerPrivateAVFoundationObjC::audioOutputDeviceChanged()
         m_avPlayer.get().audioOutputDeviceUniqueID = nil;
     else
         m_avPlayer.get().audioOutputDeviceUniqueID = deviceId;
+#endif
+}
+
+#if HAVE(SPATIAL_TRACKING_LABEL)
+const String& MediaPlayerPrivateAVFoundationObjC::spatialTrackingLabel() const
+{
+    return m_spatialTrackingLabel;
+}
+
+void MediaPlayerPrivateAVFoundationObjC::setSpatialTrackingLabel(String&& spatialTrackingLabel)
+{
+    if (m_spatialTrackingLabel == spatialTrackingLabel)
+        return;
+    m_spatialTrackingLabel = spatialTrackingLabel;
+    if (m_avPlayer)
+        [m_avPlayer _setSTSLabel:spatialTrackingLabel];
+}
+#endif
+
+void MediaPlayerPrivateAVFoundationObjC::setVideoReceiverEndpoint(const VideoReceiverEndpoint& endpoint)
+{
+#if ENABLE(LINEAR_MEDIA_PLAYER)
+    assertIsMainThread();
+
+    if (!endpoint) {
+        clearVideoReceiverEndpoint();
+        return;
+    }
+
+    FigVideoTargetRef videoTarget;
+    OSStatus status = FigVideoTargetCreateWithVideoReceiverEndpointID(kCFAllocatorDefault, endpoint.get(), nullptr, &videoTarget);
+    if (status != noErr)
+        return;
+
+    m_videoTarget = adoptCF(videoTarget);
+    [m_avPlayer addVideoTarget:m_videoTarget.get()];
+    [m_videoLayer setPlayer:nil];
+#else
+    UNUSED_PARAM(endpoint);
+#endif
+}
+
+void MediaPlayerPrivateAVFoundationObjC::clearVideoReceiverEndpoint()
+{
+#if ENABLE(LINEAR_MEDIA_PLAYER)
+    assertIsMainThread();
+
+    RetainPtr videoTarget = std::exchange(m_videoTarget, nullptr);
+    if (!videoTarget)
+        return;
+
+    [m_videoLayer setPlayer:m_avPlayer.get()];
+    [m_avPlayer removeVideoTarget:videoTarget.get()];
 #endif
 }
 

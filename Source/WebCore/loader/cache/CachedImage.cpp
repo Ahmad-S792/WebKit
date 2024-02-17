@@ -29,6 +29,7 @@
 #include "CachedResourceClient.h"
 #include "CachedResourceClientWalker.h"
 #include "CachedResourceLoader.h"
+#include "Font.h"
 #include "FrameLoader.h"
 #include "FrameLoaderTypes.h"
 #include "LocalFrame.h"
@@ -37,6 +38,7 @@
 #include "MIMETypeRegistry.h"
 #include "MemoryCache.h"
 #include "RenderElement.h"
+#include "RenderImage.h"
 #include "SVGElementTypeHelpers.h"
 #include "SVGImage.h"
 #include "SecurityOrigin.h"
@@ -52,6 +54,10 @@
 
 #if USE(CG)
 #include "PDFDocumentImage.h"
+#endif
+
+#if ENABLE(MULTI_REPRESENTATION_HEIC)
+#include "MultiRepresentationHEICMetrics.h"
 #endif
 
 namespace WebCore {
@@ -185,12 +191,10 @@ void CachedImage::removeAllClientsWaitingForAsyncDecoding()
 {
     if (m_clientsWaitingForAsyncDecoding.isEmptyIgnoringNullReferences() || !hasImage())
         return;
-
     RefPtr bitmapImage = dynamicDowncast<BitmapImage>(image());
     if (!bitmapImage)
         return;
-    bitmapImage->stopDecodingWorkQueue();
-
+    bitmapImage->stopAsyncDecodingQueue();
     for (auto& client : m_clientsWaitingForAsyncDecoding)
         client.imageChanged(this);
     m_clientsWaitingForAsyncDecoding.clear();
@@ -314,6 +318,13 @@ FloatSize CachedImage::imageSizeForRenderer(const RenderElement* renderer, SizeT
     if (!image)
         return { };
 
+#if ENABLE(MULTI_REPRESENTATION_HEIC)
+    if (CheckedPtr renderImage = dynamicDowncast<RenderImage>(renderer); renderImage && renderImage->isMultiRepresentationHEIC()) {
+        auto metrics = renderImage->style().fontCascade().primaryFont().metricsForMultiRepresentationHEIC();
+        return metrics.size();
+    }
+#endif
+
     if (image->drawsSVGImage() && sizeType == UsedSize)
         return m_svgImageCache->imageSizeForRenderer(renderer);
 
@@ -432,6 +443,17 @@ void CachedImage::CachedImageObserver::didDraw(const Image& image)
 {
     for (CachedResourceHandle cachedImage : m_cachedImages)
         cachedImage->didDraw(image);
+}
+
+bool CachedImage::CachedImageObserver::canDestroyDecodedData(const Image& image)
+{
+    for (CachedResourceHandle cachedImage : m_cachedImages) {
+        if (&image != cachedImage->image())
+            continue;
+        if (!cachedImage->canDestroyDecodedData(image))
+            return false;
+    }
+    return true;
 }
 
 void CachedImage::CachedImageObserver::imageFrameAvailable(const Image& image, ImageAnimatingState animatingState, const IntRect* changeRect, DecodingStatus decodingStatus)
@@ -658,6 +680,20 @@ void CachedImage::didDraw(const Image& image)
         timeStamp = MonotonicTime::now();
     
     CachedResource::didAccessDecodedData(timeStamp);
+}
+
+bool CachedImage::canDestroyDecodedData(const Image& image)
+{
+    if (&image != m_image)
+        return false;
+
+    CachedResourceClientWalker<CachedImageClient> walker(*this);
+    while (CachedImageClient* client = walker.next()) {
+        if (!client->canDestroyDecodedData())
+            return false;
+    }
+
+    return true;
 }
 
 void CachedImage::imageFrameAvailable(const Image& image, ImageAnimatingState animatingState, const IntRect* changeRect, DecodingStatus decodingStatus)

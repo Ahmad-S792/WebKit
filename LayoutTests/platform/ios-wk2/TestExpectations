@@ -829,7 +829,6 @@ http/tests/cookies/double-quoted-value-with-semi-colon.html
 storage/domstorage/sessionstorage/window-open.html
 transitions/cubic-bezier-overflow-transform.html
 transitions/default-timing-function.html
-transitions/extra-transition.html
 transitions/interrupt-transform-transition.html
 
 # Crashes when running all tests, but not by itself.
@@ -2393,8 +2392,6 @@ webkit.org/b/269033 fast/events/ios/select-all-with-existing-selection.html [ Pa
 webkit.org/b/269086 [ Release ] imported/w3c/web-platform-tests/feature-policy/feature-policy-frame-policy-allowed-for-all.https.sub.html [ Pass Failure ]
 
 webkit.org/b/269116 imported/w3c/web-platform-tests/css/css-flexbox/negative-overflow-002.html [ Failure ]
-
-webkit.org/b/269314 [ Release ] imported/w3c/web-platform-tests/webrtc-stats/supported-stats.https.html [ Failure ]
 
 webkit.org/b/269321 webgl/1.0.3/conformance/uniforms/out-of-bounds-uniform-array-access.html [ Timeout ]
 

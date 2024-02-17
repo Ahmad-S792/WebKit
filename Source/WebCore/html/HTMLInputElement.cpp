@@ -753,7 +753,7 @@ void HTMLInputElement::collectPresentationalHintsForAttribute(const QualifiedNam
     }
 }
 
-inline void HTMLInputElement::initializeInputType()
+void HTMLInputElement::parserInitializeInputType()
 {
     ASSERT(m_parsingInProgress);
     ASSERT(!m_inputType);
@@ -785,9 +785,13 @@ void HTMLInputElement::attributeChanged(const QualifiedName& name, const AtomStr
 
     switch (name.nodeName()) {
     case AttributeNames::typeAttr:
+        if (attributeModificationReason == AttributeModificationReason::Parser)
+            return; // parserSetAttributes have taken care of this
         updateType(newValue);
         break;
     case AttributeNames::valueAttr:
+        if (attributeModificationReason == AttributeModificationReason::Parser)
+            return; // parserSetAttributes have taken care of this
         // Changes to the value attribute may change whether or not this element has a default value.
         // If this field is autocomplete=off that might affect the return value of needsSuspensionCallback.
         if (m_autocomplete == Off) {
@@ -912,14 +916,6 @@ bool HTMLInputElement::supportsReadOnly() const
     return m_inputType->supportsReadOnly();
 }
 
-void HTMLInputElement::parserDidSetAttributes()
-{
-    DelayedUpdateValidityScope delayedUpdateValidityScope(*this);
-
-    ASSERT(m_parsingInProgress);
-    initializeInputType();
-}
-
 void HTMLInputElement::finishParsingChildren()
 {
     m_parsingInProgress = false;
@@ -1041,6 +1037,18 @@ bool HTMLInputElement::isTextField() const
 bool HTMLInputElement::isTextType() const
 {
     return m_inputType->isTextType();
+}
+
+bool HTMLInputElement::supportsWritingSuggestions() const
+{
+    static constexpr OptionSet<InputType::Type> allowedTypes = {
+        InputType::Type::Text,
+        InputType::Type::Search,
+        InputType::Type::URL,
+        InputType::Type::Email,
+    };
+
+    return allowedTypes.contains(m_inputType->type());
 }
 
 void HTMLInputElement::setDefaultCheckedState(bool isDefaultChecked)
