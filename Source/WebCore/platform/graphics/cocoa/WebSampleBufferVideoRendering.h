@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2019 Apple Inc. All rights reserved.
+ * Copyright (C) 2024 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -22,44 +22,28 @@
  * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF
  * THE POSSIBILITY OF SUCH DAMAGE.
  */
-[
-    Conditional=WEB_AUTHN,
-    JSGenerateToJSObject,
-] dictionary CredentialPropertiesOutput {
-    boolean rk;
-};
 
-[
-    Conditional=WEB_AUTHN,
-    JSGenerateToJSObject,
-] dictionary AuthenticationExtensionsLargeBlobOutputs {
-    boolean supported;
-    ArrayBuffer blob;
-    boolean written;
-};
+#import <pal/spi/cocoa/AVFoundationSPI.h>
 
-[
-    Conditional=WEB_AUTHN,
-    JSGenerateToJSObject,
-] dictionary AuthenticationExtensionsPRFValues {
-    required ArrayBuffer first;
-    ArrayBuffer second;
-};
+NS_ASSUME_NONNULL_BEGIN
 
-[
-    Conditional=WEB_AUTHN,
-    JSGenerateToJSObject,
-] dictionary AuthenticationExtensionsPRFOutputs {
-    boolean enabled;
-    AuthenticationExtensionsPRFValues results;
-};
+@protocol WebSampleBufferVideoRendering <AVQueuedSampleBufferRendering>
+- (void)expectMinimumUpcomingSampleBufferPresentationTime:(CMTime)minimumUpcomingPresentationTime;
+- (void)resetUpcomingSampleBufferPresentationTimeExpectations;
+- (nullable CVPixelBufferRef)copyDisplayedPixelBuffer;
+- (void)prerollDecodeWithCompletionHandler:(void (^)(BOOL success))block;
+- (nullable AVVideoPerformanceMetrics *)videoPerformanceMetrics;
+@property (readonly) BOOL requiresFlushToResumeDecoding;
+@property (readonly) AVQueuedSampleBufferRenderingStatus status;
+@property (readonly, nullable) NSError *error;
+@end
 
-[
-    Conditional=WEB_AUTHN,
-    JSGenerateToJSObject,
-] dictionary AuthenticationExtensionsClientOutputs {
-    boolean appid;
-    CredentialPropertiesOutput credProps;
-    AuthenticationExtensionsLargeBlobOutputs largeBlob;
-    AuthenticationExtensionsPRFOutputs prf;
-};
+@interface AVSampleBufferDisplayLayer (WebCoreExtras) <WebSampleBufferVideoRendering>
+@end
+
+#if HAVE(AVSAMPLEBUFFERVIDEORENDERER)
+@interface AVSampleBufferVideoRenderer (WebCoreExtras) <WebSampleBufferVideoRendering>
+@end
+#endif
+
+NS_ASSUME_NONNULL_END
