@@ -2040,6 +2040,9 @@ imported/w3c/web-platform-tests/mediacapture-streams/MediaStream-MediaElement-pr
 
 imported/w3c/web-platform-tests/mediacapture-insertable-streams/VideoTrackGenerator-with-window-tracks.https.html [ Skip ]
 
+# Libwebrtc log test
+http/tests/inspector/gatherWebInspectorRTCLogs.html [ Skip ]
+
 # In these tests only one canvas frame is pushed towards the sender webrtcbin,
 # this is not enough for the receiver webrtcbin to create its video source pad,
 # because on sender side we need at least a complete GOP... So the tests time
@@ -2520,8 +2523,6 @@ media/modern-media-controls/watchos-media-controls [ Skip ]
 
 # Opera-submitted tests to W3C for <track>, a lot of failures still.
 webkit.org/b/103926 media/track/opera/idl/media-idl-tests.html [ Skip ]
-webkit.org/b/103926 media/track/opera/interfaces/HTMLElement/HTMLMediaElement/crossOrigin.html [ Skip ]
-webkit.org/b/103926 media/track/opera/interfaces/HTMLElement/HTMLTrackElement/kind.html [ Skip ]
 webkit.org/b/103926 media/track/opera/interfaces/HTMLElement/HTMLTrackElement/src.html [ Skip ]
 webkit.org/b/103926 media/track/opera/interfaces/TextTrackCue/getCueAsHTML.html [ Skip ]
 webkit.org/b/103926 media/track/opera/interfaces/TextTrackCue/line.html [ Skip ]
@@ -3278,7 +3279,6 @@ http/tests/media/video-preload.html [ Pass Slow ]
 webkit.org/b/108925 http/tests/media/video-play-stall.html [ Failure Timeout ]
 
 webkit.org/b/137698 media/video-controls-drag.html [ Timeout ]
-webkit.org/b/130971 media/track/track-remove-track.html [ Timeout ]
 webkit.org/b/113127 media/track/track-prefer-captions.html [ Timeout ]
 
 webkit.org/b/168373 media/media-fullscreen-loop-inline.html [ Timeout ]
