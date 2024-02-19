@@ -73,8 +73,8 @@ public:
     FloatRect strokeBoundingRect(const Function<void(GraphicsContext&)>& strokeStyleApplier) const;
 
 private:
-    PathSkia();
-    explicit PathSkia(SkPath&&, RefPtr<PathStream>&&);
+    PathSkia() = default;
+    explicit PathSkia(const SkPath&);
 
     void applySegments(const PathSegmentApplier&) const final;
 
@@ -85,8 +85,9 @@ private:
     FloatRect fastBoundingRect() const final;
     FloatRect boundingRect() const final;
 
+    void addEllipse(const FloatPoint&, float radiusX, float radiusY, float startAngle, float endAngle);
+
     SkPath m_platformPath;
-    RefPtr<PathStream> m_elementsStream;
 };
 
 } // namespace WebCore

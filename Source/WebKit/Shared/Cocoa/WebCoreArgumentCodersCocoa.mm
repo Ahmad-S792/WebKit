@@ -76,41 +76,4 @@
 
 namespace IPC {
 
-#if USE(AVFOUNDATION)
-
-void ArgumentCoder<RetainPtr<CVPixelBufferRef>>::encode(Encoder& encoder, const RetainPtr<CVPixelBufferRef>& pixelBuffer)
-{
-    // Use IOSurface as the means to transfer CVPixelBufferRef.
-    MachSendRight sendRight;
-    if (pixelBuffer) {
-        if (auto surface = WebCore::CVPixelBufferGetIOSurface(pixelBuffer.get()))
-            sendRight = MachSendRight::adopt(IOSurfaceCreateMachPort(surface));
-    }
-    encoder << WTFMove(sendRight);
-}
-
-std::optional<RetainPtr<CVPixelBufferRef>> ArgumentCoder<RetainPtr<CVPixelBufferRef>>::decode(Decoder& decoder)
-{
-    std::optional<MachSendRight> sendRight;
-    decoder >> sendRight;
-    if (!sendRight)
-        return std::nullopt;
-    RetainPtr<CVPixelBufferRef> pixelBuffer;
-    if (!*sendRight)
-        return pixelBuffer;
-    {
-        auto surface = adoptCF(IOSurfaceLookupFromMachPort(sendRight->sendRight()));
-        if (!surface)
-            return std::nullopt;
-        CVPixelBufferRef rawBuffer = nullptr;
-        auto status = WebCore::CVPixelBufferCreateWithIOSurface(kCFAllocatorDefault, surface.get(), nullptr, &rawBuffer);
-        if (status != noErr || !rawBuffer)
-            return std::nullopt;
-        pixelBuffer = adoptCF(rawBuffer);
-    }
-    return pixelBuffer;
-}
-
-#endif
-
 } // namespace IPC
