@@ -1001,6 +1001,10 @@ void TypeChecker::visit(AST::FieldAccessExpression& access)
                 typeError(access.span(), "struct '", *baseType, "' does not have a member called '", access.fieldName(), "'");
                 return nullptr;
             }
+            if (auto constant = access.base().constantValue()) {
+                auto& constantStruct = std::get<ConstantStruct>(*constant);
+                access.setConstantValue(constantStruct.fields.get(access.fieldName().id()));
+            }
             return it->value;
         }
 
@@ -1047,21 +1051,27 @@ void TypeChecker::visit(AST::FieldAccessExpression& access)
 
 void TypeChecker::visit(AST::IndexAccessExpression& access)
 {
-    const auto& constantAccess = [&]<typename T>() {
+    const auto& constantAccess = [&]<typename T>(std::optional<unsigned> typeSize) {
         auto constantBase = access.base().constantValue();
         auto constantIndex = access.index().constantValue();
-        bool isConstant = constantBase && constantIndex;
 
-        if (!isConstant)
+        if (!constantIndex)
             return;
 
-        auto constant = std::get<T>(*constantBase);
+        auto size = typeSize.value_or(0);
+        if (!size && constantBase)
+            size = std::get<T>(*constantBase).upperBound();
+        if (!size)
+            return;
+
         auto index = constantIndex->integerValue();
-        auto size = constant.upperBound();
-        if (index < 0 || static_cast<size_t>(index) >= size)
+        if (index < 0 || static_cast<size_t>(index) >= size) {
             typeError(InferBottom::No, access.span(), "index ", String::number(index), " is out of bounds [0..", String::number(size - 1), "]");
-        else
-            access.setConstantValue(constant[index]);
+            return;
+        }
+
+        if (constantBase)
+            access.setConstantValue(std::get<T>(*constantBase)[index]);
     };
 
     const auto& accessImpl = [&](const Type* base) -> const Type* {
@@ -1072,13 +1082,16 @@ void TypeChecker::visit(AST::IndexAccessExpression& access)
         const Type* result = nullptr;
         if (auto* array = std::get_if<Types::Array>(base)) {
             result = array->element;
-            constantAccess.operator()<ConstantArray>();
+            std::optional<unsigned> size;
+            if (auto* constantSize = std::get_if<unsigned>(&array->size))
+                size = *constantSize;
+            constantAccess.operator()<ConstantArray>(size);
         } else if (auto* vector = std::get_if<Types::Vector>(base)) {
             result = vector->element;
-            constantAccess.operator()<ConstantVector>();
+            constantAccess.operator()<ConstantVector>(vector->size);
         } else if (auto* matrix = std::get_if<Types::Matrix>(base)) {
             result = m_types.vectorType(matrix->rows, matrix->element);
-            constantAccess.operator()<ConstantMatrix>();
+            constantAccess.operator()<ConstantMatrix>(matrix->columns);
         }
 
         if (!result) {
@@ -1196,6 +1209,8 @@ void TypeChecker::visit(AST::CallExpression& call)
                         return;
                     }
 
+                    HashMap<String, ConstantValue> constantFields;
+                    bool isConstant = true;
                     for (unsigned i = 0; i < numberOfArguments; ++i) {
                         auto& argument = call.arguments()[i];
                         auto& member = structType->structure.members()[i];
@@ -1207,8 +1222,19 @@ void TypeChecker::visit(AST::CallExpression& call)
                         }
                         argument.m_inferredType = fieldType;
                         auto& value = argument.m_constantValue;
-                        if (value.has_value())
-                            convertValue(argument.span(), argument.inferredType(), value);
+                        if (value.has_value()) {
+                            if (convertValue(argument.span(), argument.inferredType(), value))
+                                constantFields.set(member.name(), *value);
+                            else
+                                isConstant = false;
+                        }
+                    }
+                    if (isConstant) {
+
+                        if (numberOfArguments)
+                            setConstantValue(call, targetBinding->type, ConstantStruct { WTFMove(constantFields) });
+                        else
+                            setConstantValue(call, targetBinding->type, zeroValue(targetBinding->type));
                     }
                     inferred(targetBinding->type);
                     return;
@@ -1385,11 +1411,12 @@ void TypeChecker::visit(AST::CallExpression& call)
                 return;
             }
             for (auto& argument : call.arguments()) {
-                if (!elementType) {
-                    elementType = infer(argument, m_evaluation);
+                auto* argumentType = infer(argument, m_evaluation);
+                if (auto* reference = std::get_if<Types::Reference>(argumentType))
+                    argumentType = reference->element;
 
-                    if (auto* reference = std::get_if<Types::Reference>(elementType))
-                        elementType = reference->element;
+                if (!elementType) {
+                    elementType = argumentType;
 
                     if (!elementType->isConstructible()) {
                         typeError(array.span(), "'", *elementType, "' cannot be used as an element type of an array");
@@ -1398,7 +1425,6 @@ void TypeChecker::visit(AST::CallExpression& call)
 
                     continue;
                 }
-                auto* argumentType = infer(argument, m_evaluation);
                 if (unify(elementType, argumentType))
                     continue;
                 if (unify(argumentType, elementType)) {
@@ -1709,8 +1735,31 @@ const Type* TypeChecker::vectorFieldAccess(const Types::Vector& vector, AST::Fie
         return nullptr;
     }
 
+    const auto& constAccess = [&](const ConstantVector& vector, char field) -> ConstantValue {
+        switch (field) {
+        case 'r':
+        case 'x':
+            return vector.elements[0];
+        case 'g':
+        case 'y':
+            return vector.elements[1];
+        case 'b':
+        case 'z':
+            return vector.elements[2];
+        case 'a':
+        case 'w':
+            return vector.elements[3];
+        default:
+            RELEASE_ASSERT_NOT_REACHED();
+        };
+    };
+
+    const auto& constantValue = access.base().constantValue();
+
     switch (length) {
     case 1:
+        if (constantValue)
+            access.setConstantValue(constAccess(std::get<ConstantVector>(*constantValue), fieldName[0]));
         return vector.element;
     case 2:
     case 3:
@@ -1721,6 +1770,13 @@ const Type* TypeChecker::vectorFieldAccess(const Types::Vector& vector, AST::Fie
         return nullptr;
     }
 
+    if (constantValue) {
+        const auto& vector = std::get<ConstantVector>(*constantValue);
+        ConstantVector result(length);
+        for (unsigned i = 0; i < length; ++i)
+            result.elements[i] = constAccess(vector, fieldName[i]);
+        access.setConstantValue(result);
+    }
     return m_types.vectorType(length, vector.element);
 }
 
@@ -2038,9 +2094,15 @@ bool TypeChecker::convertValueImpl(const SourceSpan& span, const Type* type, Con
             }
             return true;
         },
-        [&](const Types::Struct&) -> bool {
-            // FIXME: this should be supported
-            RELEASE_ASSERT_NOT_REACHED();
+        [&](const Types::Struct& structType) -> bool {
+            auto& constantStruct = std::get<ConstantStruct>(value);
+            for (auto& [key, type] : structType.fields) {
+                auto it = constantStruct.fields.find(key);
+                RELEASE_ASSERT(it != constantStruct.fields.end());
+                if (!convertValueImpl(span, type, it->value))
+                    return false;
+            }
+            return true;
         },
         [&](const Types::PrimitiveStruct& primitiveStruct) -> bool {
             auto& constantStruct = std::get<ConstantStruct>(value);

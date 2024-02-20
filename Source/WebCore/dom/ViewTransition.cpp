@@ -350,9 +350,23 @@ void ViewTransition::activateViewTransition()
 // https://drafts.csswg.org/css-view-transitions/#handle-transition-frame-algorithm
 void ViewTransition::handleTransitionFrame()
 {
-    bool hasActiveAnimations = false;
+    if (!m_document)
+        return;
 
-    // FIXME: Actually query the animation state.
+    RefPtr documentElement = m_document->documentElement();
+    if (!documentElement)
+        return;
+
+    bool hasActiveAnimations = documentElement->hasKeyframeEffects(Style::PseudoElementIdentifier { PseudoId::ViewTransition });
+
+    for (auto& name : namedElements().keys()) {
+        if (hasActiveAnimations)
+            break;
+        hasActiveAnimations = documentElement->hasKeyframeEffects(Style::PseudoElementIdentifier { PseudoId::ViewTransitionGroup, name })
+            || documentElement->hasKeyframeEffects(Style::PseudoElementIdentifier { PseudoId::ViewTransitionImagePair, name })
+            || documentElement->hasKeyframeEffects(Style::PseudoElementIdentifier { PseudoId::ViewTransitionNew, name })
+            || documentElement->hasKeyframeEffects(Style::PseudoElementIdentifier { PseudoId::ViewTransitionOld, name });
+    }
 
     if (!hasActiveAnimations) {
         m_phase = ViewTransitionPhase::Done;
@@ -373,6 +387,17 @@ void ViewTransition::clearViewTransition()
     ASSERT(m_document->activeViewTransition() == this);
 
     // FIXME: Implement step 3.
+
+    // End animations on pseudo-elements so they can run again.
+    if (RefPtr documentElement = m_document->documentElement()) {
+        Styleable(*documentElement, Style::PseudoElementIdentifier { PseudoId::ViewTransition }).cancelStyleOriginatedAnimations();
+        for (auto& name : namedElements().keys()) {
+            Styleable(*documentElement, Style::PseudoElementIdentifier { PseudoId::ViewTransitionGroup, name }).cancelStyleOriginatedAnimations();
+            Styleable(*documentElement, Style::PseudoElementIdentifier { PseudoId::ViewTransitionImagePair, name }).cancelStyleOriginatedAnimations();
+            Styleable(*documentElement, Style::PseudoElementIdentifier { PseudoId::ViewTransitionNew, name }).cancelStyleOriginatedAnimations();
+            Styleable(*documentElement, Style::PseudoElementIdentifier { PseudoId::ViewTransitionOld, name }).cancelStyleOriginatedAnimations();
+        }
+    }
 
     protectedDocument()->setHasViewTransitionPseudoElementTree(false);
     protectedDocument()->setActiveViewTransition(nullptr);
