@@ -1,7 +1,7 @@
 /*
  * Copyright (C) 2004, 2005, 2008 Nikolas Zimmermann <zimmermann@kde.org>
  * Copyright (C) 2004, 2005, 2006, 2007 Rob Buis <buis@kde.org>
- * Copyright (C) 2015-2021 Apple Inc. All right reserved.
+ * Copyright (C) 2015-2024 Apple Inc. All right reserved.
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Library General Public
@@ -110,7 +110,8 @@ SVGTests::SVGTests(SVGElement* contextElement)
 
 bool SVGTests::hasExtension(const String& extension)
 {
-    // We recognize XHTML and MathML, as implemented in Gecko and suggested in the SVG Tiny recommendation (http://www.w3.org/TR/SVG11/struct.html#RequiredExtensionsAttribute).
+    // We recognize XHTML and MathML, as implemented in Gecko and suggested in the SVG Tiny
+    // recommendation (http://www.w3.org/TR/SVG11/struct.html#RequiredExtensionsAttribute).
 #if ENABLE(MATHML)
     if (extension == MathMLNames::mathmlNamespaceURI)
         return true;
@@ -132,10 +133,6 @@ bool SVGTests::isValid() const
     auto genericDefaultLanguage = StringView(defaultLanguage).left(2);
     for (auto& language : attributes->systemLanguage().items()) {
         if (language != genericDefaultLanguage)
-            return false;
-    }
-    for (auto& extension : attributes->requiredExtensions().items()) {
-        if (!hasExtension(extension))
             return false;
     }
     return true;
@@ -162,9 +159,6 @@ void SVGTests::parseAttribute(const QualifiedName& attributeName, const AtomStri
     case AttributeNames::requiredFeaturesAttr:
         protectedRequiredFeatures()->reset(value);
         break;
-    case AttributeNames::requiredExtensionsAttr:
-        protectedRequiredExtensions()->reset(value);
-        break;
     case AttributeNames::systemLanguageAttr:
         protectedSystemLanguage()->reset(value);
         break;
@@ -187,7 +181,6 @@ void SVGTests::svgAttributeChanged(const QualifiedName& attrName)
 void SVGTests::addSupportedAttributes(MemoryCompactLookupOnlyRobinHoodHashSet<QualifiedName>& supportedAttributes)
 {
     supportedAttributes.add(SVGNames::requiredFeaturesAttr);
-    supportedAttributes.add(SVGNames::requiredExtensionsAttr);
     supportedAttributes.add(SVGNames::systemLanguageAttr);
 }
 
