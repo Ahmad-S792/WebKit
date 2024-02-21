@@ -10,12 +10,12 @@ PASS foreignObject.requiredExtensions instanceof SVGStringList is true
 PASS foreignObject.systemLanguage instanceof SVGStringList is true
 
 Check the hasExtension function
-PASS foreignObject.hasExtension('http://www.w3.org/1998/Math/MathML') is true
-PASS foreignObject.hasExtension('http://www.w3.org/1999/xhtml') is true
-PASS foreignObject.hasExtension('') is false
-PASS foreignObject.hasExtension('unknownExtension') is false
-PASS foreignObject.hasExtension('HTTP://WWW.W3.ORG/1999/XHTML') is false
-PASS foreignObject.hasExtension('http://www.w3.org/1998/Math/MathML http://www.w3.org/1999/xhtml') is false
+FAIL foreignObject.hasExtension('http://www.w3.org/1998/Math/MathML') should be true. Threw exception TypeError: foreignObject.hasExtension is not a function. (In 'foreignObject.hasExtension('http://www.w3.org/1998/Math/MathML')', 'foreignObject.hasExtension' is undefined)
+FAIL foreignObject.hasExtension('http://www.w3.org/1999/xhtml') should be true. Threw exception TypeError: foreignObject.hasExtension is not a function. (In 'foreignObject.hasExtension('http://www.w3.org/1999/xhtml')', 'foreignObject.hasExtension' is undefined)
+FAIL foreignObject.hasExtension('') should be false. Threw exception TypeError: foreignObject.hasExtension is not a function. (In 'foreignObject.hasExtension('')', 'foreignObject.hasExtension' is undefined)
+FAIL foreignObject.hasExtension('unknownExtension') should be false. Threw exception TypeError: foreignObject.hasExtension is not a function. (In 'foreignObject.hasExtension('unknownExtension')', 'foreignObject.hasExtension' is undefined)
+FAIL foreignObject.hasExtension('HTTP://WWW.W3.ORG/1999/XHTML') should be false. Threw exception TypeError: foreignObject.hasExtension is not a function. (In 'foreignObject.hasExtension('HTTP://WWW.W3.ORG/1999/XHTML')', 'foreignObject.hasExtension' is undefined)
+FAIL foreignObject.hasExtension('http://www.w3.org/1998/Math/MathML http://www.w3.org/1999/xhtml') should be false. Threw exception TypeError: foreignObject.hasExtension is not a function. (In 'foreignObject.hasExtension('http://www.w3.org/1998/Math/MathML http://www.w3.org/1999/xhtml')', 'foreignObject.hasExtension' is undefined)
 PASS successfullyParsed is true
 
 TEST COMPLETE

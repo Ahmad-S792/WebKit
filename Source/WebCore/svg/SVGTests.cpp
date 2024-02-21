@@ -1,7 +1,7 @@
 /*
  * Copyright (C) 2004, 2005, 2008 Nikolas Zimmermann <zimmermann@kde.org>
  * Copyright (C) 2004, 2005, 2006, 2007 Rob Buis <buis@kde.org>
- * Copyright (C) 2015-2021 Apple Inc. All right reserved.
+ * Copyright (C) 2015-2024 Apple Inc. All right reserved.
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Library General Public
@@ -31,10 +31,6 @@
 #include "SVGStringList.h"
 #include <wtf/Language.h>
 #include <wtf/SortedArrayMap.h>
-
-#if ENABLE(MATHML)
-#include "MathMLNames.h"
-#endif
 
 namespace WebCore {
 
@@ -108,16 +104,6 @@ SVGTests::SVGTests(SVGElement* contextElement)
 {
 }
 
-bool SVGTests::hasExtension(const String& extension)
-{
-    // We recognize XHTML and MathML, as implemented in Gecko and suggested in the SVG Tiny recommendation (http://www.w3.org/TR/SVG11/struct.html#RequiredExtensionsAttribute).
-#if ENABLE(MATHML)
-    if (extension == MathMLNames::mathmlNamespaceURI)
-        return true;
-#endif
-    return extension == HTMLNames::xhtmlNamespaceURI;
-}
-
 bool SVGTests::isValid() const
 {
     auto attributes = conditionalProcessingAttributesIfExists();
@@ -132,10 +118,6 @@ bool SVGTests::isValid() const
     auto genericDefaultLanguage = StringView(defaultLanguage).left(2);
     for (auto& language : attributes->systemLanguage().items()) {
         if (language != genericDefaultLanguage)
-            return false;
-    }
-    for (auto& extension : attributes->requiredExtensions().items()) {
-        if (!hasExtension(extension))
             return false;
     }
     return true;
