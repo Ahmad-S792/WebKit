@@ -131,9 +131,7 @@ LocalFrameViewLayoutContext::LocalFrameViewLayoutContext(LocalFrameView& frameVi
 {
 }
 
-LocalFrameViewLayoutContext::~LocalFrameViewLayoutContext()
-{
-}
+LocalFrameViewLayoutContext::~LocalFrameViewLayoutContext() = default;
 
 UpdateScrollInfoAfterLayoutTransaction& LocalFrameViewLayoutContext::updateScrollInfoAfterLayoutTransaction()
 {
@@ -189,7 +187,6 @@ void LocalFrameViewLayoutContext::performLayout()
     SingleThreadWeakPtr<RenderElement> layoutRoot;
     
     m_layoutTimer.stop();
-    m_setNeedsLayoutWasDeferred = false;
 
 #if !LOG_DISABLED
     if (m_firstLayout && !frame->ownerElement())
@@ -336,34 +333,16 @@ bool LocalFrameViewLayoutContext::needsLayout() const
     auto* renderView = this->renderView();
     return isLayoutPending()
         || (renderView && renderView->needsLayout())
-        || subtreeLayoutRoot()
-        || (m_disableSetNeedsLayoutCount && m_setNeedsLayoutWasDeferred);
+        || subtreeLayoutRoot();
 }
 
 void LocalFrameViewLayoutContext::setNeedsLayoutAfterViewConfigurationChange()
 {
-    if (m_disableSetNeedsLayoutCount) {
-        m_setNeedsLayoutWasDeferred = true;
-        return;
-    }
-
     if (auto* renderView = this->renderView()) {
         ASSERT(!document()->inHitTesting());
         renderView->setNeedsLayout();
         scheduleLayout();
     }
-}
-
-void LocalFrameViewLayoutContext::enableSetNeedsLayout()
-{
-    ASSERT(m_disableSetNeedsLayoutCount);
-    if (!--m_disableSetNeedsLayoutCount)
-        m_setNeedsLayoutWasDeferred = false; // FIXME: Find a way to make the deferred layout actually happen.
-}
-
-void LocalFrameViewLayoutContext::disableSetNeedsLayout()
-{
-    ++m_disableSetNeedsLayoutCount;
 }
 
 void LocalFrameViewLayoutContext::scheduleLayout()

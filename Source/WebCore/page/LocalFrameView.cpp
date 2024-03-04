@@ -554,8 +554,6 @@ void LocalFrameView::setContentsSize(const IntSize& size)
     if (size == contentsSize())
         return;
 
-    layoutContext().disableSetNeedsLayout();
-
     ScrollView::setContentsSize(size);
     contentsResized();
 
@@ -571,7 +569,6 @@ void LocalFrameView::setContentsSize(const IntSize& size)
         page->pageOverlayController().didChangeDocumentSize();
         BackForwardCache::singleton().markPagesForContentsSizeChanged(*page);
     }
-    layoutContext().enableSetNeedsLayout();
 }
 
 void LocalFrameView::adjustViewSize()
