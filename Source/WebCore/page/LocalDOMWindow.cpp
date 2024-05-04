@@ -1668,38 +1668,6 @@ RefPtr<CSSRuleList> LocalDOMWindow::getMatchedCSSRules(Element* element, const S
     return ruleList;
 }
 
-RefPtr<WebKitPoint> LocalDOMWindow::webkitConvertPointFromNodeToPage(Node* node, const WebKitPoint* p) const
-{
-    if (!node || !p)
-        return nullptr;
-
-    RefPtr document = this->document();
-    if (!document)
-        return nullptr;
-
-    document->updateLayoutIgnorePendingStylesheets();
-
-    FloatPoint pagePoint(p->x(), p->y());
-    pagePoint = node->convertToPage(pagePoint);
-    return WebKitPoint::create(pagePoint.x(), pagePoint.y());
-}
-
-RefPtr<WebKitPoint> LocalDOMWindow::webkitConvertPointFromPageToNode(Node* node, const WebKitPoint* p) const
-{
-    if (!node || !p)
-        return nullptr;
-
-    RefPtr document = this->document();
-    if (!document)
-        return nullptr;
-
-    document->updateLayoutIgnorePendingStylesheets();
-
-    FloatPoint nodePoint(p->x(), p->y());
-    nodePoint = node->convertFromPage(nodePoint);
-    return WebKitPoint::create(nodePoint.x(), nodePoint.y());
-}
-
 double LocalDOMWindow::devicePixelRatio() const
 {
     RefPtr frame = this->frame();
