@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2008-2023 Apple Inc. All rights reserved.
+ * Copyright (C) 2008-2024 Apple Inc. All rights reserved.
  * Copyright (C) 2013-2021 Google Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -211,6 +211,14 @@ void SVGSMILElement::buildPendingResource()
         }
     } else
         svgTarget->addReferencingElement(*this);
+}
+
+bool SVGSMILElement::hasPresentationalHintsForAttribute(const QualifiedName& name) const
+{
+    // https://svgwg.org/svg2-draft/styling.html#PresentationAttributes
+    if (name == SVGNames::fillAttr)
+        return false;
+    return SVGSMILElement::hasPresentationalHintsForAttribute(name);
 }
 
 inline QualifiedName SVGSMILElement::constructAttributeName() const
