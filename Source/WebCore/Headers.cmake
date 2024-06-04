@@ -1022,7 +1022,6 @@ set(WebCore_PRIVATE_FRAMEWORK_HEADERS
     dom/NodeList.h
     dom/NodeRenderStyle.h
     dom/NodeTraversal.h
-    dom/OverflowEvent.h
     dom/ParserContentPolicy.h
     dom/PointerEvent.h
     dom/PointerEventTypeNames.h
