@@ -268,57 +268,57 @@ LayoutUnit RenderFlexibleBox::baselinePosition(FontBaseline, bool, LineDirection
     if (!baseline)
         return synthesizedBaseline(*this, *parentStyle(), direction, BorderBox) + marginLogicalHeight();
 
-    return baseline.value() + (direction == HorizontalLine ? marginTop() : marginRight()).toInt();
+    return baseline.value() + (direction == HorizontalLine ? marginTop() : marginRight());
 }
 
 std::optional<LayoutUnit> RenderFlexibleBox::firstLineBaseline() const
 {
     if ((isWritingModeRoot() && !isFlexItem()) || !m_numberOfInFlowChildrenOnFirstLine || shouldApplyLayoutContainment())
-        return std::optional<LayoutUnit>();
-    RenderBox* baselineChild = getBaselineChild(ItemPosition::Baseline);
-    
+        return { };
+
+    auto* baselineChild = getBaselineChild(ItemPosition::Baseline);
     if (!baselineChild)
-        return std::optional<LayoutUnit>();
+        return { };
 
     if (!isColumnFlow() && !mainAxisIsChildInlineAxis(*baselineChild))
-        return LayoutUnit { (crossAxisExtentForChild(*baselineChild) + baselineChild->logicalTop()).toInt() };
+        return LayoutUnit { crossAxisExtentForChild(*baselineChild) + baselineChild->logicalTop() };
     if (isColumnFlow() && mainAxisIsChildInlineAxis(*baselineChild))
-        return LayoutUnit { (mainAxisExtentForChild(*baselineChild) + baselineChild->logicalTop()).toInt() };
+        return LayoutUnit { mainAxisExtentForChild(*baselineChild) + baselineChild->logicalTop() };
 
     std::optional<LayoutUnit> baseline = baselineChild->firstLineBaseline();
     if (!baseline) {
         // FIXME: We should pass |direction| into firstLineBoxBaseline and stop bailing out if we're a writing mode root.
         // This would also fix some cases where the flexbox is orthogonal to its container.
-        LineDirectionMode direction = isHorizontalWritingMode() ? HorizontalLine : VerticalLine;
+        auto direction = isHorizontalWritingMode() ? HorizontalLine : VerticalLine;
         return synthesizedBaseline(*baselineChild, style(), direction, BorderBox) + baselineChild->logicalTop();
     }
 
-    return LayoutUnit { (baseline.value() + baselineChild->logicalTop()).toInt() };
+    return LayoutUnit { baseline.value() + baselineChild->logicalTop() };
 }
 
 std::optional <LayoutUnit> RenderFlexibleBox::lastLineBaseline() const
 {
     if (isWritingModeRoot() || !m_numberOfInFlowChildrenOnLastLine || shouldApplyLayoutContainment())
-        return std::optional<LayoutUnit>();
-    RenderBox* baselineChild = getBaselineChild(ItemPosition::LastBaseline);
-    
+        return { };
+
+    auto* baselineChild = getBaselineChild(ItemPosition::LastBaseline);
     if (!baselineChild)
-        return std::optional<LayoutUnit>();
+        return { };
 
     if (!isColumnFlow() && !mainAxisIsChildInlineAxis(*baselineChild))
-        return LayoutUnit { (crossAxisExtentForChild(*baselineChild) + baselineChild->logicalTop()).toInt() };
+        return LayoutUnit { crossAxisExtentForChild(*baselineChild) + baselineChild->logicalTop() };
     if (isColumnFlow() && mainAxisIsChildInlineAxis(*baselineChild))
-        return LayoutUnit { (mainAxisExtentForChild(*baselineChild) + baselineChild->logicalTop()).toInt() };
+        return LayoutUnit { mainAxisExtentForChild(*baselineChild) + baselineChild->logicalTop() };
 
     auto baseline = baselineChild->lastLineBaseline();
     if (!baseline) {
         // FIXME: We should pass |direction| into firstLineBoxBaseline and stop bailing out if we're a writing mode root.
         // This would also fix some cases where the flexbox is orthogonal to its container.
-        LineDirectionMode direction = isHorizontalWritingMode() ? HorizontalLine : VerticalLine;
+        auto direction = isHorizontalWritingMode() ? HorizontalLine : VerticalLine;
         return synthesizedBaseline(*baselineChild, style(), direction, BorderBox) + baselineChild->logicalTop();
     }
 
-    return LayoutUnit { (baseline.value() + baselineChild->logicalTop()).toInt() }; 
+    return LayoutUnit { baseline.value() + baselineChild->logicalTop() };
 }
 
 RenderBox* RenderFlexibleBox::getBaselineChild(ItemPosition alignment) const

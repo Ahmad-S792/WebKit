@@ -69,7 +69,7 @@ const FontCascade& CSSToLengthConversionData::fontCascadeForFontUnits() const
     return style()->fontCascade();
 }
 
-int CSSToLengthConversionData::computedLineHeightForFontUnits() const
+float CSSToLengthConversionData::computedLineHeightForFontUnits() const
 {
     if (computingFontSize()) {
         ASSERT(parentStyle());

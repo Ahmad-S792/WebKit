@@ -217,7 +217,7 @@ void RenderListMarker::paint(PaintInfo& paintInfo, const LayoutPoint& paintOffse
         context.translate(-markerRect.x(), -markerRect.maxY());
     }
 
-    FloatPoint textOrigin = FloatPoint(markerRect.x(), markerRect.y() + style().metricsOfPrimaryFont().intAscent());
+    auto textOrigin = FloatPoint { markerRect.x(), markerRect.y() + style().metricsOfPrimaryFont().ascent() };
     textOrigin = roundPointToDevicePixels(LayoutPoint(textOrigin), document().deviceScaleFactor(), style().isLeftToRightDirection());
     context.drawText(style().fontCascade(), textRun(), textOrigin);
 }
@@ -250,7 +250,7 @@ void RenderListMarker::layout()
         setHeight(m_image->imageSize(this, style().usedZoom()).height());
     } else {
         setLogicalWidth(minPreferredLogicalWidth());
-        setLogicalHeight(style().metricsOfPrimaryFont().intHeight());
+        setLogicalHeight(LayoutUnit::fromFloatCeil(style().metricsOfPrimaryFont().height()));
     }
 
     setMarginStart(0);
@@ -344,7 +344,7 @@ void RenderListMarker::computePreferredLogicalWidths()
 
     LayoutUnit logicalWidth;
     if (widthUsesMetricsOfPrimaryFont())
-        logicalWidth = (font.metricsOfPrimaryFont().intAscent() * 2 / 3 + 1) / 2 + 2;
+        logicalWidth = (font.metricsOfPrimaryFont().ascent() * 2 / 3 + 1) / 2 + 2;
     else if (!m_textWithSuffix.isEmpty())
             logicalWidth = font.width(textRun());
 
@@ -367,8 +367,8 @@ void RenderListMarker::updateMargins()
         if (isImage())
             marginEnd = cMarkerPadding;
         else if (widthUsesMetricsOfPrimaryFont()) {
-                marginStart = -1;
-                marginEnd = fontMetrics.intAscent() - minPreferredLogicalWidth() + 1;
+            marginStart = -1;
+            marginEnd = fontMetrics.ascent() - minPreferredLogicalWidth() + 1;
         }
     } else if (isImage()) {
         marginStart = -minPreferredLogicalWidth() - cMarkerPadding;
@@ -425,15 +425,17 @@ FloatRect RenderListMarker::relativeMarkerRect()
     FloatRect relativeRect;
     if (widthUsesMetricsOfPrimaryFont()) {
         // FIXME: Are these particular rounding rules necessary?
-        const FontMetrics& fontMetrics = style().metricsOfPrimaryFont();
-        int ascent = fontMetrics.intAscent();
-        int bulletWidth = (ascent * 2 / 3 + 1) / 2;
-        relativeRect = FloatRect(1, 3 * (ascent - ascent * 2 / 3) / 2, bulletWidth, bulletWidth);
+        auto& fontMetrics = style().metricsOfPrimaryFont();
+        int ascent = fontMetrics.ascent();
+        int bulletWidth = (fontMetrics.intAscent() * 2 / 3 + 1) / 2;
+        auto bulletHeight = (ascent * 2.f / 3.f) / 2.f;
+        auto y = 3 * (ascent - ascent * 2.f / 3.f) / 2.f;
+        relativeRect = FloatRect(1, y, bulletWidth, bulletHeight);
     } else {
         if (m_textWithSuffix.isEmpty())
             return FloatRect();
         auto& font = style().fontCascade();
-        relativeRect = FloatRect(0, 0, font.width(textRun()), font.metricsOfPrimaryFont().intHeight());
+        relativeRect = FloatRect(0, 0, font.width(textRun()), font.metricsOfPrimaryFont().height());
     }
 
     if (!style().isHorizontalWritingMode()) {

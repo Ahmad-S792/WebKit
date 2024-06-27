@@ -184,11 +184,15 @@ void Font::platformInit()
     // and add it to the ascent.
     if (origin() == Origin::Local && needsAscentAdjustment(familyName.get()))
         ascent += std::round((ascent + descent) * 0.15f);
+    else if (isAhemFont(familyName.get())) {
+        descent += 1.f / pow(2, 15);
+        ascent -= 1.f / pow(2, 15);
+    }
 #endif
 
     // Compute line spacing before the line metrics hacks are applied.
 #if !PLATFORM(IOS_FAMILY)
-    float lineSpacing = std::lround(ascent) + std::lround(descent) + std::lround(lineGap);
+    float lineSpacing = ascent + descent + lineGap;
 #endif
 
 #if PLATFORM(MAC)

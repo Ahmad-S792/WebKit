@@ -2462,7 +2462,7 @@ LayoutUnit RenderBlock::baselinePosition(FontBaseline baselineType, bool firstLi
             // For simplicity, we use this for all uses of deprecated flexbox.
             LayoutUnit bottomOfContent = direction == HorizontalLine ? borderTop() + paddingTop() + contentHeight() : borderRight() + paddingRight() + contentWidth();
             if (baselinePos && baselinePos.value() > bottomOfContent)
-                baselinePos = std::optional<LayoutUnit>();
+                baselinePos = { };
         }
         if (baselinePos)
             return direction == HorizontalLine ? marginTop() + baselinePos.value() : marginRight() + baselinePos.value();
@@ -2470,9 +2470,9 @@ LayoutUnit RenderBlock::baselinePosition(FontBaseline baselineType, bool firstLi
         return RenderBox::baselinePosition(baselineType, firstLine, direction, linePositionMode);
     }
 
-    const RenderStyle& style = firstLine ? firstLineStyle() : this->style();
-    const FontMetrics& fontMetrics = style.metricsOfPrimaryFont();
-    return LayoutUnit { fontMetrics.intAscent(baselineType) + (lineHeight(firstLine, direction, linePositionMode) - fontMetrics.intHeight()) / 2 }.toInt();
+    auto& style = firstLine ? firstLineStyle() : this->style();
+    auto& fontMetrics = style.metricsOfPrimaryFont();
+    return LayoutUnit { fontMetrics.ascent(baselineType) + (lineHeight(firstLine, direction, linePositionMode) - fontMetrics.height()) / 2 };
 }
 
 LayoutUnit RenderBlock::minLineHeightForReplacedRenderer(bool isFirstLine, LayoutUnit replacedHeight) const
@@ -2523,7 +2523,7 @@ std::optional<LayoutUnit> RenderBlock::inlineBlockBaseline(LineDirectionMode lin
         return synthesizedBaseline(*this, *parentStyle(), lineDirection, BorderBox) + (lineDirection == HorizontalLine ? marginBottom() : marginLeft());
 
     if (isWritingModeRoot())
-        return std::optional<LayoutUnit>();
+        return { };
 
     bool haveNormalFlowChild = false;
     for (auto* box = lastChildBox(); box; box = box->previousSiblingBox()) {
@@ -2531,17 +2531,17 @@ std::optional<LayoutUnit> RenderBlock::inlineBlockBaseline(LineDirectionMode lin
             continue;
         haveNormalFlowChild = true;
         if (auto result = box->inlineBlockBaseline(lineDirection))
-            return LayoutUnit { (box->logicalTop() + result.value()).toInt() }; // Translate to our coordinate space.
+            return LayoutUnit { box->logicalTop() + result.value() }; // Translate to our coordinate space.
     }
 
     if (!haveNormalFlowChild && hasLineIfEmpty()) {
         auto& fontMetrics = firstLineStyle().metricsOfPrimaryFont();
-        return LayoutUnit { LayoutUnit(fontMetrics.intAscent()
-            + (lineHeight(true, lineDirection, PositionOfInteriorLineBoxes) - fontMetrics.intHeight()) / 2
-            + (lineDirection == HorizontalLine ? borderTop() + paddingTop() : borderRight() + paddingRight())).toInt() };
+        return LayoutUnit { fontMetrics.ascent()
+            + (lineHeight(true, lineDirection, PositionOfInteriorLineBoxes) - fontMetrics.height()) / 2
+            + (lineDirection == HorizontalLine ? borderTop() + paddingTop() : borderRight() + paddingRight()) };
     }
 
-    return std::optional<LayoutUnit>();
+    return { };
 }
 
 static inline bool isRenderBlockFlowOrRenderButton(RenderElement& renderElement)

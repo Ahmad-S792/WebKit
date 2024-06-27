@@ -29,41 +29,41 @@ layer at (0,0) size 785x1527
           text run at (0,135) width 0: " "
       RenderBlock {UL} at (0,215) size 769x54
         RenderListItem {LI} at (40,0) size 729x18
-          RenderListMarker at (-17,0) size 7x18: bullet
+          RenderListMarker at (-17,0) size 8x18: bullet
           RenderText {#text} at (0,0) size 65x18
             text run at (0,0) width 65: "This list..."
         RenderListItem {LI} at (40,18) size 729x18
-          RenderListMarker at (-17,0) size 7x18: bullet
+          RenderListMarker at (-17,0) size 8x18: bullet
           RenderText {#text} at (0,0) size 116x18
             text run at (0,0) width 116: "...should feature..."
         RenderListItem {LI} at (40,36) size 729x18
-          RenderListMarker at (-17,0) size 7x18: bullet
+          RenderListMarker at (-17,0) size 8x18: bullet
           RenderText {#text} at (0,0) size 137x18
             text run at (0,0) width 137: "...discs for each item."
       RenderBlock {UL} at (0,285) size 769x54
         RenderListItem {LI} at (40,0) size 729x18
-          RenderListMarker at (-17,0) size 7x18: white bullet
+          RenderListMarker at (-17,0) size 8x18: white bullet
           RenderText {#text} at (0,0) size 65x18
             text run at (0,0) width 65: "This list..."
         RenderListItem {LI} at (40,18) size 729x18
-          RenderListMarker at (-17,0) size 7x18: white bullet
+          RenderListMarker at (-17,0) size 8x18: white bullet
           RenderText {#text} at (0,0) size 116x18
             text run at (0,0) width 116: "...should feature..."
         RenderListItem {LI} at (40,36) size 729x18
-          RenderListMarker at (-17,0) size 7x18: white bullet
+          RenderListMarker at (-17,0) size 8x18: white bullet
           RenderText {#text} at (0,0) size 147x18
             text run at (0,0) width 147: "...circles for each item."
       RenderBlock {UL} at (0,355) size 769x54
         RenderListItem {LI} at (40,0) size 729x18
-          RenderListMarker at (-17,0) size 7x18: black square
+          RenderListMarker at (-17,0) size 8x18: black square
           RenderText {#text} at (0,0) size 65x18
             text run at (0,0) width 65: "This list..."
         RenderListItem {LI} at (40,18) size 729x18
-          RenderListMarker at (-17,0) size 7x18: black square
+          RenderListMarker at (-17,0) size 8x18: black square
           RenderText {#text} at (0,0) size 116x18
             text run at (0,0) width 116: "...should feature..."
         RenderListItem {LI} at (40,36) size 729x18
-          RenderListMarker at (-17,0) size 7x18: black square
+          RenderListMarker at (-17,0) size 8x18: black square
           RenderText {#text} at (0,0) size 153x18
             text run at (0,0) width 153: "...squares for each item."
       RenderBlock {OL} at (0,425) size 769x54
@@ -155,41 +155,41 @@ layer at (0,0) size 785x1527
             RenderTableCell {TD} at (12,26) size 330x638 [border: (1px inset #808080)] [r=1 c=1 rs=1 cs=1]
               RenderBlock {UL} at (4,4) size 322x54
                 RenderListItem {LI} at (40,0) size 282x18
-                  RenderListMarker at (-17,0) size 7x18: bullet
+                  RenderListMarker at (-17,0) size 8x18: bullet
                   RenderText {#text} at (0,0) size 65x18
                     text run at (0,0) width 65: "This list..."
                 RenderListItem {LI} at (40,18) size 282x18
-                  RenderListMarker at (-17,0) size 7x18: bullet
+                  RenderListMarker at (-17,0) size 8x18: bullet
                   RenderText {#text} at (0,0) size 116x18
                     text run at (0,0) width 116: "...should feature..."
                 RenderListItem {LI} at (40,36) size 282x18
-                  RenderListMarker at (-17,0) size 7x18: bullet
+                  RenderListMarker at (-17,0) size 8x18: bullet
                   RenderText {#text} at (0,0) size 137x18
                     text run at (0,0) width 137: "...discs for each item."
               RenderBlock {UL} at (4,74) size 322x54
                 RenderListItem {LI} at (40,0) size 282x18
-                  RenderListMarker at (-17,0) size 7x18: white bullet
+                  RenderListMarker at (-17,0) size 8x18: white bullet
                   RenderText {#text} at (0,0) size 65x18
                     text run at (0,0) width 65: "This list..."
                 RenderListItem {LI} at (40,18) size 282x18
-                  RenderListMarker at (-17,0) size 7x18: white bullet
+                  RenderListMarker at (-17,0) size 8x18: white bullet
                   RenderText {#text} at (0,0) size 116x18
                     text run at (0,0) width 116: "...should feature..."
                 RenderListItem {LI} at (40,36) size 282x18
-                  RenderListMarker at (-17,0) size 7x18: white bullet
+                  RenderListMarker at (-17,0) size 8x18: white bullet
                   RenderText {#text} at (0,0) size 147x18
                     text run at (0,0) width 147: "...circles for each item."
               RenderBlock {UL} at (4,144) size 322x54
                 RenderListItem {LI} at (40,0) size 282x18
-                  RenderListMarker at (-17,0) size 7x18: black square
+                  RenderListMarker at (-17,0) size 8x18: black square
                   RenderText {#text} at (0,0) size 65x18
                     text run at (0,0) width 65: "This list..."
                 RenderListItem {LI} at (40,18) size 282x18
-                  RenderListMarker at (-17,0) size 7x18: black square
+                  RenderListMarker at (-17,0) size 8x18: black square
                   RenderText {#text} at (0,0) size 116x18
                     text run at (0,0) width 116: "...should feature..."
                 RenderListItem {LI} at (40,36) size 282x18
-                  RenderListMarker at (-17,0) size 7x18: black square
+                  RenderListMarker at (-17,0) size 8x18: black square
                   RenderText {#text} at (0,0) size 153x18
                     text run at (0,0) width 153: "...squares for each item."
               RenderBlock {OL} at (4,214) size 322x54

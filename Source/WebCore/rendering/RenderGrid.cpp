@@ -1814,48 +1814,48 @@ LayoutUnit RenderGrid::baselinePosition(FontBaseline, bool, LineDirectionMode di
     if (!baseline)
         return synthesizedBaseline(*this, *parentStyle(), direction, BorderBox) + marginLogicalHeight();
 
-    return baseline.value() + (direction == HorizontalLine ? marginTop() : marginRight()).toInt();
+    return baseline.value() + (direction == HorizontalLine ? marginTop() : marginRight());
 }
 
 std::optional<LayoutUnit> RenderGrid::firstLineBaseline() const
 {
     if ((isWritingModeRoot() && !isFlexItem()) || !currentGrid().hasGridItems() || shouldApplyLayoutContainment())
-        return std::nullopt;
+        return { };
 
     // Finding the first grid item in grid order.
     auto baselineChild = getBaselineChild(ItemPosition::Baseline);
 
     if (!baselineChild)
-        return std::nullopt;
+        return { };
 
     auto baseline = GridLayoutFunctions::isOrthogonalChild(*this, *baselineChild) ? std::nullopt : baselineChild->firstLineBaseline();
     // We take border-box's bottom if no valid baseline.
     if (!baseline) {
         // FIXME: We should pass |direction| into firstLineBaseline and stop bailing out if we're a writing
         // mode root. This would also fix some cases where the grid is orthogonal to its container.
-        LineDirectionMode direction = isHorizontalWritingMode() ? HorizontalLine : VerticalLine;
+        auto direction = isHorizontalWritingMode() ? HorizontalLine : VerticalLine;
         return synthesizedBaseline(*baselineChild, style(), direction, BorderBox) + logicalTopForChild(*baselineChild);
     }
-    return baseline.value() + baselineChild->logicalTop().toInt();
+    return baseline.value() + baselineChild->logicalTop();
 }
 
 std::optional<LayoutUnit> RenderGrid::lastLineBaseline() const
 {
     if (isWritingModeRoot() || !currentGrid().hasGridItems() || shouldApplyLayoutContainment())
-        return std::nullopt;
+        return { };
 
     auto baselineChild = getBaselineChild(ItemPosition::LastBaseline);
     if (!baselineChild)
-        return std::nullopt;
+        return { };
 
     auto baseline = GridLayoutFunctions::isOrthogonalChild(*this, *baselineChild) ? std::nullopt : baselineChild->lastLineBaseline();
     if (!baseline) {
-        LineDirectionMode direction = isHorizontalWritingMode() ? HorizontalLine : VerticalLine;
+        auto direction = isHorizontalWritingMode() ? HorizontalLine : VerticalLine;
         return synthesizedBaseline(*baselineChild, style(), direction, BorderBox) + logicalTopForChild(*baselineChild);
 
     }
 
-    return baseline.value() + baselineChild->logicalTop().toInt();
+    return baseline.value() + baselineChild->logicalTop();
 }
 
 SingleThreadWeakPtr<RenderBox> RenderGrid::getBaselineChild(ItemPosition alignment) const

@@ -3268,7 +3268,7 @@ std::optional<LayoutUnit> RenderBlockFlow::lastLineBaseline() const
         return { };
 
     if (auto* lineLayout = modernLineLayout())
-        return LayoutUnit { floorToInt(lineLayout->lastLinePhysicalBaseline()) };
+        return LayoutUnit { lineLayout->lastLinePhysicalBaseline() };
 
     ASSERT_NOT_REACHED();
     return { };
@@ -3277,7 +3277,7 @@ std::optional<LayoutUnit> RenderBlockFlow::lastLineBaseline() const
 std::optional<LayoutUnit> RenderBlockFlow::inlineBlockBaseline(LineDirectionMode lineDirection) const
 {
     if (isWritingModeRoot())
-        return std::nullopt;
+        return { };
 
     if (shouldApplyLayoutContainment())
         return RenderBlock::inlineBlockBaseline(lineDirection);
@@ -3287,7 +3287,7 @@ std::optional<LayoutUnit> RenderBlockFlow::inlineBlockBaseline(LineDirectionMode
         // property has a computed value other than 'visible'. see https://www.w3.org/TR/CSS22/visudet.html
         auto shouldSynthesizeBaseline = !style().isOverflowVisible() && !is<HTMLFormControlElement>(element()) && !isRenderTextControlInnerBlock();
         if (shouldSynthesizeBaseline)
-            return std::nullopt;
+            return { };
     }
     // Note that here we only take the left and bottom into consideration. Our caller takes the right and top into consideration.
     auto boxHeight = synthesizedBaseline(*this, *parentStyle(), lineDirection, BorderBox) + (lineDirection == HorizontalLine ? m_marginBox.bottom() : m_marginBox.left());
@@ -3302,20 +3302,20 @@ std::optional<LayoutUnit> RenderBlockFlow::inlineBlockBaseline(LineDirectionMode
             if (!hasLineIfEmpty())
                 return std::nullopt;
             const auto& fontMetrics = firstLineStyle().metricsOfPrimaryFont();
-            return LayoutUnit { LayoutUnit(fontMetrics.intAscent()
-                + (lineHeight(true, lineDirection, PositionOfInteriorLineBoxes) - fontMetrics.intHeight()) / 2
-                + (lineDirection == HorizontalLine ? borderTop() + paddingTop() : borderRight() + paddingRight())).toInt() };
+            return LayoutUnit { LayoutUnit(fontMetrics.ascent()
+                + (lineHeight(true, lineDirection, PositionOfInteriorLineBoxes) - fontMetrics.height()) / 2
+                + (lineDirection == HorizontalLine ? borderTop() + paddingTop() : borderRight() + paddingRight())) };
         }
 
         if (legacyLineLayout()) {
             bool isFirstLine = lastRootBox() == firstRootBox();
-            const auto& style = isFirstLine ? firstLineStyle() : this->style();
+            auto& style = isFirstLine ? firstLineStyle() : this->style();
             // LegacyInlineFlowBox::placeBoxesInBlockDirection will flip lines in case of verticalLR mode, so we can assume verticalRL for now.
-            lastBaseline = style.metricsOfPrimaryFont().intAscent(lastRootBox()->baselineType())
+            lastBaseline = style.metricsOfPrimaryFont().ascent(lastRootBox()->baselineType())
                 + (style.isFlippedLinesWritingMode() ? logicalHeight() - lastRootBox()->logicalBottom() : lastRootBox()->logicalTop());
         }
         else if (modernLineLayout())
-            lastBaseline = floorToInt(modernLineLayout()->lastLineLogicalBaseline());
+            lastBaseline = modernLineLayout()->lastLineLogicalBaseline();
     }
     // According to the CSS spec http://www.w3.org/TR/CSS21/visudet.html, we shouldn't be performing this min, but should
     // instead be returning boxHeight directly. However, we feel that a min here is better behavior (and is consistent

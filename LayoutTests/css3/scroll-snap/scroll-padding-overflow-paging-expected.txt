@@ -1,11 +1,12 @@
 PASS paging moved container
 PASS paging moved padded container
 PASS container.scrollTop is within 1 of 140
+FAIL paging moved padded container
+FAIL container.scrollTop should be within 1 of 140. Was 0.
 PASS paging moved padded container
-PASS container.scrollTop is within 1 of 140
-PASS paging moved padded container
-PASS container.scrollTop is within 1 of 132
+FAIL container.scrollTop should be within 1 of 132. Was 272.
 PASS successfullyParsed is true
+Some tests failed.
 
 TEST COMPLETE
 
