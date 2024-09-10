@@ -52,6 +52,8 @@ public:
 
     WEBCORE_EXPORT bool selected(AllowStyleInvalidation = AllowStyleInvalidation::Yes) const;
     WEBCORE_EXPORT void setSelected(bool);
+    bool selectedForBinding() const { return selected(); }
+    WEBCORE_EXPORT void setSelectedForBinding(bool);
 
     WEBCORE_EXPORT HTMLSelectElement* ownerSelectElement() const;
 
@@ -64,7 +66,10 @@ public:
 
     String textIndentedToRespectGroupLabel() const;
 
+    // Update 'selectedness'.
     void setSelectedState(bool, AllowStyleInvalidation = AllowStyleInvalidation::Yes);
+    // Update 'dirtiness'.
+    void setDirty(bool);
     bool selectedWithoutUpdate() const { return m_isSelected; }
 
 private:
@@ -86,8 +91,13 @@ private:
     String collectOptionInnerTextCollapsingWhitespace() const;
 
     bool m_disabled { false };
+    // Represents 'selectedness'.
+    // https://html.spec.whatwg.org/multipage/forms.html#concept-option-selectedness
     bool m_isSelected { false };
     bool m_isDefault { false };
+    // Represents 'dirtiness'.
+    // https://html.spec.whatwg.org/multipage/forms.html#concept-option-dirtiness
+    bool m_isDirty { false };
 };
 
 } // namespace
