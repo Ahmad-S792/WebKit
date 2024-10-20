@@ -5085,6 +5085,7 @@ bool RenderBox::isUnsplittableForPagination() const
         || hasUnsplittableScrollingOverflow()
         || (parent() && isWritingModeRoot())
         || (isFloating() && style().pseudoElementType() == PseudoId::FirstLetter && style().initialLetter().drop() > 0)
+        || isFixedPositioned()
         || shouldApplySizeContainment();
 }
 
