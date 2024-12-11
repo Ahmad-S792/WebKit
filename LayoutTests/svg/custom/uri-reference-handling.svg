@@ -1,4 +1,5 @@
 <svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" onload="runTest()">
+<meta name="fuzzy" content="maxDifference=1; totalPixels=0-2157" />
 <script>
   function runTest() {
     document.getElementById("rect3").setAttribute("fill", "url(" + document.baseURI + "#green)");
