@@ -5,8 +5,8 @@
  * Copyright (C) 2011 Torch Mobile (Beijing) Co. Ltd. All rights reserved.
  * Copyright (C) 2012 University of Szeged
  * Copyright (C) 2012 Renata Hodovan <reni@webkit.org>
- * Copyright (C) 2015-2023 Apple Inc. All rights reserved.
- * Copyright (C) 2019 Google Inc. All rights reserved.
+ * Copyright (C) 2015-2024 Apple Inc. All rights reserved.
+ * Copyright (C) 2017-2019 Google Inc. All rights reserved.
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Library General Public
@@ -301,6 +301,8 @@ RefPtr<SVGElement> SVGUseElement::targetClone() const
 
 RenderPtr<RenderElement> SVGUseElement::createElementRenderer(RenderStyle&& style, const RenderTreePosition&)
 {
+    if (style.display() == DisplayType::Contents)
+        return nullptr;
     if (document().settings().layerBasedSVGEngineEnabled())
         return createRenderer<RenderSVGTransformableContainer>(*this, WTFMove(style));
     return createRenderer<LegacyRenderSVGTransformableContainer>(*this, WTFMove(style));

@@ -2,7 +2,7 @@
  * Copyright (C) 1999 Lars Knoll (knoll@kde.org)
  * Copyright (C) 2004-2005 Allan Sandfeld Jensen (kde@carewolf.com)
  * Copyright (C) 2006, 2007 Nicholas Shanks (webkit@nickshanks.com)
- * Copyright (C) 2005-2023 Apple Inc. All rights reserved.
+ * Copyright (C) 2005-2024 Apple Inc. All rights reserved.
  * Copyright (C) 2007 Alexey Proskuryakov <ap@webkit.org>
  * Copyright (C) 2007, 2008 Eric Seidel <eric@webkit.org>
  * Copyright (C) 2008, 2009 Torch Mobile Inc. All rights reserved. (http://www.torchmobile.com/)
@@ -775,9 +775,13 @@ static bool hasEffectiveDisplayNoneForDisplayContents(const Element& element)
 {
     using namespace ElementNames;
 
+    // According to the CSS Display spec[1], nested <svg> elements, <g>,
+    // <use>, and <tspan> elements are not rendered and their children are
+    // "hoisted". For other elements display:contents behaves as display:none.
     // https://drafts.csswg.org/css-display-3/#unbox-svg
-    // FIXME: <g>, <use> and <tspan> have special (?) behavior for display:contents in the current draft spec.
-    if (is<SVGElement>(element))
+    if (!is<SVGElement>(element))
+        return false;
+    if (RefPtr svgElement = dynamicDowncast<SVGElement>(element); (svgElement && svgElement->isOutermostSVGSVGElement()) || (!is<SVGSVGElement>(element) && !svgElement->hasTagName(SVGNames::tspanTag) && !svgElement->hasTagName(SVGNames::gTag) && !svgElement->hasTagName(SVGNames::useTag)))
         return true;
 #if ENABLE(MATHML)
     // Not sure MathML code can handle it.
