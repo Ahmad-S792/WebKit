@@ -3,6 +3,7 @@
  * Copyright (C) 2006 Alexander Kellett <lypanov@kde.org>
  * Copyright (C) 2006, 2007 Rob Buis <buis@kde.org>
  * Copyright (C) 2007-2024 Apple Inc. All rights reserved.
+ * Copyright (C) 2016 Google Inc. All rights reserved.
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Library General Public
@@ -51,7 +52,6 @@ template <typename CharacterType, typename FloatType = float> static std::option
     FloatType exponent = 0;
     int sign = 1;
     int expsign = 1;
-    auto start = buffer.position();
 
     // read the sign
     if (buffer.hasCharactersRemaining() && *buffer == '+')
@@ -65,16 +65,16 @@ template <typename CharacterType, typename FloatType = float> static std::option
         return std::nullopt;
 
     // read the integer part, build right-to-left
-    auto ptrStartIntPart = buffer.position();
+    auto digitsStart = buffer.position();
     
     // Advance to first non-digit.
     skipWhile<isASCIIDigit>(buffer);
 
 WTF_ALLOW_UNSAFE_BUFFER_USAGE_BEGIN
-    if (buffer.position() != ptrStartIntPart) {
+    if (buffer.position() != digitsStart) {
         auto ptrScanIntPart = buffer.position() - 1;
         FloatType multiplier = 1;
-        while (ptrScanIntPart >= ptrStartIntPart) {
+        while (ptrScanIntPart >= digitsStart) {
             integer += multiplier * static_cast<FloatType>(*(ptrScanIntPart--) - '0');
             multiplier *= 10;
         }
@@ -96,8 +96,12 @@ WTF_ALLOW_UNSAFE_BUFFER_USAGE_END
             decimal += (*(buffer++) - '0') * (frac *= static_cast<FloatType>(0.1));
     }
 
+    // When we get here we should have consumed either a digit for the integer
+    // part or a fractional part (with at least one digit after the '.'.)
+    ASSERT(digitsStart != buffer.position());
+
     // read the exponent part
-    if (buffer.position() != start && buffer.span().size() > 1 && (*buffer == 'e' || *buffer == 'E')
+    if (buffer.span().size() > 1 && (*buffer == 'e' || *buffer == 'E')
         && (buffer[1] != 'x' && buffer[1] != 'm')) {
         ++buffer;
 
@@ -130,9 +134,6 @@ WTF_ALLOW_UNSAFE_BUFFER_USAGE_END
 
     // Don't return Infinity() or NaN().
     if (!isValidRange(number))
-        return std::nullopt;
-
-    if (start == buffer.position())
         return std::nullopt;
 
     if (skip == SuffixSkippingPolicy::Skip)
