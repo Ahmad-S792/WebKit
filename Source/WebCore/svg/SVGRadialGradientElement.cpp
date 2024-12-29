@@ -4,7 +4,7 @@
  * Copyright (C) 2008 Eric Seidel <eric@webkit.org>
  * Copyright (C) 2008 Dirk Schulze <krit@webkit.org>
  * Copyright (C) Research In Motion Limited 2010. All rights reserved.
- * Copyright (C) 2018-2019 Apple Inc. All rights reserved.
+ * Copyright (C) 2018-2024 Apple Inc. All rights reserved.
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Library General Public
@@ -33,6 +33,7 @@
 #include "RenderSVGResourceRadialGradient.h"
 #include "SVGElementTypeHelpers.h"
 #include "SVGNames.h"
+#include "SVGParsingError.h"
 #include "SVGStopElement.h"
 #include "SVGUnitTypes.h"
 #include <wtf/NeverDestroyed.h>
@@ -69,24 +70,48 @@ void SVGRadialGradientElement::attributeChanged(const QualifiedName& name, const
     SVGParsingError parseError = NoError;
 
     switch (name.nodeName()) {
-    case AttributeNames::cxAttr:
-        Ref { m_cx }->setBaseValInternal(SVGLengthValue::construct(SVGLengthMode::Width, newValue, parseError));
+    case AttributeNames::cxAttr: {
+        auto length = SVGLengthValue::construct(SVGLengthMode::Width, newValue, parseError);
+        if (parseError != NoError || newValue.isNull())
+            length = SVGLengthValue(SVGLengthMode::Width, "50%"_s);
+        Ref { m_cx }->setBaseValInternal(length);
         break;
-    case AttributeNames::cyAttr:
-        Ref { m_cy }->setBaseValInternal(SVGLengthValue::construct(SVGLengthMode::Height, newValue, parseError));
+    }
+    case AttributeNames::cyAttr: {
+        auto length = SVGLengthValue::construct(SVGLengthMode::Height, newValue, parseError);
+        if (parseError != NoError || newValue.isNull())
+            length = SVGLengthValue(SVGLengthMode::Height, "50%"_s);
+        Ref { m_cy }->setBaseValInternal(length);
         break;
-    case AttributeNames::rAttr:
-        Ref { m_r }->setBaseValInternal(SVGLengthValue::construct(SVGLengthMode::Other, newValue, parseError, SVGLengthNegativeValuesMode::Forbid));
+    }
+    case AttributeNames::rAttr: {
+        auto length = SVGLengthValue::construct(SVGLengthMode::Other, newValue, parseError);
+        if (parseError != NoError || newValue.isNull())
+            length = SVGLengthValue(SVGLengthMode::Other, "50%"_s);
+        Ref { m_r }->setBaseValInternal(length);
         break;
-    case AttributeNames::fxAttr:
-        Ref { m_fx }->setBaseValInternal(SVGLengthValue::construct(SVGLengthMode::Width, newValue, parseError));
+    }
+    case AttributeNames::fxAttr: {
+        auto length = SVGLengthValue::construct(SVGLengthMode::Width, newValue, parseError);
+        if (parseError != NoError || newValue.isNull())
+            length = SVGLengthValue(SVGLengthMode::Width, "50%"_s);
+        Ref { m_fx }->setBaseValInternal(length);
         break;
-    case AttributeNames::fyAttr:
-        Ref { m_fy }->setBaseValInternal(SVGLengthValue::construct(SVGLengthMode::Height, newValue, parseError));
+    }
+    case AttributeNames::fyAttr: {
+        auto length = SVGLengthValue::construct(SVGLengthMode::Height, newValue, parseError);
+        if (parseError != NoError || newValue.isNull())
+            length = SVGLengthValue(SVGLengthMode::Height, "50%"_s);
+        Ref { m_fy }->setBaseValInternal(length);
         break;
-    case AttributeNames::frAttr:
-        Ref { m_fr }->setBaseValInternal(SVGLengthValue::construct(SVGLengthMode::Other, newValue, parseError, SVGLengthNegativeValuesMode::Forbid));
+    }
+    case AttributeNames::frAttr: {
+        auto length = SVGLengthValue::construct(SVGLengthMode::Other, newValue, parseError, SVGLengthNegativeValuesMode::Forbid);
+        if (parseError != NoError || newValue.isNull())
+            length = SVGLengthValue(SVGLengthMode::Other, "0%"_s);
+        Ref { m_fr }->setBaseValInternal(length);
         break;
+    }
     default:
         break;
     }

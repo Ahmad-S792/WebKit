@@ -53,18 +53,34 @@ void SVGFilterPrimitiveStandardAttributes::attributeChanged(const QualifiedName&
     SVGParsingError parseError = NoError;
 
     switch (name.nodeName()) {
-    case AttributeNames::xAttr:
-        Ref { m_x }->setBaseValInternal(SVGLengthValue::construct(SVGLengthMode::Width, newValue, parseError));
+    case AttributeNames::xAttr: {
+        auto length = SVGLengthValue::construct(SVGLengthMode::Width, newValue, parseError);
+        if (parseError != NoError || newValue.isNull())
+            length = SVGLengthValue(SVGLengthMode::Width, "0%"_s);
+        Ref { m_x }->setBaseValInternal(length);
         break;
-    case AttributeNames::yAttr:
-        Ref { m_y }->setBaseValInternal(SVGLengthValue::construct(SVGLengthMode::Height, newValue, parseError));
+    }
+    case AttributeNames::yAttr: {
+        auto length = SVGLengthValue::construct(SVGLengthMode::Height, newValue, parseError);
+        if (parseError != NoError || newValue.isNull())
+            length = SVGLengthValue(SVGLengthMode::Height, "0%"_s);
+        Ref { m_y }->setBaseValInternal(length);
         break;
-    case AttributeNames::widthAttr:
-        Ref { m_width }->setBaseValInternal(SVGLengthValue::construct(SVGLengthMode::Width, newValue, parseError));
+    }
+    case AttributeNames::widthAttr: {
+        auto length = SVGLengthValue::construct(SVGLengthMode::Width, newValue, parseError);
+        if (parseError != NoError || newValue.isNull())
+            length = SVGLengthValue(SVGLengthMode::Width, "100%"_s);
+        Ref { m_width }->setBaseValInternal(length);
         break;
-    case AttributeNames::heightAttr:
-        Ref { m_height }->setBaseValInternal(SVGLengthValue::construct(SVGLengthMode::Height, newValue, parseError));
+    }
+    case AttributeNames::heightAttr: {
+        auto length = SVGLengthValue::construct(SVGLengthMode::Height, newValue, parseError);
+        if (parseError != NoError || newValue.isNull())
+            length = SVGLengthValue(SVGLengthMode::Height, "100%"_s);
+        Ref { m_height }->setBaseValInternal(length);
         break;
+    }
     case AttributeNames::resultAttr:
         Ref { m_result }->setBaseValInternal(newValue);
         break;

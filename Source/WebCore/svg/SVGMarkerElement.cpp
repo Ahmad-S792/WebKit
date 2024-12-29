@@ -2,7 +2,7 @@
  * Copyright (C) 2004, 2005, 2006, 2007, 2008 Nikolas Zimmermann <zimmermann@kde.org>
  * Copyright (C) 2004, 2005, 2006, 2007 Rob Buis <buis@kde.org>
  * Copyright (C) Research In Motion Limited 2009-2010. All rights reserved.
- * Copyright (C) 2018-2019 Apple Inc. All rights reserved.
+ * Copyright (C) 2018-2024 Apple Inc. All rights reserved.
  * Copyright (C) 2024 Igalia S.L.
  *
  * This library is free software; you can redistribute it and/or
@@ -28,6 +28,7 @@
 #include "NodeName.h"
 #include "RenderSVGResourceMarker.h"
 #include "SVGNames.h"
+#include "SVGParsingError.h"
 #include <wtf/TZoneMallocInlines.h>
 
 namespace WebCore {
@@ -84,12 +85,20 @@ void SVGMarkerElement::attributeChanged(const QualifiedName& name, const AtomStr
     case AttributeNames::refYAttr:
         Ref { m_refY }->setBaseValInternal(SVGLengthValue::construct(SVGLengthMode::Height, newValue, parseError));
         break;
-    case AttributeNames::markerWidthAttr:
-        Ref { m_markerWidth }->setBaseValInternal(SVGLengthValue::construct(SVGLengthMode::Width, newValue, parseError));
+    case AttributeNames::markerWidthAttr: {
+        auto length = SVGLengthValue::construct(SVGLengthMode::Width, newValue, parseError);
+        if (parseError != NoError || newValue.isNull())
+            length = SVGLengthValue(SVGLengthMode::Width, "3"_s);
+        Ref { m_markerWidth }->setBaseValInternal(length);
         break;
-    case AttributeNames::markerHeightAttr:
-        Ref { m_markerHeight }->setBaseValInternal(SVGLengthValue::construct(SVGLengthMode::Height, newValue, parseError));
+    }
+    case AttributeNames::markerHeightAttr: {
+        auto length = SVGLengthValue::construct(SVGLengthMode::Height, newValue, parseError);
+        if (parseError != NoError || newValue.isNull())
+            length = SVGLengthValue(SVGLengthMode::Height, "3"_s);
+        Ref { m_markerHeight }->setBaseValInternal(length);
         break;
+    }
     default:
         break;
     }
