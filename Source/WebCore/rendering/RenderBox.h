@@ -342,7 +342,7 @@ public:
 
     RenderFragmentContainer* clampToStartAndEndFragments(RenderFragmentContainer*) const;
     bool hasFragmentRangeInFragmentedFlow() const;
-    virtual LayoutUnit offsetFromLogicalTopOfFirstPage() const;
+    LayoutUnit offsetFromLogicalTopOfFirstPage() const;
 
     RepaintRects localRectsForRepaint(RepaintOutlineBounds) const override;
     std::optional<RepaintRects> computeVisibleRectsInContainer(const RepaintRects&, const RenderLayerModelObject* container, VisibleRectContext) const override;

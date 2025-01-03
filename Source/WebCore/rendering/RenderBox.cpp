@@ -5778,10 +5778,22 @@ bool RenderBox::hasRelativeLogicalWidth() const
 LayoutUnit RenderBox::offsetFromLogicalTopOfFirstPage() const
 {
     auto* layoutState = view().frameView().layoutContext().layoutState();
-    if ((layoutState && !layoutState->isPaginated()) || (!layoutState && !enclosingFragmentedFlow()))
-        return 0;
+    if (!layoutState || !layoutState->isPaginated())
+        return { };
 
+    if (layoutState) {
+        ASSERT(layoutState->renderer() == this);
+        LayoutSize offsetDelta = layoutState->layoutOffset() - layoutState->pageOffset();
+        return isHorizontalWritingMode() ? offsetDelta.height() : offsetDelta.width();
+    }
+
+    // A RenderBlock always establishes a layout state, and this method is only meant to be called
+    // on the object currently being laid out.
+    ASSERT(!isRenderBlock());
+
+    // In case this box doesn't establish a layout state, try the containing block.
     RenderBlock* containerBlock = containingBlock();
+    ASSERT(layoutState->renderer() == containerBlock);
     return containerBlock->offsetFromLogicalTopOfFirstPage() + logicalTop();
 }
 
