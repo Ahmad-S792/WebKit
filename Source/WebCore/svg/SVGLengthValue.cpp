@@ -229,7 +229,7 @@ SVGLengthValue SVGLengthValue::blend(const SVGLengthValue& from, const SVGLength
         || to.lengthType() == SVGLengthType::Unknown
         || (!from.isZero() && from.lengthType() != SVGLengthType::Percentage && to.lengthType() == SVGLengthType::Percentage)
         || (!to.isZero() && from.lengthType() == SVGLengthType::Percentage && to.lengthType() != SVGLengthType::Percentage)
-        || (!from.isZero() && !to.isZero() && (from.lengthType() == SVGLengthType::Ems || from.lengthType() == SVGLengthType::Exs) && from.lengthType() != to.lengthType()))
+        || (!from.isZero() && !to.isZero() && (from.lengthType() == SVGLengthType::Ems || from.lengthType() == SVGLengthType::Exs || from.lengthType() == SVGLengthType::Ch) && from.lengthType() != to.lengthType()))
         return to;
 
     if (from.lengthType() == SVGLengthType::Percentage || to.lengthType() == SVGLengthType::Percentage) {
