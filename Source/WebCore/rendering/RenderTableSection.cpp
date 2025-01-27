@@ -5,6 +5,7 @@
  *           (C) 1999 Lars Knoll (knoll@kde.org)
  *           (C) 1999 Antti Koivisto (koivisto@kde.org)
  * Copyright (C) 2003-2025 Apple Inc. All rights reserved.
+ * Copyright (C) 2016 Google Inc. All rights reserved.
  * Copyright (C) 2006 Alexey Proskuryakov (ap@nypop.com)
  *
  * This library is free software; you can redistribute it and/or
@@ -340,9 +341,10 @@ void RenderTableSection::layout()
 
     LayoutStateMaintainer statePusher(*this, locationOffset(), isTransformed() || hasReflection() || writingMode().isBlockFlipped());
     bool paginated = view().frameView().layoutContext().layoutState()->isPaginated();
-    
+
     const Vector<LayoutUnit>& columnPos = table()->columnPositions();
-    
+
+    LayoutUnit rowLogicalTop;
     for (unsigned r = 0; r < m_grid.size(); ++r) {
         Row& row = m_grid[r].row;
         unsigned cols = row.size();
@@ -366,13 +368,39 @@ void RenderTableSection::layout()
         }
 
         if (RenderTableRow* rowRenderer = m_grid[r].rowRenderer) {
-            if (!rowRenderer->needsLayout() && paginated && view().frameView().layoutContext().layoutState()->pageLogicalHeightChanged())
-                rowRenderer->setChildNeedsLayout(MarkOnlyThis);
-
+            if (paginated) {
+                rowRenderer->setLogicalTop(rowLogicalTop);
+                if (rowRenderer->needsLayout())
+                    rowRenderer->setChildNeedsLayout(MarkOnlyThis);
+            }
             rowRenderer->layoutIfNeeded();
+            if (paginated) {
+                rowRenderer->setLogicalTop(LayoutUnit(logicalHeightForRow(*rowRenderer)));
+                rowLogicalTop = rowRenderer->logicalBottom();
+                rowLogicalTop += LayoutUnit(table()->vBorderSpacing());
+            }
         }
     }
     clearNeedsLayout();
+}
+
+int RenderTableSection::logicalHeightForRow(const RenderTableRow& rowObject) const
+{
+    unsigned rowIndex = rowObject.rowIndex();
+    int logicalHeight = 0;
+    const auto& row = m_grid[rowIndex].row;
+    unsigned cols = row.size();
+    for (unsigned colIndex = 0; colIndex < cols; colIndex++) {
+        const auto& cellStruct = cellAt(rowIndex, colIndex);
+        const auto* cell = cellStruct.primaryCell();
+        if (!cell || cellStruct.inColSpan)
+            continue;
+        // FIXME: Rowspanned cells also need to contribute to row heights
+        // during the first layout pass, in order to get fragmentation right.
+        if (cell->rowSpan() == 1)
+            logicalHeight = std::max<int>(logicalHeight, cell->logicalHeightForRowSizing());
+    }
+    return logicalHeight;
 }
 
 void RenderTableSection::distributeExtraLogicalHeightToPercentRows(LayoutUnit& extraLogicalHeight, int totalPercent)
