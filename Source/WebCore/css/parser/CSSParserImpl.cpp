@@ -240,7 +240,7 @@ void CSSParserImpl::parseStyleSheet(const String& string, const CSSParserContext
     styleSheet.shrinkToFit();
 }
 
-CSSSelectorList CSSParserImpl::parsePageSelector(CSSParserTokenRange range, StyleSheetContents* styleSheet)
+CSSSelectorList CSSParserImpl::parsePageSelector(CSSParserTokenRange range)
 {
     // We only support a small subset of the css-page spec.
     range.consumeWhitespace();
@@ -262,7 +262,7 @@ CSSSelectorList CSSParserImpl::parsePageSelector(CSSParserTokenRange range, Styl
 
     std::unique_ptr<MutableCSSSelector> selector;
     if (!typeSelector.isNull() && pseudo.isNull())
-        selector = makeUnique<MutableCSSSelector>(QualifiedName(nullAtom(), typeSelector, styleSheet->defaultNamespace()));
+        selector = makeUnique<MutableCSSSelector>(QualifiedName(nullAtom(), typeSelector, starAtom()));
     else {
         selector = makeUnique<MutableCSSSelector>();
         if (!pseudo.isNull()) {
@@ -271,7 +271,7 @@ CSSSelectorList CSSParserImpl::parsePageSelector(CSSParserTokenRange range, Styl
                 return { };
         }
         if (!typeSelector.isNull())
-            selector->prependTagSelector(QualifiedName(nullAtom(), typeSelector, styleSheet->defaultNamespace()));
+            selector->prependTagSelector(QualifiedName(nullAtom(), typeSelector, starAtom()));
     }
 
     selector->setForPage();
@@ -985,7 +985,7 @@ RefPtr<StyleRuleKeyframes> CSSParserImpl::consumeKeyframesRule(CSSParserTokenRan
 
 RefPtr<StyleRulePage> CSSParserImpl::consumePageRule(CSSParserTokenRange prelude, CSSParserTokenRange block)
 {
-    auto selectorList = parsePageSelector(prelude, protectedStyleSheet().get());
+    auto selectorList = parsePageSelector(prelude);
     if (selectorList.isEmpty())
         return nullptr; // Parse error, invalid @page selector
 
