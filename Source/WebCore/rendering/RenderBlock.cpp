@@ -483,8 +483,8 @@ bool RenderBlock::isSelfCollapsingBlock() const
     bool hasAutoHeight = logicalHeightLength.isAuto();
     if (logicalHeightLength.isPercentOrCalculated() && !document().inQuirksMode()) {
         hasAutoHeight = true;
-        for (RenderBlock* cb = containingBlock(); cb && !is<RenderView>(*cb); cb = cb->containingBlock()) {
-            if (cb->style().logicalHeight().isFixed() || cb->isRenderTableCell())
+        if (RenderBlock* cb = containingBlock()) {
+            if (!is<RenderView>(*cb) && (cb->style().logicalHeight().isFixed() || cb->isRenderTableCell()))
                 hasAutoHeight = false;
         }
     }
