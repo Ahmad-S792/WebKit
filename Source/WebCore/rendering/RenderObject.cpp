@@ -4,7 +4,7 @@
  *           (C) 2000 Dirk Mueller (mueller@kde.org)
  *           (C) 2004 Allan Sandfeld Jensen (kde@carewolf.com)
  * Copyright (C) 2004-2024 Apple Inc. All rights reserved.
- * Copyright (C) 2009-2017 Google Inc. All rights reserved.
+ * Copyright (C) 2009-2021 Google Inc. All rights reserved.
  * Copyright (C) 2009 Torch Mobile Inc. All rights reserved. (http://www.torchmobile.com/)
  *
  * This library is free software; you can redistribute it and/or
@@ -561,6 +561,13 @@ static inline bool objectIsRelayoutBoundary(const RenderElement* object)
         return false;
 
     if (object->style().width().isIntrinsicOrAuto() || object->style().height().isIntrinsicOrAuto() || object->style().height().isPercentOrCalculated() || object->style().width().isPercentOrCalculated())
+        return false;
+
+    // A block which doesn't establish a new formating context can pass a whole
+    // bunch of state (floats, margins) to an arbitrary sibling, causing that
+    // sibling to position/size differently.
+    auto* renderBlock = dynamicDowncast<RenderBlock>(object);
+    if (!renderBlock->createsNewFormattingContext())
         return false;
 
     // Table parts can't be relayout roots since the table is responsible for layouting all the parts.
