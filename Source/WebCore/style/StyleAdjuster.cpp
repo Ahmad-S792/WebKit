@@ -441,6 +441,7 @@ void Adjuster::adjust(RenderStyle& style, const RenderStyle* userAgentAppearance
         // Framesets ignore display and position properties.
         style.setPosition(PositionType::Static);
         style.setEffectiveDisplay(DisplayType::Block);
+        style.setFloating(Float::None);
     }
 
     if (style.display() != DisplayType::None && style.display() != DisplayType::Contents) {
