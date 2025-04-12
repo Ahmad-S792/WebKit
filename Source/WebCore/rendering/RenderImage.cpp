@@ -5,7 +5,7 @@
  *           (C) 2006 Allan Sandfeld Jensen (kde@carewolf.com)
  *           (C) 2006 Samuel Weinig (sam.weinig@gmail.com)
  * Copyright (C) 2003-2025 Apple Inc. All rights reserved.
- * Copyright (C) 2010 Google Inc. All rights reserved.
+ * Copyright (C) 2010-2014 Google Inc. All rights reserved.
  * Copyright (C) Research In Motion Limited 2011-2012. All rights reserved.
  *
  * This library is free software; you can redistribute it and/or
@@ -407,9 +407,10 @@ void RenderImage::repaintOrMarkForLayout(ImageSizeChangeType imageSizeChange, co
     if (parent()) {
         auto repaintRect = contentBoxRect();
         if (rect) {
-            // The image changed rect is in source image coordinates (pre-zooming),
+            // The image changed rect is in source image coordinates (without zoom),
             // so map from the bounds of the image to the contentsBox.
-            repaintRect.intersect(enclosingIntRect(mapRect(*rect, FloatRect(FloatPoint(), imageResource().imageSize(1.0f)), repaintRect)));
+            auto imageSizeWithoutZoom = imageResource().imageSize(1.0f / style().usedZoom());
+            repaintRect.intersect(enclosingIntRect(mapRect(*rect, FloatRect(FloatPoint(), imageSizeWithoutZoom), repaintRect)));
         }
         repaintRectangle(repaintRect);
     }
