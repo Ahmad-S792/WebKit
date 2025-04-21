@@ -1,0 +1,194 @@
+
+FAIL Test <integer> valid value: -47 assert_equals: expected -47 but got 0
+PASS Test <integer> valid value: 0
+PASS Test <integer> valid value: +32
+PASS Test <integer> valid value: 1241245
+FAIL Test <integer> valid value: -47  assert_equals: expected -47 but got 0
+PASS Test <integer> valid value: 0
+PASS Test <integer> valid value: +32
+PASS Test <integer> valid value: 1241245
+FAIL Test <integer> valid value: -47    assert_equals: expected -47 but got 0
+PASS Test <integer> valid value: 0
+PASS Test <integer> valid value: +32
+PASS Test <integer> valid value: 1241245
+FAIL Test <integer> trailing garbage, value: -47a assert_equals: expected 1 but got 0
+FAIL Test <integer> trailing garbage, value: 0a assert_equals: expected 1 but got 0
+FAIL Test <integer> trailing garbage, value: +32a assert_equals: expected 1 but got 0
+FAIL Test <integer> trailing garbage, value: 1241245a assert_equals: expected 1 but got 0
+FAIL Test <integer> trailing garbage, value: -47e assert_equals: expected 1 but got 0
+FAIL Test <integer> trailing garbage, value: 0e assert_equals: expected 1 but got 0
+FAIL Test <integer> trailing garbage, value: +32e assert_equals: expected 1 but got 0
+FAIL Test <integer> trailing garbage, value: 1241245e assert_equals: expected 1 but got 0
+FAIL Test <integer> trailing garbage, value: -47foo assert_equals: expected 1 but got 0
+FAIL Test <integer> trailing garbage, value: 0foo assert_equals: expected 1 but got 0
+FAIL Test <integer> trailing garbage, value: +32foo assert_equals: expected 1 but got 0
+FAIL Test <integer> trailing garbage, value: 1241245foo assert_equals: expected 1 but got 0
+FAIL Test <integer> trailing garbage, value: -47)90 assert_equals: expected 1 but got 0
+FAIL Test <integer> trailing garbage, value: 0)90 assert_equals: expected 1 but got 0
+FAIL Test <integer> trailing garbage, value: +32)90 assert_equals: expected 1 but got 0
+FAIL Test <integer> trailing garbage, value: 1241245)90 assert_equals: expected 1 but got 0
+FAIL Test <integer> trailing garbage, value: -47em assert_equals: expected 1 but got 0
+FAIL Test <integer> trailing garbage, value: 0em assert_equals: expected 1 but got 0
+FAIL Test <integer> trailing garbage, value: +32em assert_equals: expected 1 but got 0
+FAIL Test <integer> trailing garbage, value: 1241245em assert_equals: expected 1 but got 0
+FAIL Test <integer> trailing garbage, value: -47ex assert_equals: expected 1 but got 0
+FAIL Test <integer> trailing garbage, value: 0ex assert_equals: expected 1 but got 0
+FAIL Test <integer> trailing garbage, value: +32ex assert_equals: expected 1 but got 0
+FAIL Test <integer> trailing garbage, value: 1241245ex assert_equals: expected 1 but got 0
+FAIL Test <integer> trailing garbage, value: -47px assert_equals: expected 1 but got 0
+FAIL Test <integer> trailing garbage, value: 0px assert_equals: expected 1 but got 0
+FAIL Test <integer> trailing garbage, value: +32px assert_equals: expected 1 but got 0
+FAIL Test <integer> trailing garbage, value: 1241245px assert_equals: expected 1 but got 0
+FAIL Test <integer> trailing garbage, value: -47in assert_equals: expected 1 but got 0
+FAIL Test <integer> trailing garbage, value: 0in assert_equals: expected 1 but got 0
+FAIL Test <integer> trailing garbage, value: +32in assert_equals: expected 1 but got 0
+FAIL Test <integer> trailing garbage, value: 1241245in assert_equals: expected 1 but got 0
+FAIL Test <integer> trailing garbage, value: -47cm assert_equals: expected 1 but got 0
+FAIL Test <integer> trailing garbage, value: 0cm assert_equals: expected 1 but got 0
+FAIL Test <integer> trailing garbage, value: +32cm assert_equals: expected 1 but got 0
+FAIL Test <integer> trailing garbage, value: 1241245cm assert_equals: expected 1 but got 0
+FAIL Test <integer> trailing garbage, value: -47mm assert_equals: expected 1 but got 0
+FAIL Test <integer> trailing garbage, value: 0mm assert_equals: expected 1 but got 0
+FAIL Test <integer> trailing garbage, value: +32mm assert_equals: expected 1 but got 0
+FAIL Test <integer> trailing garbage, value: 1241245mm assert_equals: expected 1 but got 0
+FAIL Test <integer> trailing garbage, value: -47pt assert_equals: expected 1 but got 0
+FAIL Test <integer> trailing garbage, value: 0pt assert_equals: expected 1 but got 0
+FAIL Test <integer> trailing garbage, value: +32pt assert_equals: expected 1 but got 0
+FAIL Test <integer> trailing garbage, value: 1241245pt assert_equals: expected 1 but got 0
+FAIL Test <integer> trailing garbage, value: -47pc assert_equals: expected 1 but got 0
+FAIL Test <integer> trailing garbage, value: 0pc assert_equals: expected 1 but got 0
+FAIL Test <integer> trailing garbage, value: +32pc assert_equals: expected 1 but got 0
+FAIL Test <integer> trailing garbage, value: 1241245pc assert_equals: expected 1 but got 0
+FAIL Test <integer> trailing garbage, value: -47% assert_equals: expected 1 but got 0
+FAIL Test <integer> trailing garbage, value: 0% assert_equals: expected 1 but got 0
+FAIL Test <integer> trailing garbage, value: +32% assert_equals: expected 1 but got 0
+FAIL Test <integer> trailing garbage, value: 1241245% assert_equals: expected 1 but got 0
+FAIL Test <integer> valid value:  -47 assert_equals: expected -47 but got 0
+PASS Test <integer> valid value:  0
+PASS Test <integer> valid value:  +32
+PASS Test <integer> valid value:  1241245
+FAIL Test <integer> valid value:  -47  assert_equals: expected -47 but got 0
+PASS Test <integer> valid value:  0
+PASS Test <integer> valid value:  +32
+PASS Test <integer> valid value:  1241245
+FAIL Test <integer> valid value:  -47    assert_equals: expected -47 but got 0
+PASS Test <integer> valid value:  0
+PASS Test <integer> valid value:  +32
+PASS Test <integer> valid value:  1241245
+FAIL Test <integer> trailing garbage, value:  -47a assert_equals: expected 1 but got 0
+FAIL Test <integer> trailing garbage, value:  0a assert_equals: expected 1 but got 0
+FAIL Test <integer> trailing garbage, value:  +32a assert_equals: expected 1 but got 0
+FAIL Test <integer> trailing garbage, value:  1241245a assert_equals: expected 1 but got 0
+FAIL Test <integer> trailing garbage, value:  -47e assert_equals: expected 1 but got 0
+FAIL Test <integer> trailing garbage, value:  0e assert_equals: expected 1 but got 0
+FAIL Test <integer> trailing garbage, value:  +32e assert_equals: expected 1 but got 0
+FAIL Test <integer> trailing garbage, value:  1241245e assert_equals: expected 1 but got 0
+FAIL Test <integer> trailing garbage, value:  -47foo assert_equals: expected 1 but got 0
+FAIL Test <integer> trailing garbage, value:  0foo assert_equals: expected 1 but got 0
+FAIL Test <integer> trailing garbage, value:  +32foo assert_equals: expected 1 but got 0
+FAIL Test <integer> trailing garbage, value:  1241245foo assert_equals: expected 1 but got 0
+FAIL Test <integer> trailing garbage, value:  -47)90 assert_equals: expected 1 but got 0
+FAIL Test <integer> trailing garbage, value:  0)90 assert_equals: expected 1 but got 0
+FAIL Test <integer> trailing garbage, value:  +32)90 assert_equals: expected 1 but got 0
+FAIL Test <integer> trailing garbage, value:  1241245)90 assert_equals: expected 1 but got 0
+FAIL Test <integer> trailing garbage, value:  -47em assert_equals: expected 1 but got 0
+FAIL Test <integer> trailing garbage, value:  0em assert_equals: expected 1 but got 0
+FAIL Test <integer> trailing garbage, value:  +32em assert_equals: expected 1 but got 0
+FAIL Test <integer> trailing garbage, value:  1241245em assert_equals: expected 1 but got 0
+FAIL Test <integer> trailing garbage, value:  -47ex assert_equals: expected 1 but got 0
+FAIL Test <integer> trailing garbage, value:  0ex assert_equals: expected 1 but got 0
+FAIL Test <integer> trailing garbage, value:  +32ex assert_equals: expected 1 but got 0
+FAIL Test <integer> trailing garbage, value:  1241245ex assert_equals: expected 1 but got 0
+FAIL Test <integer> trailing garbage, value:  -47px assert_equals: expected 1 but got 0
+FAIL Test <integer> trailing garbage, value:  0px assert_equals: expected 1 but got 0
+FAIL Test <integer> trailing garbage, value:  +32px assert_equals: expected 1 but got 0
+FAIL Test <integer> trailing garbage, value:  1241245px assert_equals: expected 1 but got 0
+FAIL Test <integer> trailing garbage, value:  -47in assert_equals: expected 1 but got 0
+FAIL Test <integer> trailing garbage, value:  0in assert_equals: expected 1 but got 0
+FAIL Test <integer> trailing garbage, value:  +32in assert_equals: expected 1 but got 0
+FAIL Test <integer> trailing garbage, value:  1241245in assert_equals: expected 1 but got 0
+FAIL Test <integer> trailing garbage, value:  -47cm assert_equals: expected 1 but got 0
+FAIL Test <integer> trailing garbage, value:  0cm assert_equals: expected 1 but got 0
+FAIL Test <integer> trailing garbage, value:  +32cm assert_equals: expected 1 but got 0
+FAIL Test <integer> trailing garbage, value:  1241245cm assert_equals: expected 1 but got 0
+FAIL Test <integer> trailing garbage, value:  -47mm assert_equals: expected 1 but got 0
+FAIL Test <integer> trailing garbage, value:  0mm assert_equals: expected 1 but got 0
+FAIL Test <integer> trailing garbage, value:  +32mm assert_equals: expected 1 but got 0
+FAIL Test <integer> trailing garbage, value:  1241245mm assert_equals: expected 1 but got 0
+FAIL Test <integer> trailing garbage, value:  -47pt assert_equals: expected 1 but got 0
+FAIL Test <integer> trailing garbage, value:  0pt assert_equals: expected 1 but got 0
+FAIL Test <integer> trailing garbage, value:  +32pt assert_equals: expected 1 but got 0
+FAIL Test <integer> trailing garbage, value:  1241245pt assert_equals: expected 1 but got 0
+FAIL Test <integer> trailing garbage, value:  -47pc assert_equals: expected 1 but got 0
+FAIL Test <integer> trailing garbage, value:  0pc assert_equals: expected 1 but got 0
+FAIL Test <integer> trailing garbage, value:  +32pc assert_equals: expected 1 but got 0
+FAIL Test <integer> trailing garbage, value:  1241245pc assert_equals: expected 1 but got 0
+FAIL Test <integer> trailing garbage, value:  -47% assert_equals: expected 1 but got 0
+FAIL Test <integer> trailing garbage, value:  0% assert_equals: expected 1 but got 0
+FAIL Test <integer> trailing garbage, value:  +32% assert_equals: expected 1 but got 0
+FAIL Test <integer> trailing garbage, value:  1241245% assert_equals: expected 1 but got 0
+FAIL Test <integer> valid value:    -47 assert_equals: expected -47 but got 0
+PASS Test <integer> valid value:    0
+PASS Test <integer> valid value:    +32
+PASS Test <integer> valid value:    1241245
+FAIL Test <integer> valid value:    -47  assert_equals: expected -47 but got 0
+PASS Test <integer> valid value:    0
+PASS Test <integer> valid value:    +32
+PASS Test <integer> valid value:    1241245
+FAIL Test <integer> valid value:    -47    assert_equals: expected -47 but got 0
+PASS Test <integer> valid value:    0
+PASS Test <integer> valid value:    +32
+PASS Test <integer> valid value:    1241245
+FAIL Test <integer> trailing garbage, value:    -47a assert_equals: expected 1 but got 0
+FAIL Test <integer> trailing garbage, value:    0a assert_equals: expected 1 but got 0
+FAIL Test <integer> trailing garbage, value:    +32a assert_equals: expected 1 but got 0
+FAIL Test <integer> trailing garbage, value:    1241245a assert_equals: expected 1 but got 0
+FAIL Test <integer> trailing garbage, value:    -47e assert_equals: expected 1 but got 0
+FAIL Test <integer> trailing garbage, value:    0e assert_equals: expected 1 but got 0
+FAIL Test <integer> trailing garbage, value:    +32e assert_equals: expected 1 but got 0
+FAIL Test <integer> trailing garbage, value:    1241245e assert_equals: expected 1 but got 0
+FAIL Test <integer> trailing garbage, value:    -47foo assert_equals: expected 1 but got 0
+FAIL Test <integer> trailing garbage, value:    0foo assert_equals: expected 1 but got 0
+FAIL Test <integer> trailing garbage, value:    +32foo assert_equals: expected 1 but got 0
+FAIL Test <integer> trailing garbage, value:    1241245foo assert_equals: expected 1 but got 0
+FAIL Test <integer> trailing garbage, value:    -47)90 assert_equals: expected 1 but got 0
+FAIL Test <integer> trailing garbage, value:    0)90 assert_equals: expected 1 but got 0
+FAIL Test <integer> trailing garbage, value:    +32)90 assert_equals: expected 1 but got 0
+FAIL Test <integer> trailing garbage, value:    1241245)90 assert_equals: expected 1 but got 0
+FAIL Test <integer> trailing garbage, value:    -47em assert_equals: expected 1 but got 0
+FAIL Test <integer> trailing garbage, value:    0em assert_equals: expected 1 but got 0
+FAIL Test <integer> trailing garbage, value:    +32em assert_equals: expected 1 but got 0
+FAIL Test <integer> trailing garbage, value:    1241245em assert_equals: expected 1 but got 0
+FAIL Test <integer> trailing garbage, value:    -47ex assert_equals: expected 1 but got 0
+FAIL Test <integer> trailing garbage, value:    0ex assert_equals: expected 1 but got 0
+FAIL Test <integer> trailing garbage, value:    +32ex assert_equals: expected 1 but got 0
+FAIL Test <integer> trailing garbage, value:    1241245ex assert_equals: expected 1 but got 0
+FAIL Test <integer> trailing garbage, value:    -47px assert_equals: expected 1 but got 0
+FAIL Test <integer> trailing garbage, value:    0px assert_equals: expected 1 but got 0
+FAIL Test <integer> trailing garbage, value:    +32px assert_equals: expected 1 but got 0
+FAIL Test <integer> trailing garbage, value:    1241245px assert_equals: expected 1 but got 0
+FAIL Test <integer> trailing garbage, value:    -47in assert_equals: expected 1 but got 0
+FAIL Test <integer> trailing garbage, value:    0in assert_equals: expected 1 but got 0
+FAIL Test <integer> trailing garbage, value:    +32in assert_equals: expected 1 but got 0
+FAIL Test <integer> trailing garbage, value:    1241245in assert_equals: expected 1 but got 0
+FAIL Test <integer> trailing garbage, value:    -47cm assert_equals: expected 1 but got 0
+FAIL Test <integer> trailing garbage, value:    0cm assert_equals: expected 1 but got 0
+FAIL Test <integer> trailing garbage, value:    +32cm assert_equals: expected 1 but got 0
+FAIL Test <integer> trailing garbage, value:    1241245cm assert_equals: expected 1 but got 0
+FAIL Test <integer> trailing garbage, value:    -47mm assert_equals: expected 1 but got 0
+FAIL Test <integer> trailing garbage, value:    0mm assert_equals: expected 1 but got 0
+FAIL Test <integer> trailing garbage, value:    +32mm assert_equals: expected 1 but got 0
+FAIL Test <integer> trailing garbage, value:    1241245mm assert_equals: expected 1 but got 0
+FAIL Test <integer> trailing garbage, value:    -47pt assert_equals: expected 1 but got 0
+FAIL Test <integer> trailing garbage, value:    0pt assert_equals: expected 1 but got 0
+FAIL Test <integer> trailing garbage, value:    +32pt assert_equals: expected 1 but got 0
+FAIL Test <integer> trailing garbage, value:    1241245pt assert_equals: expected 1 but got 0
+FAIL Test <integer> trailing garbage, value:    -47pc assert_equals: expected 1 but got 0
+FAIL Test <integer> trailing garbage, value:    0pc assert_equals: expected 1 but got 0
+FAIL Test <integer> trailing garbage, value:    +32pc assert_equals: expected 1 but got 0
+FAIL Test <integer> trailing garbage, value:    1241245pc assert_equals: expected 1 but got 0
+FAIL Test <integer> trailing garbage, value:    -47% assert_equals: expected 1 but got 0
+FAIL Test <integer> trailing garbage, value:    0% assert_equals: expected 1 but got 0
+FAIL Test <integer> trailing garbage, value:    +32% assert_equals: expected 1 but got 0
+FAIL Test <integer> trailing garbage, value:    1241245% assert_equals: expected 1 but got 0
+
