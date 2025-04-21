@@ -1,0 +1,1460 @@
+
+PASS Test <number> valid value: -47
+PASS Test <number> valid value: .1
+PASS Test <number> valid value: 0.35
+PASS Test <number> valid value: 1e-10
+PASS Test <number> valid value: +32
+PASS Test <number> valid value: +17E-1
+PASS Test <number> valid value: 17e+2
+PASS Test <number> valid value: -47
+PASS Test <number> valid value: .1
+PASS Test <number> valid value: 0.35
+PASS Test <number> valid value: 1e-10
+PASS Test <number> valid value: +32
+PASS Test <number> valid value: +17E-1
+PASS Test <number> valid value: 17e+2
+PASS Test <number> valid value: -47
+PASS Test <number> valid value: .1
+PASS Test <number> valid value: 0.35
+PASS Test <number> valid value: 1e-10
+PASS Test <number> valid value: +32
+PASS Test <number> valid value: +17E-1
+PASS Test <number> valid value: 17e+2
+PASS Test <number> valid value: -47\r\n\t
+PASS Test <number> valid value: .1\r\n\t
+PASS Test <number> valid value: 0.35\r\n\t
+PASS Test <number> valid value: 1e-10\r\n\t
+PASS Test <number> valid value: +32\r\n\t
+PASS Test <number> valid value: +17E-1\r\n\t
+PASS Test <number> valid value: 17e+2\r\n\t
+PASS Test <number> valid value: -47\f
+PASS Test <number> valid value: .1\f
+PASS Test <number> valid value: 0.35\f
+PASS Test <number> valid value: 1e-10\f
+PASS Test <number> valid value: +32\f
+PASS Test <number> valid value: +17E-1\f
+PASS Test <number> valid value: 17e+2\f
+FAIL Test <number> trailing garbage, value: -47a assert_approx_equals: expected 0 +/- 5.960464477539063e-8 but got -47
+FAIL Test <number> trailing garbage, value: .1a assert_approx_equals: expected 0 +/- 5.960464477539063e-8 but got 0.10000000149011612
+FAIL Test <number> trailing garbage, value: 0.35a assert_approx_equals: expected 0 +/- 5.960464477539063e-8 but got 0.3499999940395355
+PASS Test <number> trailing garbage, value: 1e-10a
+FAIL Test <number> trailing garbage, value: +32a assert_approx_equals: expected 0 +/- 5.960464477539063e-8 but got 32
+FAIL Test <number> trailing garbage, value: +17E-1a assert_approx_equals: expected 0 +/- 5.960464477539063e-8 but got 1.7000000476837158
+FAIL Test <number> trailing garbage, value: 17e+2a assert_approx_equals: expected 0 +/- 5.960464477539063e-8 but got 1700
+FAIL Test <number> trailing garbage, value: -47e assert_approx_equals: expected 0 +/- 5.960464477539063e-8 but got -47
+FAIL Test <number> trailing garbage, value: .1e assert_approx_equals: expected 0 +/- 5.960464477539063e-8 but got 0.10000000149011612
+FAIL Test <number> trailing garbage, value: 0.35e assert_approx_equals: expected 0 +/- 5.960464477539063e-8 but got 0.3499999940395355
+PASS Test <number> trailing garbage, value: 1e-10e
+FAIL Test <number> trailing garbage, value: +32e assert_approx_equals: expected 0 +/- 5.960464477539063e-8 but got 32
+FAIL Test <number> trailing garbage, value: +17E-1e assert_approx_equals: expected 0 +/- 5.960464477539063e-8 but got 1.7000000476837158
+FAIL Test <number> trailing garbage, value: 17e+2e assert_approx_equals: expected 0 +/- 5.960464477539063e-8 but got 1700
+FAIL Test <number> trailing garbage, value: -47foo assert_approx_equals: expected 0 +/- 5.960464477539063e-8 but got -47
+FAIL Test <number> trailing garbage, value: .1foo assert_approx_equals: expected 0 +/- 5.960464477539063e-8 but got 0.10000000149011612
+FAIL Test <number> trailing garbage, value: 0.35foo assert_approx_equals: expected 0 +/- 5.960464477539063e-8 but got 0.3499999940395355
+PASS Test <number> trailing garbage, value: 1e-10foo
+FAIL Test <number> trailing garbage, value: +32foo assert_approx_equals: expected 0 +/- 5.960464477539063e-8 but got 32
+FAIL Test <number> trailing garbage, value: +17E-1foo assert_approx_equals: expected 0 +/- 5.960464477539063e-8 but got 1.7000000476837158
+FAIL Test <number> trailing garbage, value: 17e+2foo assert_approx_equals: expected 0 +/- 5.960464477539063e-8 but got 1700
+FAIL Test <number> trailing garbage, value: -47)90 assert_approx_equals: expected 0 +/- 5.960464477539063e-8 but got -47
+FAIL Test <number> trailing garbage, value: .1)90 assert_approx_equals: expected 0 +/- 5.960464477539063e-8 but got 0.10000000149011612
+FAIL Test <number> trailing garbage, value: 0.35)90 assert_approx_equals: expected 0 +/- 5.960464477539063e-8 but got 0.3499999940395355
+PASS Test <number> trailing garbage, value: 1e-10)90
+FAIL Test <number> trailing garbage, value: +32)90 assert_approx_equals: expected 0 +/- 5.960464477539063e-8 but got 32
+FAIL Test <number> trailing garbage, value: +17E-1)90 assert_approx_equals: expected 0 +/- 5.960464477539063e-8 but got 1.7000000476837158
+FAIL Test <number> trailing garbage, value: 17e+2)90 assert_approx_equals: expected 0 +/- 5.960464477539063e-8 but got 1700
+PASS Test <number> valid value:  -47
+PASS Test <number> valid value:  .1
+PASS Test <number> valid value:  0.35
+PASS Test <number> valid value:  1e-10
+PASS Test <number> valid value:  +32
+PASS Test <number> valid value:  +17E-1
+PASS Test <number> valid value:  17e+2
+PASS Test <number> valid value:  -47
+PASS Test <number> valid value:  .1
+PASS Test <number> valid value:  0.35
+PASS Test <number> valid value:  1e-10
+PASS Test <number> valid value:  +32
+PASS Test <number> valid value:  +17E-1
+PASS Test <number> valid value:  17e+2
+PASS Test <number> valid value:  -47
+PASS Test <number> valid value:  .1
+PASS Test <number> valid value:  0.35
+PASS Test <number> valid value:  1e-10
+PASS Test <number> valid value:  +32
+PASS Test <number> valid value:  +17E-1
+PASS Test <number> valid value:  17e+2
+PASS Test <number> valid value:  -47\r\n\t
+PASS Test <number> valid value:  .1\r\n\t
+PASS Test <number> valid value:  0.35\r\n\t
+PASS Test <number> valid value:  1e-10\r\n\t
+PASS Test <number> valid value:  +32\r\n\t
+PASS Test <number> valid value:  +17E-1\r\n\t
+PASS Test <number> valid value:  17e+2\r\n\t
+PASS Test <number> valid value:  -47\f
+PASS Test <number> valid value:  .1\f
+PASS Test <number> valid value:  0.35\f
+PASS Test <number> valid value:  1e-10\f
+PASS Test <number> valid value:  +32\f
+PASS Test <number> valid value:  +17E-1\f
+PASS Test <number> valid value:  17e+2\f
+FAIL Test <number> trailing garbage, value:  -47a assert_approx_equals: expected 0 +/- 5.960464477539063e-8 but got -47
+FAIL Test <number> trailing garbage, value:  .1a assert_approx_equals: expected 0 +/- 5.960464477539063e-8 but got 0.10000000149011612
+FAIL Test <number> trailing garbage, value:  0.35a assert_approx_equals: expected 0 +/- 5.960464477539063e-8 but got 0.3499999940395355
+PASS Test <number> trailing garbage, value:  1e-10a
+FAIL Test <number> trailing garbage, value:  +32a assert_approx_equals: expected 0 +/- 5.960464477539063e-8 but got 32
+FAIL Test <number> trailing garbage, value:  +17E-1a assert_approx_equals: expected 0 +/- 5.960464477539063e-8 but got 1.7000000476837158
+FAIL Test <number> trailing garbage, value:  17e+2a assert_approx_equals: expected 0 +/- 5.960464477539063e-8 but got 1700
+FAIL Test <number> trailing garbage, value:  -47e assert_approx_equals: expected 0 +/- 5.960464477539063e-8 but got -47
+FAIL Test <number> trailing garbage, value:  .1e assert_approx_equals: expected 0 +/- 5.960464477539063e-8 but got 0.10000000149011612
+FAIL Test <number> trailing garbage, value:  0.35e assert_approx_equals: expected 0 +/- 5.960464477539063e-8 but got 0.3499999940395355
+PASS Test <number> trailing garbage, value:  1e-10e
+FAIL Test <number> trailing garbage, value:  +32e assert_approx_equals: expected 0 +/- 5.960464477539063e-8 but got 32
+FAIL Test <number> trailing garbage, value:  +17E-1e assert_approx_equals: expected 0 +/- 5.960464477539063e-8 but got 1.7000000476837158
+FAIL Test <number> trailing garbage, value:  17e+2e assert_approx_equals: expected 0 +/- 5.960464477539063e-8 but got 1700
+FAIL Test <number> trailing garbage, value:  -47foo assert_approx_equals: expected 0 +/- 5.960464477539063e-8 but got -47
+FAIL Test <number> trailing garbage, value:  .1foo assert_approx_equals: expected 0 +/- 5.960464477539063e-8 but got 0.10000000149011612
+FAIL Test <number> trailing garbage, value:  0.35foo assert_approx_equals: expected 0 +/- 5.960464477539063e-8 but got 0.3499999940395355
+PASS Test <number> trailing garbage, value:  1e-10foo
+FAIL Test <number> trailing garbage, value:  +32foo assert_approx_equals: expected 0 +/- 5.960464477539063e-8 but got 32
+FAIL Test <number> trailing garbage, value:  +17E-1foo assert_approx_equals: expected 0 +/- 5.960464477539063e-8 but got 1.7000000476837158
+FAIL Test <number> trailing garbage, value:  17e+2foo assert_approx_equals: expected 0 +/- 5.960464477539063e-8 but got 1700
+FAIL Test <number> trailing garbage, value:  -47)90 assert_approx_equals: expected 0 +/- 5.960464477539063e-8 but got -47
+FAIL Test <number> trailing garbage, value:  .1)90 assert_approx_equals: expected 0 +/- 5.960464477539063e-8 but got 0.10000000149011612
+FAIL Test <number> trailing garbage, value:  0.35)90 assert_approx_equals: expected 0 +/- 5.960464477539063e-8 but got 0.3499999940395355
+PASS Test <number> trailing garbage, value:  1e-10)90
+FAIL Test <number> trailing garbage, value:  +32)90 assert_approx_equals: expected 0 +/- 5.960464477539063e-8 but got 32
+FAIL Test <number> trailing garbage, value:  +17E-1)90 assert_approx_equals: expected 0 +/- 5.960464477539063e-8 but got 1.7000000476837158
+FAIL Test <number> trailing garbage, value:  17e+2)90 assert_approx_equals: expected 0 +/- 5.960464477539063e-8 but got 1700
+PASS Test <number> valid value:    -47
+PASS Test <number> valid value:    .1
+PASS Test <number> valid value:    0.35
+PASS Test <number> valid value:    1e-10
+PASS Test <number> valid value:    +32
+PASS Test <number> valid value:    +17E-1
+PASS Test <number> valid value:    17e+2
+PASS Test <number> valid value:    -47
+PASS Test <number> valid value:    .1
+PASS Test <number> valid value:    0.35
+PASS Test <number> valid value:    1e-10
+PASS Test <number> valid value:    +32
+PASS Test <number> valid value:    +17E-1
+PASS Test <number> valid value:    17e+2
+PASS Test <number> valid value:    -47
+PASS Test <number> valid value:    .1
+PASS Test <number> valid value:    0.35
+PASS Test <number> valid value:    1e-10
+PASS Test <number> valid value:    +32
+PASS Test <number> valid value:    +17E-1
+PASS Test <number> valid value:    17e+2
+PASS Test <number> valid value:    -47\r\n\t
+PASS Test <number> valid value:    .1\r\n\t
+PASS Test <number> valid value:    0.35\r\n\t
+PASS Test <number> valid value:    1e-10\r\n\t
+PASS Test <number> valid value:    +32\r\n\t
+PASS Test <number> valid value:    +17E-1\r\n\t
+PASS Test <number> valid value:    17e+2\r\n\t
+PASS Test <number> valid value:    -47\f
+PASS Test <number> valid value:    .1\f
+PASS Test <number> valid value:    0.35\f
+PASS Test <number> valid value:    1e-10\f
+PASS Test <number> valid value:    +32\f
+PASS Test <number> valid value:    +17E-1\f
+PASS Test <number> valid value:    17e+2\f
+FAIL Test <number> trailing garbage, value:    -47a assert_approx_equals: expected 0 +/- 5.960464477539063e-8 but got -47
+FAIL Test <number> trailing garbage, value:    .1a assert_approx_equals: expected 0 +/- 5.960464477539063e-8 but got 0.10000000149011612
+FAIL Test <number> trailing garbage, value:    0.35a assert_approx_equals: expected 0 +/- 5.960464477539063e-8 but got 0.3499999940395355
+PASS Test <number> trailing garbage, value:    1e-10a
+FAIL Test <number> trailing garbage, value:    +32a assert_approx_equals: expected 0 +/- 5.960464477539063e-8 but got 32
+FAIL Test <number> trailing garbage, value:    +17E-1a assert_approx_equals: expected 0 +/- 5.960464477539063e-8 but got 1.7000000476837158
+FAIL Test <number> trailing garbage, value:    17e+2a assert_approx_equals: expected 0 +/- 5.960464477539063e-8 but got 1700
+FAIL Test <number> trailing garbage, value:    -47e assert_approx_equals: expected 0 +/- 5.960464477539063e-8 but got -47
+FAIL Test <number> trailing garbage, value:    .1e assert_approx_equals: expected 0 +/- 5.960464477539063e-8 but got 0.10000000149011612
+FAIL Test <number> trailing garbage, value:    0.35e assert_approx_equals: expected 0 +/- 5.960464477539063e-8 but got 0.3499999940395355
+PASS Test <number> trailing garbage, value:    1e-10e
+FAIL Test <number> trailing garbage, value:    +32e assert_approx_equals: expected 0 +/- 5.960464477539063e-8 but got 32
+FAIL Test <number> trailing garbage, value:    +17E-1e assert_approx_equals: expected 0 +/- 5.960464477539063e-8 but got 1.7000000476837158
+FAIL Test <number> trailing garbage, value:    17e+2e assert_approx_equals: expected 0 +/- 5.960464477539063e-8 but got 1700
+FAIL Test <number> trailing garbage, value:    -47foo assert_approx_equals: expected 0 +/- 5.960464477539063e-8 but got -47
+FAIL Test <number> trailing garbage, value:    .1foo assert_approx_equals: expected 0 +/- 5.960464477539063e-8 but got 0.10000000149011612
+FAIL Test <number> trailing garbage, value:    0.35foo assert_approx_equals: expected 0 +/- 5.960464477539063e-8 but got 0.3499999940395355
+PASS Test <number> trailing garbage, value:    1e-10foo
+FAIL Test <number> trailing garbage, value:    +32foo assert_approx_equals: expected 0 +/- 5.960464477539063e-8 but got 32
+FAIL Test <number> trailing garbage, value:    +17E-1foo assert_approx_equals: expected 0 +/- 5.960464477539063e-8 but got 1.7000000476837158
+FAIL Test <number> trailing garbage, value:    17e+2foo assert_approx_equals: expected 0 +/- 5.960464477539063e-8 but got 1700
+FAIL Test <number> trailing garbage, value:    -47)90 assert_approx_equals: expected 0 +/- 5.960464477539063e-8 but got -47
+FAIL Test <number> trailing garbage, value:    .1)90 assert_approx_equals: expected 0 +/- 5.960464477539063e-8 but got 0.10000000149011612
+FAIL Test <number> trailing garbage, value:    0.35)90 assert_approx_equals: expected 0 +/- 5.960464477539063e-8 but got 0.3499999940395355
+PASS Test <number> trailing garbage, value:    1e-10)90
+FAIL Test <number> trailing garbage, value:    +32)90 assert_approx_equals: expected 0 +/- 5.960464477539063e-8 but got 32
+FAIL Test <number> trailing garbage, value:    +17E-1)90 assert_approx_equals: expected 0 +/- 5.960464477539063e-8 but got 1.7000000476837158
+FAIL Test <number> trailing garbage, value:    17e+2)90 assert_approx_equals: expected 0 +/- 5.960464477539063e-8 but got 1700
+PASS Test <number> valid value: \r\n\t -47
+PASS Test <number> valid value: \r\n\t .1
+PASS Test <number> valid value: \r\n\t 0.35
+PASS Test <number> valid value: \r\n\t 1e-10
+PASS Test <number> valid value: \r\n\t +32
+PASS Test <number> valid value: \r\n\t +17E-1
+PASS Test <number> valid value: \r\n\t 17e+2
+PASS Test <number> valid value: \r\n\t -47
+PASS Test <number> valid value: \r\n\t .1
+PASS Test <number> valid value: \r\n\t 0.35
+PASS Test <number> valid value: \r\n\t 1e-10
+PASS Test <number> valid value: \r\n\t +32
+PASS Test <number> valid value: \r\n\t +17E-1
+PASS Test <number> valid value: \r\n\t 17e+2
+PASS Test <number> valid value: \r\n\t -47
+PASS Test <number> valid value: \r\n\t .1
+PASS Test <number> valid value: \r\n\t 0.35
+PASS Test <number> valid value: \r\n\t 1e-10
+PASS Test <number> valid value: \r\n\t +32
+PASS Test <number> valid value: \r\n\t +17E-1
+PASS Test <number> valid value: \r\n\t 17e+2
+PASS Test <number> valid value: \r\n\t -47\r\n\t
+PASS Test <number> valid value: \r\n\t .1\r\n\t
+PASS Test <number> valid value: \r\n\t 0.35\r\n\t
+PASS Test <number> valid value: \r\n\t 1e-10\r\n\t
+PASS Test <number> valid value: \r\n\t +32\r\n\t
+PASS Test <number> valid value: \r\n\t +17E-1\r\n\t
+PASS Test <number> valid value: \r\n\t 17e+2\r\n\t
+PASS Test <number> valid value: \r\n\t -47\f
+PASS Test <number> valid value: \r\n\t .1\f
+PASS Test <number> valid value: \r\n\t 0.35\f
+PASS Test <number> valid value: \r\n\t 1e-10\f
+PASS Test <number> valid value: \r\n\t +32\f
+PASS Test <number> valid value: \r\n\t +17E-1\f
+PASS Test <number> valid value: \r\n\t 17e+2\f
+FAIL Test <number> trailing garbage, value: \r\n\t -47a assert_approx_equals: expected 0 +/- 5.960464477539063e-8 but got -47
+FAIL Test <number> trailing garbage, value: \r\n\t .1a assert_approx_equals: expected 0 +/- 5.960464477539063e-8 but got 0.10000000149011612
+FAIL Test <number> trailing garbage, value: \r\n\t 0.35a assert_approx_equals: expected 0 +/- 5.960464477539063e-8 but got 0.3499999940395355
+PASS Test <number> trailing garbage, value: \r\n\t 1e-10a
+FAIL Test <number> trailing garbage, value: \r\n\t +32a assert_approx_equals: expected 0 +/- 5.960464477539063e-8 but got 32
+FAIL Test <number> trailing garbage, value: \r\n\t +17E-1a assert_approx_equals: expected 0 +/- 5.960464477539063e-8 but got 1.7000000476837158
+FAIL Test <number> trailing garbage, value: \r\n\t 17e+2a assert_approx_equals: expected 0 +/- 5.960464477539063e-8 but got 1700
+FAIL Test <number> trailing garbage, value: \r\n\t -47e assert_approx_equals: expected 0 +/- 5.960464477539063e-8 but got -47
+FAIL Test <number> trailing garbage, value: \r\n\t .1e assert_approx_equals: expected 0 +/- 5.960464477539063e-8 but got 0.10000000149011612
+FAIL Test <number> trailing garbage, value: \r\n\t 0.35e assert_approx_equals: expected 0 +/- 5.960464477539063e-8 but got 0.3499999940395355
+PASS Test <number> trailing garbage, value: \r\n\t 1e-10e
+FAIL Test <number> trailing garbage, value: \r\n\t +32e assert_approx_equals: expected 0 +/- 5.960464477539063e-8 but got 32
+FAIL Test <number> trailing garbage, value: \r\n\t +17E-1e assert_approx_equals: expected 0 +/- 5.960464477539063e-8 but got 1.7000000476837158
+FAIL Test <number> trailing garbage, value: \r\n\t 17e+2e assert_approx_equals: expected 0 +/- 5.960464477539063e-8 but got 1700
+FAIL Test <number> trailing garbage, value: \r\n\t -47foo assert_approx_equals: expected 0 +/- 5.960464477539063e-8 but got -47
+FAIL Test <number> trailing garbage, value: \r\n\t .1foo assert_approx_equals: expected 0 +/- 5.960464477539063e-8 but got 0.10000000149011612
+FAIL Test <number> trailing garbage, value: \r\n\t 0.35foo assert_approx_equals: expected 0 +/- 5.960464477539063e-8 but got 0.3499999940395355
+PASS Test <number> trailing garbage, value: \r\n\t 1e-10foo
+FAIL Test <number> trailing garbage, value: \r\n\t +32foo assert_approx_equals: expected 0 +/- 5.960464477539063e-8 but got 32
+FAIL Test <number> trailing garbage, value: \r\n\t +17E-1foo assert_approx_equals: expected 0 +/- 5.960464477539063e-8 but got 1.7000000476837158
+FAIL Test <number> trailing garbage, value: \r\n\t 17e+2foo assert_approx_equals: expected 0 +/- 5.960464477539063e-8 but got 1700
+FAIL Test <number> trailing garbage, value: \r\n\t -47)90 assert_approx_equals: expected 0 +/- 5.960464477539063e-8 but got -47
+FAIL Test <number> trailing garbage, value: \r\n\t .1)90 assert_approx_equals: expected 0 +/- 5.960464477539063e-8 but got 0.10000000149011612
+FAIL Test <number> trailing garbage, value: \r\n\t 0.35)90 assert_approx_equals: expected 0 +/- 5.960464477539063e-8 but got 0.3499999940395355
+PASS Test <number> trailing garbage, value: \r\n\t 1e-10)90
+FAIL Test <number> trailing garbage, value: \r\n\t +32)90 assert_approx_equals: expected 0 +/- 5.960464477539063e-8 but got 32
+FAIL Test <number> trailing garbage, value: \r\n\t +17E-1)90 assert_approx_equals: expected 0 +/- 5.960464477539063e-8 but got 1.7000000476837158
+FAIL Test <number> trailing garbage, value: \r\n\t 17e+2)90 assert_approx_equals: expected 0 +/- 5.960464477539063e-8 but got 1700
+PASS Test <number> valid value: \f-47
+PASS Test <number> valid value: \f.1
+PASS Test <number> valid value: \f0.35
+PASS Test <number> valid value: \f1e-10
+PASS Test <number> valid value: \f+32
+PASS Test <number> valid value: \f+17E-1
+PASS Test <number> valid value: \f17e+2
+PASS Test <number> valid value: \f-47
+PASS Test <number> valid value: \f.1
+PASS Test <number> valid value: \f0.35
+PASS Test <number> valid value: \f1e-10
+PASS Test <number> valid value: \f+32
+PASS Test <number> valid value: \f+17E-1
+PASS Test <number> valid value: \f17e+2
+PASS Test <number> valid value: \f-47
+PASS Test <number> valid value: \f.1
+PASS Test <number> valid value: \f0.35
+PASS Test <number> valid value: \f1e-10
+PASS Test <number> valid value: \f+32
+PASS Test <number> valid value: \f+17E-1
+PASS Test <number> valid value: \f17e+2
+PASS Test <number> valid value: \f-47\r\n\t
+PASS Test <number> valid value: \f.1\r\n\t
+PASS Test <number> valid value: \f0.35\r\n\t
+PASS Test <number> valid value: \f1e-10\r\n\t
+PASS Test <number> valid value: \f+32\r\n\t
+PASS Test <number> valid value: \f+17E-1\r\n\t
+PASS Test <number> valid value: \f17e+2\r\n\t
+PASS Test <number> valid value: \f-47\f
+PASS Test <number> valid value: \f.1\f
+PASS Test <number> valid value: \f0.35\f
+PASS Test <number> valid value: \f1e-10\f
+PASS Test <number> valid value: \f+32\f
+PASS Test <number> valid value: \f+17E-1\f
+PASS Test <number> valid value: \f17e+2\f
+FAIL Test <number> trailing garbage, value: \f-47a assert_approx_equals: expected 0 +/- 5.960464477539063e-8 but got -47
+FAIL Test <number> trailing garbage, value: \f.1a assert_approx_equals: expected 0 +/- 5.960464477539063e-8 but got 0.10000000149011612
+FAIL Test <number> trailing garbage, value: \f0.35a assert_approx_equals: expected 0 +/- 5.960464477539063e-8 but got 0.3499999940395355
+PASS Test <number> trailing garbage, value: \f1e-10a
+FAIL Test <number> trailing garbage, value: \f+32a assert_approx_equals: expected 0 +/- 5.960464477539063e-8 but got 32
+FAIL Test <number> trailing garbage, value: \f+17E-1a assert_approx_equals: expected 0 +/- 5.960464477539063e-8 but got 1.7000000476837158
+FAIL Test <number> trailing garbage, value: \f17e+2a assert_approx_equals: expected 0 +/- 5.960464477539063e-8 but got 1700
+FAIL Test <number> trailing garbage, value: \f-47e assert_approx_equals: expected 0 +/- 5.960464477539063e-8 but got -47
+FAIL Test <number> trailing garbage, value: \f.1e assert_approx_equals: expected 0 +/- 5.960464477539063e-8 but got 0.10000000149011612
+FAIL Test <number> trailing garbage, value: \f0.35e assert_approx_equals: expected 0 +/- 5.960464477539063e-8 but got 0.3499999940395355
+PASS Test <number> trailing garbage, value: \f1e-10e
+FAIL Test <number> trailing garbage, value: \f+32e assert_approx_equals: expected 0 +/- 5.960464477539063e-8 but got 32
+FAIL Test <number> trailing garbage, value: \f+17E-1e assert_approx_equals: expected 0 +/- 5.960464477539063e-8 but got 1.7000000476837158
+FAIL Test <number> trailing garbage, value: \f17e+2e assert_approx_equals: expected 0 +/- 5.960464477539063e-8 but got 1700
+FAIL Test <number> trailing garbage, value: \f-47foo assert_approx_equals: expected 0 +/- 5.960464477539063e-8 but got -47
+FAIL Test <number> trailing garbage, value: \f.1foo assert_approx_equals: expected 0 +/- 5.960464477539063e-8 but got 0.10000000149011612
+FAIL Test <number> trailing garbage, value: \f0.35foo assert_approx_equals: expected 0 +/- 5.960464477539063e-8 but got 0.3499999940395355
+PASS Test <number> trailing garbage, value: \f1e-10foo
+FAIL Test <number> trailing garbage, value: \f+32foo assert_approx_equals: expected 0 +/- 5.960464477539063e-8 but got 32
+FAIL Test <number> trailing garbage, value: \f+17E-1foo assert_approx_equals: expected 0 +/- 5.960464477539063e-8 but got 1.7000000476837158
+FAIL Test <number> trailing garbage, value: \f17e+2foo assert_approx_equals: expected 0 +/- 5.960464477539063e-8 but got 1700
+FAIL Test <number> trailing garbage, value: \f-47)90 assert_approx_equals: expected 0 +/- 5.960464477539063e-8 but got -47
+FAIL Test <number> trailing garbage, value: \f.1)90 assert_approx_equals: expected 0 +/- 5.960464477539063e-8 but got 0.10000000149011612
+FAIL Test <number> trailing garbage, value: \f0.35)90 assert_approx_equals: expected 0 +/- 5.960464477539063e-8 but got 0.3499999940395355
+PASS Test <number> trailing garbage, value: \f1e-10)90
+FAIL Test <number> trailing garbage, value: \f+32)90 assert_approx_equals: expected 0 +/- 5.960464477539063e-8 but got 32
+FAIL Test <number> trailing garbage, value: \f+17E-1)90 assert_approx_equals: expected 0 +/- 5.960464477539063e-8 but got 1.7000000476837158
+FAIL Test <number> trailing garbage, value: \f17e+2)90 assert_approx_equals: expected 0 +/- 5.960464477539063e-8 but got 1700
+PASS Test <percentage> valid value: -47%
+PASS Test <percentage> valid value: .1%
+PASS Test <percentage> valid value: 0.35%
+PASS Test <percentage> valid value: 1e-10%
+PASS Test <percentage> valid value: +32%
+PASS Test <percentage> valid value: +17E-1%
+PASS Test <percentage> valid value: 17e+2%
+FAIL Test <percentage> valid value: -47%  assert_approx_equals: expected -0.47 +/- 5.960464477539063e-8 but got -47
+FAIL Test <percentage> valid value: .1%  assert_approx_equals: expected 0.001 +/- 5.960464477539063e-8 but got 0.10000000149011612
+FAIL Test <percentage> valid value: 0.35%  assert_approx_equals: expected 0.0034999999999999996 +/- 5.960464477539063e-8 but got 0.3499999940395355
+PASS Test <percentage> valid value: 1e-10%
+FAIL Test <percentage> valid value: +32%  assert_approx_equals: expected 0.32 +/- 5.960464477539063e-8 but got 32
+FAIL Test <percentage> valid value: +17E-1%  assert_approx_equals: expected 0.017 +/- 5.960464477539063e-8 but got 1.7000000476837158
+FAIL Test <percentage> valid value: 17e+2%  assert_approx_equals: expected 17 +/- 5.960464477539063e-8 but got 1700
+FAIL Test <percentage> valid value: -47%    assert_approx_equals: expected -0.47 +/- 5.960464477539063e-8 but got -47
+FAIL Test <percentage> valid value: .1%    assert_approx_equals: expected 0.001 +/- 5.960464477539063e-8 but got 0.10000000149011612
+FAIL Test <percentage> valid value: 0.35%    assert_approx_equals: expected 0.0034999999999999996 +/- 5.960464477539063e-8 but got 0.3499999940395355
+PASS Test <percentage> valid value: 1e-10%
+FAIL Test <percentage> valid value: +32%    assert_approx_equals: expected 0.32 +/- 5.960464477539063e-8 but got 32
+FAIL Test <percentage> valid value: +17E-1%    assert_approx_equals: expected 0.017 +/- 5.960464477539063e-8 but got 1.7000000476837158
+FAIL Test <percentage> valid value: 17e+2%    assert_approx_equals: expected 17 +/- 5.960464477539063e-8 but got 1700
+FAIL Test <percentage> valid value: -47%\r\n\t  assert_approx_equals: expected -0.47 +/- 5.960464477539063e-8 but got -47
+FAIL Test <percentage> valid value: .1%\r\n\t  assert_approx_equals: expected 0.001 +/- 5.960464477539063e-8 but got 0.10000000149011612
+FAIL Test <percentage> valid value: 0.35%\r\n\t  assert_approx_equals: expected 0.0034999999999999996 +/- 5.960464477539063e-8 but got 0.3499999940395355
+PASS Test <percentage> valid value: 1e-10%\r\n\t
+FAIL Test <percentage> valid value: +32%\r\n\t  assert_approx_equals: expected 0.32 +/- 5.960464477539063e-8 but got 32
+FAIL Test <percentage> valid value: +17E-1%\r\n\t  assert_approx_equals: expected 0.017 +/- 5.960464477539063e-8 but got 1.7000000476837158
+FAIL Test <percentage> valid value: 17e+2%\r\n\t  assert_approx_equals: expected 17 +/- 5.960464477539063e-8 but got 1700
+FAIL Test <percentage> valid value: -47%\f assert_approx_equals: expected -0.47 +/- 5.960464477539063e-8 but got -47
+FAIL Test <percentage> valid value: .1%\f assert_approx_equals: expected 0.001 +/- 5.960464477539063e-8 but got 0.10000000149011612
+FAIL Test <percentage> valid value: 0.35%\f assert_approx_equals: expected 0.0034999999999999996 +/- 5.960464477539063e-8 but got 0.3499999940395355
+PASS Test <percentage> valid value: 1e-10%\f
+FAIL Test <percentage> valid value: +32%\f assert_approx_equals: expected 0.32 +/- 5.960464477539063e-8 but got 32
+FAIL Test <percentage> valid value: +17E-1%\f assert_approx_equals: expected 0.017 +/- 5.960464477539063e-8 but got 1.7000000476837158
+FAIL Test <percentage> valid value: 17e+2%\f assert_approx_equals: expected 17 +/- 5.960464477539063e-8 but got 1700
+FAIL Test <percentage> trailing garbage, value: -47a assert_approx_equals: expected 0 +/- 5.960464477539063e-8 but got -47
+FAIL Test <percentage> trailing garbage, value: .1a assert_approx_equals: expected 0 +/- 5.960464477539063e-8 but got 0.10000000149011612
+FAIL Test <percentage> trailing garbage, value: 0.35a assert_approx_equals: expected 0 +/- 5.960464477539063e-8 but got 0.3499999940395355
+PASS Test <percentage> trailing garbage, value: 1e-10a
+FAIL Test <percentage> trailing garbage, value: +32a assert_approx_equals: expected 0 +/- 5.960464477539063e-8 but got 32
+FAIL Test <percentage> trailing garbage, value: +17E-1a assert_approx_equals: expected 0 +/- 5.960464477539063e-8 but got 1.7000000476837158
+FAIL Test <percentage> trailing garbage, value: 17e+2a assert_approx_equals: expected 0 +/- 5.960464477539063e-8 but got 1700
+FAIL Test <percentage> trailing garbage, value: -47e assert_approx_equals: expected 0 +/- 5.960464477539063e-8 but got -47
+FAIL Test <percentage> trailing garbage, value: .1e assert_approx_equals: expected 0 +/- 5.960464477539063e-8 but got 0.10000000149011612
+FAIL Test <percentage> trailing garbage, value: 0.35e assert_approx_equals: expected 0 +/- 5.960464477539063e-8 but got 0.3499999940395355
+PASS Test <percentage> trailing garbage, value: 1e-10e
+FAIL Test <percentage> trailing garbage, value: +32e assert_approx_equals: expected 0 +/- 5.960464477539063e-8 but got 32
+FAIL Test <percentage> trailing garbage, value: +17E-1e assert_approx_equals: expected 0 +/- 5.960464477539063e-8 but got 1.7000000476837158
+FAIL Test <percentage> trailing garbage, value: 17e+2e assert_approx_equals: expected 0 +/- 5.960464477539063e-8 but got 1700
+FAIL Test <percentage> trailing garbage, value: -47foo assert_approx_equals: expected 0 +/- 5.960464477539063e-8 but got -47
+FAIL Test <percentage> trailing garbage, value: .1foo assert_approx_equals: expected 0 +/- 5.960464477539063e-8 but got 0.10000000149011612
+FAIL Test <percentage> trailing garbage, value: 0.35foo assert_approx_equals: expected 0 +/- 5.960464477539063e-8 but got 0.3499999940395355
+PASS Test <percentage> trailing garbage, value: 1e-10foo
+FAIL Test <percentage> trailing garbage, value: +32foo assert_approx_equals: expected 0 +/- 5.960464477539063e-8 but got 32
+FAIL Test <percentage> trailing garbage, value: +17E-1foo assert_approx_equals: expected 0 +/- 5.960464477539063e-8 but got 1.7000000476837158
+FAIL Test <percentage> trailing garbage, value: 17e+2foo assert_approx_equals: expected 0 +/- 5.960464477539063e-8 but got 1700
+FAIL Test <percentage> trailing garbage, value: -47)90 assert_approx_equals: expected 0 +/- 5.960464477539063e-8 but got -47
+FAIL Test <percentage> trailing garbage, value: .1)90 assert_approx_equals: expected 0 +/- 5.960464477539063e-8 but got 0.10000000149011612
+FAIL Test <percentage> trailing garbage, value: 0.35)90 assert_approx_equals: expected 0 +/- 5.960464477539063e-8 but got 0.3499999940395355
+PASS Test <percentage> trailing garbage, value: 1e-10)90
+FAIL Test <percentage> trailing garbage, value: +32)90 assert_approx_equals: expected 0 +/- 5.960464477539063e-8 but got 32
+FAIL Test <percentage> trailing garbage, value: +17E-1)90 assert_approx_equals: expected 0 +/- 5.960464477539063e-8 but got 1.7000000476837158
+FAIL Test <percentage> trailing garbage, value: 17e+2)90 assert_approx_equals: expected 0 +/- 5.960464477539063e-8 but got 1700
+PASS Test <percentage> valid value:  -47%
+PASS Test <percentage> valid value:  .1%
+PASS Test <percentage> valid value:  0.35%
+PASS Test <percentage> valid value:  1e-10%
+PASS Test <percentage> valid value:  +32%
+PASS Test <percentage> valid value:  +17E-1%
+PASS Test <percentage> valid value:  17e+2%
+FAIL Test <percentage> valid value:  -47%  assert_approx_equals: expected -0.47 +/- 5.960464477539063e-8 but got -47
+FAIL Test <percentage> valid value:  .1%  assert_approx_equals: expected 0.001 +/- 5.960464477539063e-8 but got 0.10000000149011612
+FAIL Test <percentage> valid value:  0.35%  assert_approx_equals: expected 0.0034999999999999996 +/- 5.960464477539063e-8 but got 0.3499999940395355
+PASS Test <percentage> valid value:  1e-10%
+FAIL Test <percentage> valid value:  +32%  assert_approx_equals: expected 0.32 +/- 5.960464477539063e-8 but got 32
+FAIL Test <percentage> valid value:  +17E-1%  assert_approx_equals: expected 0.017 +/- 5.960464477539063e-8 but got 1.7000000476837158
+FAIL Test <percentage> valid value:  17e+2%  assert_approx_equals: expected 17 +/- 5.960464477539063e-8 but got 1700
+FAIL Test <percentage> valid value:  -47%    assert_approx_equals: expected -0.47 +/- 5.960464477539063e-8 but got -47
+FAIL Test <percentage> valid value:  .1%    assert_approx_equals: expected 0.001 +/- 5.960464477539063e-8 but got 0.10000000149011612
+FAIL Test <percentage> valid value:  0.35%    assert_approx_equals: expected 0.0034999999999999996 +/- 5.960464477539063e-8 but got 0.3499999940395355
+PASS Test <percentage> valid value:  1e-10%
+FAIL Test <percentage> valid value:  +32%    assert_approx_equals: expected 0.32 +/- 5.960464477539063e-8 but got 32
+FAIL Test <percentage> valid value:  +17E-1%    assert_approx_equals: expected 0.017 +/- 5.960464477539063e-8 but got 1.7000000476837158
+FAIL Test <percentage> valid value:  17e+2%    assert_approx_equals: expected 17 +/- 5.960464477539063e-8 but got 1700
+FAIL Test <percentage> valid value:  -47%\r\n\t  assert_approx_equals: expected -0.47 +/- 5.960464477539063e-8 but got -47
+FAIL Test <percentage> valid value:  .1%\r\n\t  assert_approx_equals: expected 0.001 +/- 5.960464477539063e-8 but got 0.10000000149011612
+FAIL Test <percentage> valid value:  0.35%\r\n\t  assert_approx_equals: expected 0.0034999999999999996 +/- 5.960464477539063e-8 but got 0.3499999940395355
+PASS Test <percentage> valid value:  1e-10%\r\n\t
+FAIL Test <percentage> valid value:  +32%\r\n\t  assert_approx_equals: expected 0.32 +/- 5.960464477539063e-8 but got 32
+FAIL Test <percentage> valid value:  +17E-1%\r\n\t  assert_approx_equals: expected 0.017 +/- 5.960464477539063e-8 but got 1.7000000476837158
+FAIL Test <percentage> valid value:  17e+2%\r\n\t  assert_approx_equals: expected 17 +/- 5.960464477539063e-8 but got 1700
+FAIL Test <percentage> valid value:  -47%\f assert_approx_equals: expected -0.47 +/- 5.960464477539063e-8 but got -47
+FAIL Test <percentage> valid value:  .1%\f assert_approx_equals: expected 0.001 +/- 5.960464477539063e-8 but got 0.10000000149011612
+FAIL Test <percentage> valid value:  0.35%\f assert_approx_equals: expected 0.0034999999999999996 +/- 5.960464477539063e-8 but got 0.3499999940395355
+PASS Test <percentage> valid value:  1e-10%\f
+FAIL Test <percentage> valid value:  +32%\f assert_approx_equals: expected 0.32 +/- 5.960464477539063e-8 but got 32
+FAIL Test <percentage> valid value:  +17E-1%\f assert_approx_equals: expected 0.017 +/- 5.960464477539063e-8 but got 1.7000000476837158
+FAIL Test <percentage> valid value:  17e+2%\f assert_approx_equals: expected 17 +/- 5.960464477539063e-8 but got 1700
+FAIL Test <percentage> WS invalid value: -47 % assert_approx_equals: expected 0 +/- 5.960464477539063e-8 but got -0.4699999988079071
+FAIL Test <percentage> WS invalid value: .1 % assert_approx_equals: expected 0 +/- 5.960464477539063e-8 but got 0.0010000000474974513
+FAIL Test <percentage> WS invalid value: 0.35 % assert_approx_equals: expected 0 +/- 5.960464477539063e-8 but got 0.003499999875202775
+PASS Test <percentage> WS invalid value: 1e-10 %
+FAIL Test <percentage> WS invalid value: +32 % assert_approx_equals: expected 0 +/- 5.960464477539063e-8 but got 0.3199999928474426
+FAIL Test <percentage> WS invalid value: +17E-1 % assert_approx_equals: expected 0 +/- 5.960464477539063e-8 but got 0.017000000923871994
+FAIL Test <percentage> WS invalid value: 17e+2 % assert_approx_equals: expected 0 +/- 5.960464477539063e-8 but got 17
+FAIL Test <percentage> trailing garbage, value:  -47a assert_approx_equals: expected 0 +/- 5.960464477539063e-8 but got -47
+FAIL Test <percentage> trailing garbage, value:  .1a assert_approx_equals: expected 0 +/- 5.960464477539063e-8 but got 0.10000000149011612
+FAIL Test <percentage> trailing garbage, value:  0.35a assert_approx_equals: expected 0 +/- 5.960464477539063e-8 but got 0.3499999940395355
+PASS Test <percentage> trailing garbage, value:  1e-10a
+FAIL Test <percentage> trailing garbage, value:  +32a assert_approx_equals: expected 0 +/- 5.960464477539063e-8 but got 32
+FAIL Test <percentage> trailing garbage, value:  +17E-1a assert_approx_equals: expected 0 +/- 5.960464477539063e-8 but got 1.7000000476837158
+FAIL Test <percentage> trailing garbage, value:  17e+2a assert_approx_equals: expected 0 +/- 5.960464477539063e-8 but got 1700
+FAIL Test <percentage> trailing garbage, value:  -47e assert_approx_equals: expected 0 +/- 5.960464477539063e-8 but got -47
+FAIL Test <percentage> trailing garbage, value:  .1e assert_approx_equals: expected 0 +/- 5.960464477539063e-8 but got 0.10000000149011612
+FAIL Test <percentage> trailing garbage, value:  0.35e assert_approx_equals: expected 0 +/- 5.960464477539063e-8 but got 0.3499999940395355
+PASS Test <percentage> trailing garbage, value:  1e-10e
+FAIL Test <percentage> trailing garbage, value:  +32e assert_approx_equals: expected 0 +/- 5.960464477539063e-8 but got 32
+FAIL Test <percentage> trailing garbage, value:  +17E-1e assert_approx_equals: expected 0 +/- 5.960464477539063e-8 but got 1.7000000476837158
+FAIL Test <percentage> trailing garbage, value:  17e+2e assert_approx_equals: expected 0 +/- 5.960464477539063e-8 but got 1700
+FAIL Test <percentage> trailing garbage, value:  -47foo assert_approx_equals: expected 0 +/- 5.960464477539063e-8 but got -47
+FAIL Test <percentage> trailing garbage, value:  .1foo assert_approx_equals: expected 0 +/- 5.960464477539063e-8 but got 0.10000000149011612
+FAIL Test <percentage> trailing garbage, value:  0.35foo assert_approx_equals: expected 0 +/- 5.960464477539063e-8 but got 0.3499999940395355
+PASS Test <percentage> trailing garbage, value:  1e-10foo
+FAIL Test <percentage> trailing garbage, value:  +32foo assert_approx_equals: expected 0 +/- 5.960464477539063e-8 but got 32
+FAIL Test <percentage> trailing garbage, value:  +17E-1foo assert_approx_equals: expected 0 +/- 5.960464477539063e-8 but got 1.7000000476837158
+FAIL Test <percentage> trailing garbage, value:  17e+2foo assert_approx_equals: expected 0 +/- 5.960464477539063e-8 but got 1700
+FAIL Test <percentage> trailing garbage, value:  -47)90 assert_approx_equals: expected 0 +/- 5.960464477539063e-8 but got -47
+FAIL Test <percentage> trailing garbage, value:  .1)90 assert_approx_equals: expected 0 +/- 5.960464477539063e-8 but got 0.10000000149011612
+FAIL Test <percentage> trailing garbage, value:  0.35)90 assert_approx_equals: expected 0 +/- 5.960464477539063e-8 but got 0.3499999940395355
+PASS Test <percentage> trailing garbage, value:  1e-10)90
+FAIL Test <percentage> trailing garbage, value:  +32)90 assert_approx_equals: expected 0 +/- 5.960464477539063e-8 but got 32
+FAIL Test <percentage> trailing garbage, value:  +17E-1)90 assert_approx_equals: expected 0 +/- 5.960464477539063e-8 but got 1.7000000476837158
+FAIL Test <percentage> trailing garbage, value:  17e+2)90 assert_approx_equals: expected 0 +/- 5.960464477539063e-8 but got 1700
+PASS Test <percentage> valid value:    -47%
+PASS Test <percentage> valid value:    .1%
+PASS Test <percentage> valid value:    0.35%
+PASS Test <percentage> valid value:    1e-10%
+PASS Test <percentage> valid value:    +32%
+PASS Test <percentage> valid value:    +17E-1%
+PASS Test <percentage> valid value:    17e+2%
+FAIL Test <percentage> valid value:    -47%  assert_approx_equals: expected -0.47 +/- 5.960464477539063e-8 but got -47
+FAIL Test <percentage> valid value:    .1%  assert_approx_equals: expected 0.001 +/- 5.960464477539063e-8 but got 0.10000000149011612
+FAIL Test <percentage> valid value:    0.35%  assert_approx_equals: expected 0.0034999999999999996 +/- 5.960464477539063e-8 but got 0.3499999940395355
+PASS Test <percentage> valid value:    1e-10%
+FAIL Test <percentage> valid value:    +32%  assert_approx_equals: expected 0.32 +/- 5.960464477539063e-8 but got 32
+FAIL Test <percentage> valid value:    +17E-1%  assert_approx_equals: expected 0.017 +/- 5.960464477539063e-8 but got 1.7000000476837158
+FAIL Test <percentage> valid value:    17e+2%  assert_approx_equals: expected 17 +/- 5.960464477539063e-8 but got 1700
+FAIL Test <percentage> valid value:    -47%    assert_approx_equals: expected -0.47 +/- 5.960464477539063e-8 but got -47
+FAIL Test <percentage> valid value:    .1%    assert_approx_equals: expected 0.001 +/- 5.960464477539063e-8 but got 0.10000000149011612
+FAIL Test <percentage> valid value:    0.35%    assert_approx_equals: expected 0.0034999999999999996 +/- 5.960464477539063e-8 but got 0.3499999940395355
+PASS Test <percentage> valid value:    1e-10%
+FAIL Test <percentage> valid value:    +32%    assert_approx_equals: expected 0.32 +/- 5.960464477539063e-8 but got 32
+FAIL Test <percentage> valid value:    +17E-1%    assert_approx_equals: expected 0.017 +/- 5.960464477539063e-8 but got 1.7000000476837158
+FAIL Test <percentage> valid value:    17e+2%    assert_approx_equals: expected 17 +/- 5.960464477539063e-8 but got 1700
+FAIL Test <percentage> valid value:    -47%\r\n\t  assert_approx_equals: expected -0.47 +/- 5.960464477539063e-8 but got -47
+FAIL Test <percentage> valid value:    .1%\r\n\t  assert_approx_equals: expected 0.001 +/- 5.960464477539063e-8 but got 0.10000000149011612
+FAIL Test <percentage> valid value:    0.35%\r\n\t  assert_approx_equals: expected 0.0034999999999999996 +/- 5.960464477539063e-8 but got 0.3499999940395355
+PASS Test <percentage> valid value:    1e-10%\r\n\t
+FAIL Test <percentage> valid value:    +32%\r\n\t  assert_approx_equals: expected 0.32 +/- 5.960464477539063e-8 but got 32
+FAIL Test <percentage> valid value:    +17E-1%\r\n\t  assert_approx_equals: expected 0.017 +/- 5.960464477539063e-8 but got 1.7000000476837158
+FAIL Test <percentage> valid value:    17e+2%\r\n\t  assert_approx_equals: expected 17 +/- 5.960464477539063e-8 but got 1700
+FAIL Test <percentage> valid value:    -47%\f assert_approx_equals: expected -0.47 +/- 5.960464477539063e-8 but got -47
+FAIL Test <percentage> valid value:    .1%\f assert_approx_equals: expected 0.001 +/- 5.960464477539063e-8 but got 0.10000000149011612
+FAIL Test <percentage> valid value:    0.35%\f assert_approx_equals: expected 0.0034999999999999996 +/- 5.960464477539063e-8 but got 0.3499999940395355
+PASS Test <percentage> valid value:    1e-10%\f
+FAIL Test <percentage> valid value:    +32%\f assert_approx_equals: expected 0.32 +/- 5.960464477539063e-8 but got 32
+FAIL Test <percentage> valid value:    +17E-1%\f assert_approx_equals: expected 0.017 +/- 5.960464477539063e-8 but got 1.7000000476837158
+FAIL Test <percentage> valid value:    17e+2%\f assert_approx_equals: expected 17 +/- 5.960464477539063e-8 but got 1700
+FAIL Test <percentage> WS invalid value: -47   % assert_approx_equals: expected 0 +/- 5.960464477539063e-8 but got -0.4699999988079071
+FAIL Test <percentage> WS invalid value: .1   % assert_approx_equals: expected 0 +/- 5.960464477539063e-8 but got 0.0010000000474974513
+FAIL Test <percentage> WS invalid value: 0.35   % assert_approx_equals: expected 0 +/- 5.960464477539063e-8 but got 0.003499999875202775
+PASS Test <percentage> WS invalid value: 1e-10   %
+FAIL Test <percentage> WS invalid value: +32   % assert_approx_equals: expected 0 +/- 5.960464477539063e-8 but got 0.3199999928474426
+FAIL Test <percentage> WS invalid value: +17E-1   % assert_approx_equals: expected 0 +/- 5.960464477539063e-8 but got 0.017000000923871994
+FAIL Test <percentage> WS invalid value: 17e+2   % assert_approx_equals: expected 0 +/- 5.960464477539063e-8 but got 17
+FAIL Test <percentage> trailing garbage, value:    -47a assert_approx_equals: expected 0 +/- 5.960464477539063e-8 but got -47
+FAIL Test <percentage> trailing garbage, value:    .1a assert_approx_equals: expected 0 +/- 5.960464477539063e-8 but got 0.10000000149011612
+FAIL Test <percentage> trailing garbage, value:    0.35a assert_approx_equals: expected 0 +/- 5.960464477539063e-8 but got 0.3499999940395355
+PASS Test <percentage> trailing garbage, value:    1e-10a
+FAIL Test <percentage> trailing garbage, value:    +32a assert_approx_equals: expected 0 +/- 5.960464477539063e-8 but got 32
+FAIL Test <percentage> trailing garbage, value:    +17E-1a assert_approx_equals: expected 0 +/- 5.960464477539063e-8 but got 1.7000000476837158
+FAIL Test <percentage> trailing garbage, value:    17e+2a assert_approx_equals: expected 0 +/- 5.960464477539063e-8 but got 1700
+FAIL Test <percentage> trailing garbage, value:    -47e assert_approx_equals: expected 0 +/- 5.960464477539063e-8 but got -47
+FAIL Test <percentage> trailing garbage, value:    .1e assert_approx_equals: expected 0 +/- 5.960464477539063e-8 but got 0.10000000149011612
+FAIL Test <percentage> trailing garbage, value:    0.35e assert_approx_equals: expected 0 +/- 5.960464477539063e-8 but got 0.3499999940395355
+PASS Test <percentage> trailing garbage, value:    1e-10e
+FAIL Test <percentage> trailing garbage, value:    +32e assert_approx_equals: expected 0 +/- 5.960464477539063e-8 but got 32
+FAIL Test <percentage> trailing garbage, value:    +17E-1e assert_approx_equals: expected 0 +/- 5.960464477539063e-8 but got 1.7000000476837158
+FAIL Test <percentage> trailing garbage, value:    17e+2e assert_approx_equals: expected 0 +/- 5.960464477539063e-8 but got 1700
+FAIL Test <percentage> trailing garbage, value:    -47foo assert_approx_equals: expected 0 +/- 5.960464477539063e-8 but got -47
+FAIL Test <percentage> trailing garbage, value:    .1foo assert_approx_equals: expected 0 +/- 5.960464477539063e-8 but got 0.10000000149011612
+FAIL Test <percentage> trailing garbage, value:    0.35foo assert_approx_equals: expected 0 +/- 5.960464477539063e-8 but got 0.3499999940395355
+PASS Test <percentage> trailing garbage, value:    1e-10foo
+FAIL Test <percentage> trailing garbage, value:    +32foo assert_approx_equals: expected 0 +/- 5.960464477539063e-8 but got 32
+FAIL Test <percentage> trailing garbage, value:    +17E-1foo assert_approx_equals: expected 0 +/- 5.960464477539063e-8 but got 1.7000000476837158
+FAIL Test <percentage> trailing garbage, value:    17e+2foo assert_approx_equals: expected 0 +/- 5.960464477539063e-8 but got 1700
+FAIL Test <percentage> trailing garbage, value:    -47)90 assert_approx_equals: expected 0 +/- 5.960464477539063e-8 but got -47
+FAIL Test <percentage> trailing garbage, value:    .1)90 assert_approx_equals: expected 0 +/- 5.960464477539063e-8 but got 0.10000000149011612
+FAIL Test <percentage> trailing garbage, value:    0.35)90 assert_approx_equals: expected 0 +/- 5.960464477539063e-8 but got 0.3499999940395355
+PASS Test <percentage> trailing garbage, value:    1e-10)90
+FAIL Test <percentage> trailing garbage, value:    +32)90 assert_approx_equals: expected 0 +/- 5.960464477539063e-8 but got 32
+FAIL Test <percentage> trailing garbage, value:    +17E-1)90 assert_approx_equals: expected 0 +/- 5.960464477539063e-8 but got 1.7000000476837158
+FAIL Test <percentage> trailing garbage, value:    17e+2)90 assert_approx_equals: expected 0 +/- 5.960464477539063e-8 but got 1700
+PASS Test <percentage> valid value: \r\n\t -47%
+PASS Test <percentage> valid value: \r\n\t .1%
+PASS Test <percentage> valid value: \r\n\t 0.35%
+PASS Test <percentage> valid value: \r\n\t 1e-10%
+PASS Test <percentage> valid value: \r\n\t +32%
+PASS Test <percentage> valid value: \r\n\t +17E-1%
+PASS Test <percentage> valid value: \r\n\t 17e+2%
+FAIL Test <percentage> valid value: \r\n\t -47%  assert_approx_equals: expected -0.47 +/- 5.960464477539063e-8 but got -47
+FAIL Test <percentage> valid value: \r\n\t .1%  assert_approx_equals: expected 0.001 +/- 5.960464477539063e-8 but got 0.10000000149011612
+FAIL Test <percentage> valid value: \r\n\t 0.35%  assert_approx_equals: expected 0.0034999999999999996 +/- 5.960464477539063e-8 but got 0.3499999940395355
+PASS Test <percentage> valid value: \r\n\t 1e-10%
+FAIL Test <percentage> valid value: \r\n\t +32%  assert_approx_equals: expected 0.32 +/- 5.960464477539063e-8 but got 32
+FAIL Test <percentage> valid value: \r\n\t +17E-1%  assert_approx_equals: expected 0.017 +/- 5.960464477539063e-8 but got 1.7000000476837158
+FAIL Test <percentage> valid value: \r\n\t 17e+2%  assert_approx_equals: expected 17 +/- 5.960464477539063e-8 but got 1700
+FAIL Test <percentage> valid value: \r\n\t -47%    assert_approx_equals: expected -0.47 +/- 5.960464477539063e-8 but got -47
+FAIL Test <percentage> valid value: \r\n\t .1%    assert_approx_equals: expected 0.001 +/- 5.960464477539063e-8 but got 0.10000000149011612
+FAIL Test <percentage> valid value: \r\n\t 0.35%    assert_approx_equals: expected 0.0034999999999999996 +/- 5.960464477539063e-8 but got 0.3499999940395355
+PASS Test <percentage> valid value: \r\n\t 1e-10%
+FAIL Test <percentage> valid value: \r\n\t +32%    assert_approx_equals: expected 0.32 +/- 5.960464477539063e-8 but got 32
+FAIL Test <percentage> valid value: \r\n\t +17E-1%    assert_approx_equals: expected 0.017 +/- 5.960464477539063e-8 but got 1.7000000476837158
+FAIL Test <percentage> valid value: \r\n\t 17e+2%    assert_approx_equals: expected 17 +/- 5.960464477539063e-8 but got 1700
+FAIL Test <percentage> valid value: \r\n\t -47%\r\n\t  assert_approx_equals: expected -0.47 +/- 5.960464477539063e-8 but got -47
+FAIL Test <percentage> valid value: \r\n\t .1%\r\n\t  assert_approx_equals: expected 0.001 +/- 5.960464477539063e-8 but got 0.10000000149011612
+FAIL Test <percentage> valid value: \r\n\t 0.35%\r\n\t  assert_approx_equals: expected 0.0034999999999999996 +/- 5.960464477539063e-8 but got 0.3499999940395355
+PASS Test <percentage> valid value: \r\n\t 1e-10%\r\n\t
+FAIL Test <percentage> valid value: \r\n\t +32%\r\n\t  assert_approx_equals: expected 0.32 +/- 5.960464477539063e-8 but got 32
+FAIL Test <percentage> valid value: \r\n\t +17E-1%\r\n\t  assert_approx_equals: expected 0.017 +/- 5.960464477539063e-8 but got 1.7000000476837158
+FAIL Test <percentage> valid value: \r\n\t 17e+2%\r\n\t  assert_approx_equals: expected 17 +/- 5.960464477539063e-8 but got 1700
+FAIL Test <percentage> valid value: \r\n\t -47%\f assert_approx_equals: expected -0.47 +/- 5.960464477539063e-8 but got -47
+FAIL Test <percentage> valid value: \r\n\t .1%\f assert_approx_equals: expected 0.001 +/- 5.960464477539063e-8 but got 0.10000000149011612
+FAIL Test <percentage> valid value: \r\n\t 0.35%\f assert_approx_equals: expected 0.0034999999999999996 +/- 5.960464477539063e-8 but got 0.3499999940395355
+PASS Test <percentage> valid value: \r\n\t 1e-10%\f
+FAIL Test <percentage> valid value: \r\n\t +32%\f assert_approx_equals: expected 0.32 +/- 5.960464477539063e-8 but got 32
+FAIL Test <percentage> valid value: \r\n\t +17E-1%\f assert_approx_equals: expected 0.017 +/- 5.960464477539063e-8 but got 1.7000000476837158
+FAIL Test <percentage> valid value: \r\n\t 17e+2%\f assert_approx_equals: expected 17 +/- 5.960464477539063e-8 but got 1700
+FAIL Test <percentage> WS invalid value: -47\r\n\t % assert_approx_equals: expected 0 +/- 5.960464477539063e-8 but got -0.4699999988079071
+FAIL Test <percentage> WS invalid value: .1\r\n\t % assert_approx_equals: expected 0 +/- 5.960464477539063e-8 but got 0.0010000000474974513
+FAIL Test <percentage> WS invalid value: 0.35\r\n\t % assert_approx_equals: expected 0 +/- 5.960464477539063e-8 but got 0.003499999875202775
+PASS Test <percentage> WS invalid value: 1e-10\r\n\t %
+FAIL Test <percentage> WS invalid value: +32\r\n\t % assert_approx_equals: expected 0 +/- 5.960464477539063e-8 but got 0.3199999928474426
+FAIL Test <percentage> WS invalid value: +17E-1\r\n\t % assert_approx_equals: expected 0 +/- 5.960464477539063e-8 but got 0.017000000923871994
+FAIL Test <percentage> WS invalid value: 17e+2\r\n\t % assert_approx_equals: expected 0 +/- 5.960464477539063e-8 but got 17
+FAIL Test <percentage> trailing garbage, value: \r\n\t -47a assert_approx_equals: expected 0 +/- 5.960464477539063e-8 but got -47
+FAIL Test <percentage> trailing garbage, value: \r\n\t .1a assert_approx_equals: expected 0 +/- 5.960464477539063e-8 but got 0.10000000149011612
+FAIL Test <percentage> trailing garbage, value: \r\n\t 0.35a assert_approx_equals: expected 0 +/- 5.960464477539063e-8 but got 0.3499999940395355
+PASS Test <percentage> trailing garbage, value: \r\n\t 1e-10a
+FAIL Test <percentage> trailing garbage, value: \r\n\t +32a assert_approx_equals: expected 0 +/- 5.960464477539063e-8 but got 32
+FAIL Test <percentage> trailing garbage, value: \r\n\t +17E-1a assert_approx_equals: expected 0 +/- 5.960464477539063e-8 but got 1.7000000476837158
+FAIL Test <percentage> trailing garbage, value: \r\n\t 17e+2a assert_approx_equals: expected 0 +/- 5.960464477539063e-8 but got 1700
+FAIL Test <percentage> trailing garbage, value: \r\n\t -47e assert_approx_equals: expected 0 +/- 5.960464477539063e-8 but got -47
+FAIL Test <percentage> trailing garbage, value: \r\n\t .1e assert_approx_equals: expected 0 +/- 5.960464477539063e-8 but got 0.10000000149011612
+FAIL Test <percentage> trailing garbage, value: \r\n\t 0.35e assert_approx_equals: expected 0 +/- 5.960464477539063e-8 but got 0.3499999940395355
+PASS Test <percentage> trailing garbage, value: \r\n\t 1e-10e
+FAIL Test <percentage> trailing garbage, value: \r\n\t +32e assert_approx_equals: expected 0 +/- 5.960464477539063e-8 but got 32
+FAIL Test <percentage> trailing garbage, value: \r\n\t +17E-1e assert_approx_equals: expected 0 +/- 5.960464477539063e-8 but got 1.7000000476837158
+FAIL Test <percentage> trailing garbage, value: \r\n\t 17e+2e assert_approx_equals: expected 0 +/- 5.960464477539063e-8 but got 1700
+FAIL Test <percentage> trailing garbage, value: \r\n\t -47foo assert_approx_equals: expected 0 +/- 5.960464477539063e-8 but got -47
+FAIL Test <percentage> trailing garbage, value: \r\n\t .1foo assert_approx_equals: expected 0 +/- 5.960464477539063e-8 but got 0.10000000149011612
+FAIL Test <percentage> trailing garbage, value: \r\n\t 0.35foo assert_approx_equals: expected 0 +/- 5.960464477539063e-8 but got 0.3499999940395355
+PASS Test <percentage> trailing garbage, value: \r\n\t 1e-10foo
+FAIL Test <percentage> trailing garbage, value: \r\n\t +32foo assert_approx_equals: expected 0 +/- 5.960464477539063e-8 but got 32
+FAIL Test <percentage> trailing garbage, value: \r\n\t +17E-1foo assert_approx_equals: expected 0 +/- 5.960464477539063e-8 but got 1.7000000476837158
+FAIL Test <percentage> trailing garbage, value: \r\n\t 17e+2foo assert_approx_equals: expected 0 +/- 5.960464477539063e-8 but got 1700
+FAIL Test <percentage> trailing garbage, value: \r\n\t -47)90 assert_approx_equals: expected 0 +/- 5.960464477539063e-8 but got -47
+FAIL Test <percentage> trailing garbage, value: \r\n\t .1)90 assert_approx_equals: expected 0 +/- 5.960464477539063e-8 but got 0.10000000149011612
+FAIL Test <percentage> trailing garbage, value: \r\n\t 0.35)90 assert_approx_equals: expected 0 +/- 5.960464477539063e-8 but got 0.3499999940395355
+PASS Test <percentage> trailing garbage, value: \r\n\t 1e-10)90
+FAIL Test <percentage> trailing garbage, value: \r\n\t +32)90 assert_approx_equals: expected 0 +/- 5.960464477539063e-8 but got 32
+FAIL Test <percentage> trailing garbage, value: \r\n\t +17E-1)90 assert_approx_equals: expected 0 +/- 5.960464477539063e-8 but got 1.7000000476837158
+FAIL Test <percentage> trailing garbage, value: \r\n\t 17e+2)90 assert_approx_equals: expected 0 +/- 5.960464477539063e-8 but got 1700
+PASS Test <percentage> valid value: \f-47%
+PASS Test <percentage> valid value: \f.1%
+PASS Test <percentage> valid value: \f0.35%
+PASS Test <percentage> valid value: \f1e-10%
+PASS Test <percentage> valid value: \f+32%
+PASS Test <percentage> valid value: \f+17E-1%
+PASS Test <percentage> valid value: \f17e+2%
+FAIL Test <percentage> valid value: \f-47%  assert_approx_equals: expected -0.47 +/- 5.960464477539063e-8 but got -47
+FAIL Test <percentage> valid value: \f.1%  assert_approx_equals: expected 0.001 +/- 5.960464477539063e-8 but got 0.10000000149011612
+FAIL Test <percentage> valid value: \f0.35%  assert_approx_equals: expected 0.0034999999999999996 +/- 5.960464477539063e-8 but got 0.3499999940395355
+PASS Test <percentage> valid value: \f1e-10%
+FAIL Test <percentage> valid value: \f+32%  assert_approx_equals: expected 0.32 +/- 5.960464477539063e-8 but got 32
+FAIL Test <percentage> valid value: \f+17E-1%  assert_approx_equals: expected 0.017 +/- 5.960464477539063e-8 but got 1.7000000476837158
+FAIL Test <percentage> valid value: \f17e+2%  assert_approx_equals: expected 17 +/- 5.960464477539063e-8 but got 1700
+FAIL Test <percentage> valid value: \f-47%    assert_approx_equals: expected -0.47 +/- 5.960464477539063e-8 but got -47
+FAIL Test <percentage> valid value: \f.1%    assert_approx_equals: expected 0.001 +/- 5.960464477539063e-8 but got 0.10000000149011612
+FAIL Test <percentage> valid value: \f0.35%    assert_approx_equals: expected 0.0034999999999999996 +/- 5.960464477539063e-8 but got 0.3499999940395355
+PASS Test <percentage> valid value: \f1e-10%
+FAIL Test <percentage> valid value: \f+32%    assert_approx_equals: expected 0.32 +/- 5.960464477539063e-8 but got 32
+FAIL Test <percentage> valid value: \f+17E-1%    assert_approx_equals: expected 0.017 +/- 5.960464477539063e-8 but got 1.7000000476837158
+FAIL Test <percentage> valid value: \f17e+2%    assert_approx_equals: expected 17 +/- 5.960464477539063e-8 but got 1700
+FAIL Test <percentage> valid value: \f-47%\r\n\t  assert_approx_equals: expected -0.47 +/- 5.960464477539063e-8 but got -47
+FAIL Test <percentage> valid value: \f.1%\r\n\t  assert_approx_equals: expected 0.001 +/- 5.960464477539063e-8 but got 0.10000000149011612
+FAIL Test <percentage> valid value: \f0.35%\r\n\t  assert_approx_equals: expected 0.0034999999999999996 +/- 5.960464477539063e-8 but got 0.3499999940395355
+PASS Test <percentage> valid value: \f1e-10%\r\n\t
+FAIL Test <percentage> valid value: \f+32%\r\n\t  assert_approx_equals: expected 0.32 +/- 5.960464477539063e-8 but got 32
+FAIL Test <percentage> valid value: \f+17E-1%\r\n\t  assert_approx_equals: expected 0.017 +/- 5.960464477539063e-8 but got 1.7000000476837158
+FAIL Test <percentage> valid value: \f17e+2%\r\n\t  assert_approx_equals: expected 17 +/- 5.960464477539063e-8 but got 1700
+FAIL Test <percentage> valid value: \f-47%\f assert_approx_equals: expected -0.47 +/- 5.960464477539063e-8 but got -47
+FAIL Test <percentage> valid value: \f.1%\f assert_approx_equals: expected 0.001 +/- 5.960464477539063e-8 but got 0.10000000149011612
+FAIL Test <percentage> valid value: \f0.35%\f assert_approx_equals: expected 0.0034999999999999996 +/- 5.960464477539063e-8 but got 0.3499999940395355
+PASS Test <percentage> valid value: \f1e-10%\f
+FAIL Test <percentage> valid value: \f+32%\f assert_approx_equals: expected 0.32 +/- 5.960464477539063e-8 but got 32
+FAIL Test <percentage> valid value: \f+17E-1%\f assert_approx_equals: expected 0.017 +/- 5.960464477539063e-8 but got 1.7000000476837158
+FAIL Test <percentage> valid value: \f17e+2%\f assert_approx_equals: expected 17 +/- 5.960464477539063e-8 but got 1700
+FAIL Test <percentage> WS invalid value: -47\f% assert_approx_equals: expected 0 +/- 5.960464477539063e-8 but got -0.4699999988079071
+FAIL Test <percentage> WS invalid value: .1\f% assert_approx_equals: expected 0 +/- 5.960464477539063e-8 but got 0.0010000000474974513
+FAIL Test <percentage> WS invalid value: 0.35\f% assert_approx_equals: expected 0 +/- 5.960464477539063e-8 but got 0.003499999875202775
+PASS Test <percentage> WS invalid value: 1e-10\f%
+FAIL Test <percentage> WS invalid value: +32\f% assert_approx_equals: expected 0 +/- 5.960464477539063e-8 but got 0.3199999928474426
+FAIL Test <percentage> WS invalid value: +17E-1\f% assert_approx_equals: expected 0 +/- 5.960464477539063e-8 but got 0.017000000923871994
+FAIL Test <percentage> WS invalid value: 17e+2\f% assert_approx_equals: expected 0 +/- 5.960464477539063e-8 but got 17
+FAIL Test <percentage> trailing garbage, value: \f-47a assert_approx_equals: expected 0 +/- 5.960464477539063e-8 but got -47
+FAIL Test <percentage> trailing garbage, value: \f.1a assert_approx_equals: expected 0 +/- 5.960464477539063e-8 but got 0.10000000149011612
+FAIL Test <percentage> trailing garbage, value: \f0.35a assert_approx_equals: expected 0 +/- 5.960464477539063e-8 but got 0.3499999940395355
+PASS Test <percentage> trailing garbage, value: \f1e-10a
+FAIL Test <percentage> trailing garbage, value: \f+32a assert_approx_equals: expected 0 +/- 5.960464477539063e-8 but got 32
+FAIL Test <percentage> trailing garbage, value: \f+17E-1a assert_approx_equals: expected 0 +/- 5.960464477539063e-8 but got 1.7000000476837158
+FAIL Test <percentage> trailing garbage, value: \f17e+2a assert_approx_equals: expected 0 +/- 5.960464477539063e-8 but got 1700
+FAIL Test <percentage> trailing garbage, value: \f-47e assert_approx_equals: expected 0 +/- 5.960464477539063e-8 but got -47
+FAIL Test <percentage> trailing garbage, value: \f.1e assert_approx_equals: expected 0 +/- 5.960464477539063e-8 but got 0.10000000149011612
+FAIL Test <percentage> trailing garbage, value: \f0.35e assert_approx_equals: expected 0 +/- 5.960464477539063e-8 but got 0.3499999940395355
+PASS Test <percentage> trailing garbage, value: \f1e-10e
+FAIL Test <percentage> trailing garbage, value: \f+32e assert_approx_equals: expected 0 +/- 5.960464477539063e-8 but got 32
+FAIL Test <percentage> trailing garbage, value: \f+17E-1e assert_approx_equals: expected 0 +/- 5.960464477539063e-8 but got 1.7000000476837158
+FAIL Test <percentage> trailing garbage, value: \f17e+2e assert_approx_equals: expected 0 +/- 5.960464477539063e-8 but got 1700
+FAIL Test <percentage> trailing garbage, value: \f-47foo assert_approx_equals: expected 0 +/- 5.960464477539063e-8 but got -47
+FAIL Test <percentage> trailing garbage, value: \f.1foo assert_approx_equals: expected 0 +/- 5.960464477539063e-8 but got 0.10000000149011612
+FAIL Test <percentage> trailing garbage, value: \f0.35foo assert_approx_equals: expected 0 +/- 5.960464477539063e-8 but got 0.3499999940395355
+PASS Test <percentage> trailing garbage, value: \f1e-10foo
+FAIL Test <percentage> trailing garbage, value: \f+32foo assert_approx_equals: expected 0 +/- 5.960464477539063e-8 but got 32
+FAIL Test <percentage> trailing garbage, value: \f+17E-1foo assert_approx_equals: expected 0 +/- 5.960464477539063e-8 but got 1.7000000476837158
+FAIL Test <percentage> trailing garbage, value: \f17e+2foo assert_approx_equals: expected 0 +/- 5.960464477539063e-8 but got 1700
+FAIL Test <percentage> trailing garbage, value: \f-47)90 assert_approx_equals: expected 0 +/- 5.960464477539063e-8 but got -47
+FAIL Test <percentage> trailing garbage, value: \f.1)90 assert_approx_equals: expected 0 +/- 5.960464477539063e-8 but got 0.10000000149011612
+FAIL Test <percentage> trailing garbage, value: \f0.35)90 assert_approx_equals: expected 0 +/- 5.960464477539063e-8 but got 0.3499999940395355
+PASS Test <percentage> trailing garbage, value: \f1e-10)90
+FAIL Test <percentage> trailing garbage, value: \f+32)90 assert_approx_equals: expected 0 +/- 5.960464477539063e-8 but got 32
+FAIL Test <percentage> trailing garbage, value: \f+17E-1)90 assert_approx_equals: expected 0 +/- 5.960464477539063e-8 but got 1.7000000476837158
+FAIL Test <percentage> trailing garbage, value: \f17e+2)90 assert_approx_equals: expected 0 +/- 5.960464477539063e-8 but got 1700
+PASS Test <number> invalid value: NaN
+PASS Test <number> invalid value: Infinity
+PASS Test <number> invalid value: -Infinity
+PASS Test <number> invalid value: fnord
+PASS Test <number> invalid value: E
+PASS Test <number> invalid value: e
+PASS Test <number> invalid value: e+
+PASS Test <number> invalid value: E-
+PASS Test <number> invalid value: -
+PASS Test <number> invalid value: +
+PASS Test <number> invalid value: -.
+PASS Test <number> invalid value: .-
+PASS Test <number> invalid value: .
+PASS Test <number> invalid value: +.
+PASS Test <number> invalid value: .E0
+PASS Test <number> invalid value: e1
+PASS Test <number> invalid value: NaN
+PASS Test <number> invalid value: Infinity
+PASS Test <number> invalid value: -Infinity
+PASS Test <number> invalid value: fnord
+PASS Test <number> invalid value: E
+PASS Test <number> invalid value: e
+PASS Test <number> invalid value: e+
+PASS Test <number> invalid value: E-
+PASS Test <number> invalid value: -
+PASS Test <number> invalid value: +
+PASS Test <number> invalid value: -.
+PASS Test <number> invalid value: .-
+PASS Test <number> invalid value: .
+PASS Test <number> invalid value: +.
+PASS Test <number> invalid value: .E0
+PASS Test <number> invalid value: e1
+PASS Test <number> invalid value: NaN
+PASS Test <number> invalid value: Infinity
+PASS Test <number> invalid value: -Infinity
+PASS Test <number> invalid value: fnord
+PASS Test <number> invalid value: E
+PASS Test <number> invalid value: e
+PASS Test <number> invalid value: e+
+PASS Test <number> invalid value: E-
+PASS Test <number> invalid value: -
+PASS Test <number> invalid value: +
+PASS Test <number> invalid value: -.
+PASS Test <number> invalid value: .-
+PASS Test <number> invalid value: .
+PASS Test <number> invalid value: +.
+PASS Test <number> invalid value: .E0
+PASS Test <number> invalid value: e1
+PASS Test <number> invalid value: NaN\r\n\t
+PASS Test <number> invalid value: Infinity\r\n\t
+PASS Test <number> invalid value: -Infinity\r\n\t
+PASS Test <number> invalid value: fnord\r\n\t
+PASS Test <number> invalid value: E\r\n\t
+PASS Test <number> invalid value: e\r\n\t
+PASS Test <number> invalid value: e+\r\n\t
+PASS Test <number> invalid value: E-\r\n\t
+PASS Test <number> invalid value: -\r\n\t
+PASS Test <number> invalid value: +\r\n\t
+PASS Test <number> invalid value: -.\r\n\t
+PASS Test <number> invalid value: .-\r\n\t
+PASS Test <number> invalid value: .\r\n\t
+PASS Test <number> invalid value: +.\r\n\t
+PASS Test <number> invalid value: .E0\r\n\t
+PASS Test <number> invalid value: e1\r\n\t
+PASS Test <number> invalid value: NaN\f
+PASS Test <number> invalid value: Infinity\f
+PASS Test <number> invalid value: -Infinity\f
+PASS Test <number> invalid value: fnord\f
+PASS Test <number> invalid value: E\f
+PASS Test <number> invalid value: e\f
+PASS Test <number> invalid value: e+\f
+PASS Test <number> invalid value: E-\f
+PASS Test <number> invalid value: -\f
+PASS Test <number> invalid value: +\f
+PASS Test <number> invalid value: -.\f
+PASS Test <number> invalid value: .-\f
+PASS Test <number> invalid value: .\f
+PASS Test <number> invalid value: +.\f
+PASS Test <number> invalid value: .E0\f
+PASS Test <number> invalid value: e1\f
+PASS Test <number> invalid value:  NaN
+PASS Test <number> invalid value:  Infinity
+PASS Test <number> invalid value:  -Infinity
+PASS Test <number> invalid value:  fnord
+PASS Test <number> invalid value:  E
+PASS Test <number> invalid value:  e
+PASS Test <number> invalid value:  e+
+PASS Test <number> invalid value:  E-
+PASS Test <number> invalid value:  -
+PASS Test <number> invalid value:  +
+PASS Test <number> invalid value:  -.
+PASS Test <number> invalid value:  .-
+PASS Test <number> invalid value:  .
+PASS Test <number> invalid value:  +.
+PASS Test <number> invalid value:  .E0
+PASS Test <number> invalid value:  e1
+PASS Test <number> invalid value:  NaN
+PASS Test <number> invalid value:  Infinity
+PASS Test <number> invalid value:  -Infinity
+PASS Test <number> invalid value:  fnord
+PASS Test <number> invalid value:  E
+PASS Test <number> invalid value:  e
+PASS Test <number> invalid value:  e+
+PASS Test <number> invalid value:  E-
+PASS Test <number> invalid value:  -
+PASS Test <number> invalid value:  +
+PASS Test <number> invalid value:  -.
+PASS Test <number> invalid value:  .-
+PASS Test <number> invalid value:  .
+PASS Test <number> invalid value:  +.
+PASS Test <number> invalid value:  .E0
+PASS Test <number> invalid value:  e1
+PASS Test <number> invalid value:  NaN
+PASS Test <number> invalid value:  Infinity
+PASS Test <number> invalid value:  -Infinity
+PASS Test <number> invalid value:  fnord
+PASS Test <number> invalid value:  E
+PASS Test <number> invalid value:  e
+PASS Test <number> invalid value:  e+
+PASS Test <number> invalid value:  E-
+PASS Test <number> invalid value:  -
+PASS Test <number> invalid value:  +
+PASS Test <number> invalid value:  -.
+PASS Test <number> invalid value:  .-
+PASS Test <number> invalid value:  .
+PASS Test <number> invalid value:  +.
+PASS Test <number> invalid value:  .E0
+PASS Test <number> invalid value:  e1
+PASS Test <number> invalid value:  NaN\r\n\t
+PASS Test <number> invalid value:  Infinity\r\n\t
+PASS Test <number> invalid value:  -Infinity\r\n\t
+PASS Test <number> invalid value:  fnord\r\n\t
+PASS Test <number> invalid value:  E\r\n\t
+PASS Test <number> invalid value:  e\r\n\t
+PASS Test <number> invalid value:  e+\r\n\t
+PASS Test <number> invalid value:  E-\r\n\t
+PASS Test <number> invalid value:  -\r\n\t
+PASS Test <number> invalid value:  +\r\n\t
+PASS Test <number> invalid value:  -.\r\n\t
+PASS Test <number> invalid value:  .-\r\n\t
+PASS Test <number> invalid value:  .\r\n\t
+PASS Test <number> invalid value:  +.\r\n\t
+PASS Test <number> invalid value:  .E0\r\n\t
+PASS Test <number> invalid value:  e1\r\n\t
+PASS Test <number> invalid value:  NaN\f
+PASS Test <number> invalid value:  Infinity\f
+PASS Test <number> invalid value:  -Infinity\f
+PASS Test <number> invalid value:  fnord\f
+PASS Test <number> invalid value:  E\f
+PASS Test <number> invalid value:  e\f
+PASS Test <number> invalid value:  e+\f
+PASS Test <number> invalid value:  E-\f
+PASS Test <number> invalid value:  -\f
+PASS Test <number> invalid value:  +\f
+PASS Test <number> invalid value:  -.\f
+PASS Test <number> invalid value:  .-\f
+PASS Test <number> invalid value:  .\f
+PASS Test <number> invalid value:  +.\f
+PASS Test <number> invalid value:  .E0\f
+PASS Test <number> invalid value:  e1\f
+PASS Test <number> invalid value:    NaN
+PASS Test <number> invalid value:    Infinity
+PASS Test <number> invalid value:    -Infinity
+PASS Test <number> invalid value:    fnord
+PASS Test <number> invalid value:    E
+PASS Test <number> invalid value:    e
+PASS Test <number> invalid value:    e+
+PASS Test <number> invalid value:    E-
+PASS Test <number> invalid value:    -
+PASS Test <number> invalid value:    +
+PASS Test <number> invalid value:    -.
+PASS Test <number> invalid value:    .-
+PASS Test <number> invalid value:    .
+PASS Test <number> invalid value:    +.
+PASS Test <number> invalid value:    .E0
+PASS Test <number> invalid value:    e1
+PASS Test <number> invalid value:    NaN
+PASS Test <number> invalid value:    Infinity
+PASS Test <number> invalid value:    -Infinity
+PASS Test <number> invalid value:    fnord
+PASS Test <number> invalid value:    E
+PASS Test <number> invalid value:    e
+PASS Test <number> invalid value:    e+
+PASS Test <number> invalid value:    E-
+PASS Test <number> invalid value:    -
+PASS Test <number> invalid value:    +
+PASS Test <number> invalid value:    -.
+PASS Test <number> invalid value:    .-
+PASS Test <number> invalid value:    .
+PASS Test <number> invalid value:    +.
+PASS Test <number> invalid value:    .E0
+PASS Test <number> invalid value:    e1
+PASS Test <number> invalid value:    NaN
+PASS Test <number> invalid value:    Infinity
+PASS Test <number> invalid value:    -Infinity
+PASS Test <number> invalid value:    fnord
+PASS Test <number> invalid value:    E
+PASS Test <number> invalid value:    e
+PASS Test <number> invalid value:    e+
+PASS Test <number> invalid value:    E-
+PASS Test <number> invalid value:    -
+PASS Test <number> invalid value:    +
+PASS Test <number> invalid value:    -.
+PASS Test <number> invalid value:    .-
+PASS Test <number> invalid value:    .
+PASS Test <number> invalid value:    +.
+PASS Test <number> invalid value:    .E0
+PASS Test <number> invalid value:    e1
+PASS Test <number> invalid value:    NaN\r\n\t
+PASS Test <number> invalid value:    Infinity\r\n\t
+PASS Test <number> invalid value:    -Infinity\r\n\t
+PASS Test <number> invalid value:    fnord\r\n\t
+PASS Test <number> invalid value:    E\r\n\t
+PASS Test <number> invalid value:    e\r\n\t
+PASS Test <number> invalid value:    e+\r\n\t
+PASS Test <number> invalid value:    E-\r\n\t
+PASS Test <number> invalid value:    -\r\n\t
+PASS Test <number> invalid value:    +\r\n\t
+PASS Test <number> invalid value:    -.\r\n\t
+PASS Test <number> invalid value:    .-\r\n\t
+PASS Test <number> invalid value:    .\r\n\t
+PASS Test <number> invalid value:    +.\r\n\t
+PASS Test <number> invalid value:    .E0\r\n\t
+PASS Test <number> invalid value:    e1\r\n\t
+PASS Test <number> invalid value:    NaN\f
+PASS Test <number> invalid value:    Infinity\f
+PASS Test <number> invalid value:    -Infinity\f
+PASS Test <number> invalid value:    fnord\f
+PASS Test <number> invalid value:    E\f
+PASS Test <number> invalid value:    e\f
+PASS Test <number> invalid value:    e+\f
+PASS Test <number> invalid value:    E-\f
+PASS Test <number> invalid value:    -\f
+PASS Test <number> invalid value:    +\f
+PASS Test <number> invalid value:    -.\f
+PASS Test <number> invalid value:    .-\f
+PASS Test <number> invalid value:    .\f
+PASS Test <number> invalid value:    +.\f
+PASS Test <number> invalid value:    .E0\f
+PASS Test <number> invalid value:    e1\f
+PASS Test <number> invalid value: \r\n\t NaN
+PASS Test <number> invalid value: \r\n\t Infinity
+PASS Test <number> invalid value: \r\n\t -Infinity
+PASS Test <number> invalid value: \r\n\t fnord
+PASS Test <number> invalid value: \r\n\t E
+PASS Test <number> invalid value: \r\n\t e
+PASS Test <number> invalid value: \r\n\t e+
+PASS Test <number> invalid value: \r\n\t E-
+PASS Test <number> invalid value: \r\n\t -
+PASS Test <number> invalid value: \r\n\t +
+PASS Test <number> invalid value: \r\n\t -.
+PASS Test <number> invalid value: \r\n\t .-
+PASS Test <number> invalid value: \r\n\t .
+PASS Test <number> invalid value: \r\n\t +.
+PASS Test <number> invalid value: \r\n\t .E0
+PASS Test <number> invalid value: \r\n\t e1
+PASS Test <number> invalid value: \r\n\t NaN
+PASS Test <number> invalid value: \r\n\t Infinity
+PASS Test <number> invalid value: \r\n\t -Infinity
+PASS Test <number> invalid value: \r\n\t fnord
+PASS Test <number> invalid value: \r\n\t E
+PASS Test <number> invalid value: \r\n\t e
+PASS Test <number> invalid value: \r\n\t e+
+PASS Test <number> invalid value: \r\n\t E-
+PASS Test <number> invalid value: \r\n\t -
+PASS Test <number> invalid value: \r\n\t +
+PASS Test <number> invalid value: \r\n\t -.
+PASS Test <number> invalid value: \r\n\t .-
+PASS Test <number> invalid value: \r\n\t .
+PASS Test <number> invalid value: \r\n\t +.
+PASS Test <number> invalid value: \r\n\t .E0
+PASS Test <number> invalid value: \r\n\t e1
+PASS Test <number> invalid value: \r\n\t NaN
+PASS Test <number> invalid value: \r\n\t Infinity
+PASS Test <number> invalid value: \r\n\t -Infinity
+PASS Test <number> invalid value: \r\n\t fnord
+PASS Test <number> invalid value: \r\n\t E
+PASS Test <number> invalid value: \r\n\t e
+PASS Test <number> invalid value: \r\n\t e+
+PASS Test <number> invalid value: \r\n\t E-
+PASS Test <number> invalid value: \r\n\t -
+PASS Test <number> invalid value: \r\n\t +
+PASS Test <number> invalid value: \r\n\t -.
+PASS Test <number> invalid value: \r\n\t .-
+PASS Test <number> invalid value: \r\n\t .
+PASS Test <number> invalid value: \r\n\t +.
+PASS Test <number> invalid value: \r\n\t .E0
+PASS Test <number> invalid value: \r\n\t e1
+PASS Test <number> invalid value: \r\n\t NaN\r\n\t
+PASS Test <number> invalid value: \r\n\t Infinity\r\n\t
+PASS Test <number> invalid value: \r\n\t -Infinity\r\n\t
+PASS Test <number> invalid value: \r\n\t fnord\r\n\t
+PASS Test <number> invalid value: \r\n\t E\r\n\t
+PASS Test <number> invalid value: \r\n\t e\r\n\t
+PASS Test <number> invalid value: \r\n\t e+\r\n\t
+PASS Test <number> invalid value: \r\n\t E-\r\n\t
+PASS Test <number> invalid value: \r\n\t -\r\n\t
+PASS Test <number> invalid value: \r\n\t +\r\n\t
+PASS Test <number> invalid value: \r\n\t -.\r\n\t
+PASS Test <number> invalid value: \r\n\t .-\r\n\t
+PASS Test <number> invalid value: \r\n\t .\r\n\t
+PASS Test <number> invalid value: \r\n\t +.\r\n\t
+PASS Test <number> invalid value: \r\n\t .E0\r\n\t
+PASS Test <number> invalid value: \r\n\t e1\r\n\t
+PASS Test <number> invalid value: \r\n\t NaN\f
+PASS Test <number> invalid value: \r\n\t Infinity\f
+PASS Test <number> invalid value: \r\n\t -Infinity\f
+PASS Test <number> invalid value: \r\n\t fnord\f
+PASS Test <number> invalid value: \r\n\t E\f
+PASS Test <number> invalid value: \r\n\t e\f
+PASS Test <number> invalid value: \r\n\t e+\f
+PASS Test <number> invalid value: \r\n\t E-\f
+PASS Test <number> invalid value: \r\n\t -\f
+PASS Test <number> invalid value: \r\n\t +\f
+PASS Test <number> invalid value: \r\n\t -.\f
+PASS Test <number> invalid value: \r\n\t .-\f
+PASS Test <number> invalid value: \r\n\t .\f
+PASS Test <number> invalid value: \r\n\t +.\f
+PASS Test <number> invalid value: \r\n\t .E0\f
+PASS Test <number> invalid value: \r\n\t e1\f
+PASS Test <number> invalid value: \fNaN
+PASS Test <number> invalid value: \fInfinity
+PASS Test <number> invalid value: \f-Infinity
+PASS Test <number> invalid value: \ffnord
+PASS Test <number> invalid value: \fE
+PASS Test <number> invalid value: \fe
+PASS Test <number> invalid value: \fe+
+PASS Test <number> invalid value: \fE-
+PASS Test <number> invalid value: \f-
+PASS Test <number> invalid value: \f+
+PASS Test <number> invalid value: \f-.
+PASS Test <number> invalid value: \f.-
+PASS Test <number> invalid value: \f.
+PASS Test <number> invalid value: \f+.
+PASS Test <number> invalid value: \f.E0
+PASS Test <number> invalid value: \fe1
+PASS Test <number> invalid value: \fNaN
+PASS Test <number> invalid value: \fInfinity
+PASS Test <number> invalid value: \f-Infinity
+PASS Test <number> invalid value: \ffnord
+PASS Test <number> invalid value: \fE
+PASS Test <number> invalid value: \fe
+PASS Test <number> invalid value: \fe+
+PASS Test <number> invalid value: \fE-
+PASS Test <number> invalid value: \f-
+PASS Test <number> invalid value: \f+
+PASS Test <number> invalid value: \f-.
+PASS Test <number> invalid value: \f.-
+PASS Test <number> invalid value: \f.
+PASS Test <number> invalid value: \f+.
+PASS Test <number> invalid value: \f.E0
+PASS Test <number> invalid value: \fe1
+PASS Test <number> invalid value: \fNaN
+PASS Test <number> invalid value: \fInfinity
+PASS Test <number> invalid value: \f-Infinity
+PASS Test <number> invalid value: \ffnord
+PASS Test <number> invalid value: \fE
+PASS Test <number> invalid value: \fe
+PASS Test <number> invalid value: \fe+
+PASS Test <number> invalid value: \fE-
+PASS Test <number> invalid value: \f-
+PASS Test <number> invalid value: \f+
+PASS Test <number> invalid value: \f-.
+PASS Test <number> invalid value: \f.-
+PASS Test <number> invalid value: \f.
+PASS Test <number> invalid value: \f+.
+PASS Test <number> invalid value: \f.E0
+PASS Test <number> invalid value: \fe1
+PASS Test <number> invalid value: \fNaN\r\n\t
+PASS Test <number> invalid value: \fInfinity\r\n\t
+PASS Test <number> invalid value: \f-Infinity\r\n\t
+PASS Test <number> invalid value: \ffnord\r\n\t
+PASS Test <number> invalid value: \fE\r\n\t
+PASS Test <number> invalid value: \fe\r\n\t
+PASS Test <number> invalid value: \fe+\r\n\t
+PASS Test <number> invalid value: \fE-\r\n\t
+PASS Test <number> invalid value: \f-\r\n\t
+PASS Test <number> invalid value: \f+\r\n\t
+PASS Test <number> invalid value: \f-.\r\n\t
+PASS Test <number> invalid value: \f.-\r\n\t
+PASS Test <number> invalid value: \f.\r\n\t
+PASS Test <number> invalid value: \f+.\r\n\t
+PASS Test <number> invalid value: \f.E0\r\n\t
+PASS Test <number> invalid value: \fe1\r\n\t
+PASS Test <number> invalid value: \fNaN\f
+PASS Test <number> invalid value: \fInfinity\f
+PASS Test <number> invalid value: \f-Infinity\f
+PASS Test <number> invalid value: \ffnord\f
+PASS Test <number> invalid value: \fE\f
+PASS Test <number> invalid value: \fe\f
+PASS Test <number> invalid value: \fe+\f
+PASS Test <number> invalid value: \fE-\f
+PASS Test <number> invalid value: \f-\f
+PASS Test <number> invalid value: \f+\f
+PASS Test <number> invalid value: \f-.\f
+PASS Test <number> invalid value: \f.-\f
+PASS Test <number> invalid value: \f.\f
+PASS Test <number> invalid value: \f+.\f
+PASS Test <number> invalid value: \f.E0\f
+PASS Test <number> invalid value: \fe1\f
+PASS Test <percentage> invalid value: NaN%
+PASS Test <percentage> invalid value: Infinity%
+PASS Test <percentage> invalid value: -Infinity%
+PASS Test <percentage> invalid value: fnord%
+PASS Test <percentage> invalid value: E%
+PASS Test <percentage> invalid value: e%
+PASS Test <percentage> invalid value: e+%
+PASS Test <percentage> invalid value: E-%
+PASS Test <percentage> invalid value: -%
+PASS Test <percentage> invalid value: +%
+PASS Test <percentage> invalid value: -.%
+PASS Test <percentage> invalid value: .-%
+PASS Test <percentage> invalid value: .%
+PASS Test <percentage> invalid value: +.%
+PASS Test <percentage> invalid value: .E0%
+PASS Test <percentage> invalid value: e1%
+PASS Test <percentage> invalid value: NaN%
+PASS Test <percentage> invalid value: Infinity%
+PASS Test <percentage> invalid value: -Infinity%
+PASS Test <percentage> invalid value: fnord%
+PASS Test <percentage> invalid value: E%
+PASS Test <percentage> invalid value: e%
+PASS Test <percentage> invalid value: e+%
+PASS Test <percentage> invalid value: E-%
+PASS Test <percentage> invalid value: -%
+PASS Test <percentage> invalid value: +%
+PASS Test <percentage> invalid value: -.%
+PASS Test <percentage> invalid value: .-%
+PASS Test <percentage> invalid value: .%
+PASS Test <percentage> invalid value: +.%
+PASS Test <percentage> invalid value: .E0%
+PASS Test <percentage> invalid value: e1%
+PASS Test <percentage> invalid value: NaN%
+PASS Test <percentage> invalid value: Infinity%
+PASS Test <percentage> invalid value: -Infinity%
+PASS Test <percentage> invalid value: fnord%
+PASS Test <percentage> invalid value: E%
+PASS Test <percentage> invalid value: e%
+PASS Test <percentage> invalid value: e+%
+PASS Test <percentage> invalid value: E-%
+PASS Test <percentage> invalid value: -%
+PASS Test <percentage> invalid value: +%
+PASS Test <percentage> invalid value: -.%
+PASS Test <percentage> invalid value: .-%
+PASS Test <percentage> invalid value: .%
+PASS Test <percentage> invalid value: +.%
+PASS Test <percentage> invalid value: .E0%
+PASS Test <percentage> invalid value: e1%
+PASS Test <percentage> invalid value: NaN%\r\n\t
+PASS Test <percentage> invalid value: Infinity%\r\n\t
+PASS Test <percentage> invalid value: -Infinity%\r\n\t
+PASS Test <percentage> invalid value: fnord%\r\n\t
+PASS Test <percentage> invalid value: E%\r\n\t
+PASS Test <percentage> invalid value: e%\r\n\t
+PASS Test <percentage> invalid value: e+%\r\n\t
+PASS Test <percentage> invalid value: E-%\r\n\t
+PASS Test <percentage> invalid value: -%\r\n\t
+PASS Test <percentage> invalid value: +%\r\n\t
+PASS Test <percentage> invalid value: -.%\r\n\t
+PASS Test <percentage> invalid value: .-%\r\n\t
+PASS Test <percentage> invalid value: .%\r\n\t
+PASS Test <percentage> invalid value: +.%\r\n\t
+PASS Test <percentage> invalid value: .E0%\r\n\t
+PASS Test <percentage> invalid value: e1%\r\n\t
+PASS Test <percentage> invalid value: NaN%\f
+PASS Test <percentage> invalid value: Infinity%\f
+PASS Test <percentage> invalid value: -Infinity%\f
+PASS Test <percentage> invalid value: fnord%\f
+PASS Test <percentage> invalid value: E%\f
+PASS Test <percentage> invalid value: e%\f
+PASS Test <percentage> invalid value: e+%\f
+PASS Test <percentage> invalid value: E-%\f
+PASS Test <percentage> invalid value: -%\f
+PASS Test <percentage> invalid value: +%\f
+PASS Test <percentage> invalid value: -.%\f
+PASS Test <percentage> invalid value: .-%\f
+PASS Test <percentage> invalid value: .%\f
+PASS Test <percentage> invalid value: +.%\f
+PASS Test <percentage> invalid value: .E0%\f
+PASS Test <percentage> invalid value: e1%\f
+PASS Test <percentage> invalid value:  NaN%
+PASS Test <percentage> invalid value:  Infinity%
+PASS Test <percentage> invalid value:  -Infinity%
+PASS Test <percentage> invalid value:  fnord%
+PASS Test <percentage> invalid value:  E%
+PASS Test <percentage> invalid value:  e%
+PASS Test <percentage> invalid value:  e+%
+PASS Test <percentage> invalid value:  E-%
+PASS Test <percentage> invalid value:  -%
+PASS Test <percentage> invalid value:  +%
+PASS Test <percentage> invalid value:  -.%
+PASS Test <percentage> invalid value:  .-%
+PASS Test <percentage> invalid value:  .%
+PASS Test <percentage> invalid value:  +.%
+PASS Test <percentage> invalid value:  .E0%
+PASS Test <percentage> invalid value:  e1%
+PASS Test <percentage> invalid value:  NaN%
+PASS Test <percentage> invalid value:  Infinity%
+PASS Test <percentage> invalid value:  -Infinity%
+PASS Test <percentage> invalid value:  fnord%
+PASS Test <percentage> invalid value:  E%
+PASS Test <percentage> invalid value:  e%
+PASS Test <percentage> invalid value:  e+%
+PASS Test <percentage> invalid value:  E-%
+PASS Test <percentage> invalid value:  -%
+PASS Test <percentage> invalid value:  +%
+PASS Test <percentage> invalid value:  -.%
+PASS Test <percentage> invalid value:  .-%
+PASS Test <percentage> invalid value:  .%
+PASS Test <percentage> invalid value:  +.%
+PASS Test <percentage> invalid value:  .E0%
+PASS Test <percentage> invalid value:  e1%
+PASS Test <percentage> invalid value:  NaN%
+PASS Test <percentage> invalid value:  Infinity%
+PASS Test <percentage> invalid value:  -Infinity%
+PASS Test <percentage> invalid value:  fnord%
+PASS Test <percentage> invalid value:  E%
+PASS Test <percentage> invalid value:  e%
+PASS Test <percentage> invalid value:  e+%
+PASS Test <percentage> invalid value:  E-%
+PASS Test <percentage> invalid value:  -%
+PASS Test <percentage> invalid value:  +%
+PASS Test <percentage> invalid value:  -.%
+PASS Test <percentage> invalid value:  .-%
+PASS Test <percentage> invalid value:  .%
+PASS Test <percentage> invalid value:  +.%
+PASS Test <percentage> invalid value:  .E0%
+PASS Test <percentage> invalid value:  e1%
+PASS Test <percentage> invalid value:  NaN%\r\n\t
+PASS Test <percentage> invalid value:  Infinity%\r\n\t
+PASS Test <percentage> invalid value:  -Infinity%\r\n\t
+PASS Test <percentage> invalid value:  fnord%\r\n\t
+PASS Test <percentage> invalid value:  E%\r\n\t
+PASS Test <percentage> invalid value:  e%\r\n\t
+PASS Test <percentage> invalid value:  e+%\r\n\t
+PASS Test <percentage> invalid value:  E-%\r\n\t
+PASS Test <percentage> invalid value:  -%\r\n\t
+PASS Test <percentage> invalid value:  +%\r\n\t
+PASS Test <percentage> invalid value:  -.%\r\n\t
+PASS Test <percentage> invalid value:  .-%\r\n\t
+PASS Test <percentage> invalid value:  .%\r\n\t
+PASS Test <percentage> invalid value:  +.%\r\n\t
+PASS Test <percentage> invalid value:  .E0%\r\n\t
+PASS Test <percentage> invalid value:  e1%\r\n\t
+PASS Test <percentage> invalid value:  NaN%\f
+PASS Test <percentage> invalid value:  Infinity%\f
+PASS Test <percentage> invalid value:  -Infinity%\f
+PASS Test <percentage> invalid value:  fnord%\f
+PASS Test <percentage> invalid value:  E%\f
+PASS Test <percentage> invalid value:  e%\f
+PASS Test <percentage> invalid value:  e+%\f
+PASS Test <percentage> invalid value:  E-%\f
+PASS Test <percentage> invalid value:  -%\f
+PASS Test <percentage> invalid value:  +%\f
+PASS Test <percentage> invalid value:  -.%\f
+PASS Test <percentage> invalid value:  .-%\f
+PASS Test <percentage> invalid value:  .%\f
+PASS Test <percentage> invalid value:  +.%\f
+PASS Test <percentage> invalid value:  .E0%\f
+PASS Test <percentage> invalid value:  e1%\f
+PASS Test <percentage> invalid value:    NaN%
+PASS Test <percentage> invalid value:    Infinity%
+PASS Test <percentage> invalid value:    -Infinity%
+PASS Test <percentage> invalid value:    fnord%
+PASS Test <percentage> invalid value:    E%
+PASS Test <percentage> invalid value:    e%
+PASS Test <percentage> invalid value:    e+%
+PASS Test <percentage> invalid value:    E-%
+PASS Test <percentage> invalid value:    -%
+PASS Test <percentage> invalid value:    +%
+PASS Test <percentage> invalid value:    -.%
+PASS Test <percentage> invalid value:    .-%
+PASS Test <percentage> invalid value:    .%
+PASS Test <percentage> invalid value:    +.%
+PASS Test <percentage> invalid value:    .E0%
+PASS Test <percentage> invalid value:    e1%
+PASS Test <percentage> invalid value:    NaN%
+PASS Test <percentage> invalid value:    Infinity%
+PASS Test <percentage> invalid value:    -Infinity%
+PASS Test <percentage> invalid value:    fnord%
+PASS Test <percentage> invalid value:    E%
+PASS Test <percentage> invalid value:    e%
+PASS Test <percentage> invalid value:    e+%
+PASS Test <percentage> invalid value:    E-%
+PASS Test <percentage> invalid value:    -%
+PASS Test <percentage> invalid value:    +%
+PASS Test <percentage> invalid value:    -.%
+PASS Test <percentage> invalid value:    .-%
+PASS Test <percentage> invalid value:    .%
+PASS Test <percentage> invalid value:    +.%
+PASS Test <percentage> invalid value:    .E0%
+PASS Test <percentage> invalid value:    e1%
+PASS Test <percentage> invalid value:    NaN%
+PASS Test <percentage> invalid value:    Infinity%
+PASS Test <percentage> invalid value:    -Infinity%
+PASS Test <percentage> invalid value:    fnord%
+PASS Test <percentage> invalid value:    E%
+PASS Test <percentage> invalid value:    e%
+PASS Test <percentage> invalid value:    e+%
+PASS Test <percentage> invalid value:    E-%
+PASS Test <percentage> invalid value:    -%
+PASS Test <percentage> invalid value:    +%
+PASS Test <percentage> invalid value:    -.%
+PASS Test <percentage> invalid value:    .-%
+PASS Test <percentage> invalid value:    .%
+PASS Test <percentage> invalid value:    +.%
+PASS Test <percentage> invalid value:    .E0%
+PASS Test <percentage> invalid value:    e1%
+PASS Test <percentage> invalid value:    NaN%\r\n\t
+PASS Test <percentage> invalid value:    Infinity%\r\n\t
+PASS Test <percentage> invalid value:    -Infinity%\r\n\t
+PASS Test <percentage> invalid value:    fnord%\r\n\t
+PASS Test <percentage> invalid value:    E%\r\n\t
+PASS Test <percentage> invalid value:    e%\r\n\t
+PASS Test <percentage> invalid value:    e+%\r\n\t
+PASS Test <percentage> invalid value:    E-%\r\n\t
+PASS Test <percentage> invalid value:    -%\r\n\t
+PASS Test <percentage> invalid value:    +%\r\n\t
+PASS Test <percentage> invalid value:    -.%\r\n\t
+PASS Test <percentage> invalid value:    .-%\r\n\t
+PASS Test <percentage> invalid value:    .%\r\n\t
+PASS Test <percentage> invalid value:    +.%\r\n\t
+PASS Test <percentage> invalid value:    .E0%\r\n\t
+PASS Test <percentage> invalid value:    e1%\r\n\t
+PASS Test <percentage> invalid value:    NaN%\f
+PASS Test <percentage> invalid value:    Infinity%\f
+PASS Test <percentage> invalid value:    -Infinity%\f
+PASS Test <percentage> invalid value:    fnord%\f
+PASS Test <percentage> invalid value:    E%\f
+PASS Test <percentage> invalid value:    e%\f
+PASS Test <percentage> invalid value:    e+%\f
+PASS Test <percentage> invalid value:    E-%\f
+PASS Test <percentage> invalid value:    -%\f
+PASS Test <percentage> invalid value:    +%\f
+PASS Test <percentage> invalid value:    -.%\f
+PASS Test <percentage> invalid value:    .-%\f
+PASS Test <percentage> invalid value:    .%\f
+PASS Test <percentage> invalid value:    +.%\f
+PASS Test <percentage> invalid value:    .E0%\f
+PASS Test <percentage> invalid value:    e1%\f
+PASS Test <percentage> invalid value: \r\n\t NaN%
+PASS Test <percentage> invalid value: \r\n\t Infinity%
+PASS Test <percentage> invalid value: \r\n\t -Infinity%
+PASS Test <percentage> invalid value: \r\n\t fnord%
+PASS Test <percentage> invalid value: \r\n\t E%
+PASS Test <percentage> invalid value: \r\n\t e%
+PASS Test <percentage> invalid value: \r\n\t e+%
+PASS Test <percentage> invalid value: \r\n\t E-%
+PASS Test <percentage> invalid value: \r\n\t -%
+PASS Test <percentage> invalid value: \r\n\t +%
+PASS Test <percentage> invalid value: \r\n\t -.%
+PASS Test <percentage> invalid value: \r\n\t .-%
+PASS Test <percentage> invalid value: \r\n\t .%
+PASS Test <percentage> invalid value: \r\n\t +.%
+PASS Test <percentage> invalid value: \r\n\t .E0%
+PASS Test <percentage> invalid value: \r\n\t e1%
+PASS Test <percentage> invalid value: \r\n\t NaN%
+PASS Test <percentage> invalid value: \r\n\t Infinity%
+PASS Test <percentage> invalid value: \r\n\t -Infinity%
+PASS Test <percentage> invalid value: \r\n\t fnord%
+PASS Test <percentage> invalid value: \r\n\t E%
+PASS Test <percentage> invalid value: \r\n\t e%
+PASS Test <percentage> invalid value: \r\n\t e+%
+PASS Test <percentage> invalid value: \r\n\t E-%
+PASS Test <percentage> invalid value: \r\n\t -%
+PASS Test <percentage> invalid value: \r\n\t +%
+PASS Test <percentage> invalid value: \r\n\t -.%
+PASS Test <percentage> invalid value: \r\n\t .-%
+PASS Test <percentage> invalid value: \r\n\t .%
+PASS Test <percentage> invalid value: \r\n\t +.%
+PASS Test <percentage> invalid value: \r\n\t .E0%
+PASS Test <percentage> invalid value: \r\n\t e1%
+PASS Test <percentage> invalid value: \r\n\t NaN%
+PASS Test <percentage> invalid value: \r\n\t Infinity%
+PASS Test <percentage> invalid value: \r\n\t -Infinity%
+PASS Test <percentage> invalid value: \r\n\t fnord%
+PASS Test <percentage> invalid value: \r\n\t E%
+PASS Test <percentage> invalid value: \r\n\t e%
+PASS Test <percentage> invalid value: \r\n\t e+%
+PASS Test <percentage> invalid value: \r\n\t E-%
+PASS Test <percentage> invalid value: \r\n\t -%
+PASS Test <percentage> invalid value: \r\n\t +%
+PASS Test <percentage> invalid value: \r\n\t -.%
+PASS Test <percentage> invalid value: \r\n\t .-%
+PASS Test <percentage> invalid value: \r\n\t .%
+PASS Test <percentage> invalid value: \r\n\t +.%
+PASS Test <percentage> invalid value: \r\n\t .E0%
+PASS Test <percentage> invalid value: \r\n\t e1%
+PASS Test <percentage> invalid value: \r\n\t NaN%\r\n\t
+PASS Test <percentage> invalid value: \r\n\t Infinity%\r\n\t
+PASS Test <percentage> invalid value: \r\n\t -Infinity%\r\n\t
+PASS Test <percentage> invalid value: \r\n\t fnord%\r\n\t
+PASS Test <percentage> invalid value: \r\n\t E%\r\n\t
+PASS Test <percentage> invalid value: \r\n\t e%\r\n\t
+PASS Test <percentage> invalid value: \r\n\t e+%\r\n\t
+PASS Test <percentage> invalid value: \r\n\t E-%\r\n\t
+PASS Test <percentage> invalid value: \r\n\t -%\r\n\t
+PASS Test <percentage> invalid value: \r\n\t +%\r\n\t
+PASS Test <percentage> invalid value: \r\n\t -.%\r\n\t
+PASS Test <percentage> invalid value: \r\n\t .-%\r\n\t
+PASS Test <percentage> invalid value: \r\n\t .%\r\n\t
+PASS Test <percentage> invalid value: \r\n\t +.%\r\n\t
+PASS Test <percentage> invalid value: \r\n\t .E0%\r\n\t
+PASS Test <percentage> invalid value: \r\n\t e1%\r\n\t
+PASS Test <percentage> invalid value: \r\n\t NaN%\f
+PASS Test <percentage> invalid value: \r\n\t Infinity%\f
+PASS Test <percentage> invalid value: \r\n\t -Infinity%\f
+PASS Test <percentage> invalid value: \r\n\t fnord%\f
+PASS Test <percentage> invalid value: \r\n\t E%\f
+PASS Test <percentage> invalid value: \r\n\t e%\f
+PASS Test <percentage> invalid value: \r\n\t e+%\f
+PASS Test <percentage> invalid value: \r\n\t E-%\f
+PASS Test <percentage> invalid value: \r\n\t -%\f
+PASS Test <percentage> invalid value: \r\n\t +%\f
+PASS Test <percentage> invalid value: \r\n\t -.%\f
+PASS Test <percentage> invalid value: \r\n\t .-%\f
+PASS Test <percentage> invalid value: \r\n\t .%\f
+PASS Test <percentage> invalid value: \r\n\t +.%\f
+PASS Test <percentage> invalid value: \r\n\t .E0%\f
+PASS Test <percentage> invalid value: \r\n\t e1%\f
+PASS Test <percentage> invalid value: \fNaN%
+PASS Test <percentage> invalid value: \fInfinity%
+PASS Test <percentage> invalid value: \f-Infinity%
+PASS Test <percentage> invalid value: \ffnord%
+PASS Test <percentage> invalid value: \fE%
+PASS Test <percentage> invalid value: \fe%
+PASS Test <percentage> invalid value: \fe+%
+PASS Test <percentage> invalid value: \fE-%
+PASS Test <percentage> invalid value: \f-%
+PASS Test <percentage> invalid value: \f+%
+PASS Test <percentage> invalid value: \f-.%
+PASS Test <percentage> invalid value: \f.-%
+PASS Test <percentage> invalid value: \f.%
+PASS Test <percentage> invalid value: \f+.%
+PASS Test <percentage> invalid value: \f.E0%
+PASS Test <percentage> invalid value: \fe1%
+PASS Test <percentage> invalid value: \fNaN%
+PASS Test <percentage> invalid value: \fInfinity%
+PASS Test <percentage> invalid value: \f-Infinity%
+PASS Test <percentage> invalid value: \ffnord%
+PASS Test <percentage> invalid value: \fE%
+PASS Test <percentage> invalid value: \fe%
+PASS Test <percentage> invalid value: \fe+%
+PASS Test <percentage> invalid value: \fE-%
+PASS Test <percentage> invalid value: \f-%
+PASS Test <percentage> invalid value: \f+%
+PASS Test <percentage> invalid value: \f-.%
+PASS Test <percentage> invalid value: \f.-%
+PASS Test <percentage> invalid value: \f.%
+PASS Test <percentage> invalid value: \f+.%
+PASS Test <percentage> invalid value: \f.E0%
+PASS Test <percentage> invalid value: \fe1%
+PASS Test <percentage> invalid value: \fNaN%
+PASS Test <percentage> invalid value: \fInfinity%
+PASS Test <percentage> invalid value: \f-Infinity%
+PASS Test <percentage> invalid value: \ffnord%
+PASS Test <percentage> invalid value: \fE%
+PASS Test <percentage> invalid value: \fe%
+PASS Test <percentage> invalid value: \fe+%
+PASS Test <percentage> invalid value: \fE-%
+PASS Test <percentage> invalid value: \f-%
+PASS Test <percentage> invalid value: \f+%
+PASS Test <percentage> invalid value: \f-.%
+PASS Test <percentage> invalid value: \f.-%
+PASS Test <percentage> invalid value: \f.%
+PASS Test <percentage> invalid value: \f+.%
+PASS Test <percentage> invalid value: \f.E0%
+PASS Test <percentage> invalid value: \fe1%
+PASS Test <percentage> invalid value: \fNaN%\r\n\t
+PASS Test <percentage> invalid value: \fInfinity%\r\n\t
+PASS Test <percentage> invalid value: \f-Infinity%\r\n\t
+PASS Test <percentage> invalid value: \ffnord%\r\n\t
+PASS Test <percentage> invalid value: \fE%\r\n\t
+PASS Test <percentage> invalid value: \fe%\r\n\t
+PASS Test <percentage> invalid value: \fe+%\r\n\t
+PASS Test <percentage> invalid value: \fE-%\r\n\t
+PASS Test <percentage> invalid value: \f-%\r\n\t
+PASS Test <percentage> invalid value: \f+%\r\n\t
+PASS Test <percentage> invalid value: \f-.%\r\n\t
+PASS Test <percentage> invalid value: \f.-%\r\n\t
+PASS Test <percentage> invalid value: \f.%\r\n\t
+PASS Test <percentage> invalid value: \f+.%\r\n\t
+PASS Test <percentage> invalid value: \f.E0%\r\n\t
+PASS Test <percentage> invalid value: \fe1%\r\n\t
+PASS Test <percentage> invalid value: \fNaN%\f
+PASS Test <percentage> invalid value: \fInfinity%\f
+PASS Test <percentage> invalid value: \f-Infinity%\f
+PASS Test <percentage> invalid value: \ffnord%\f
+PASS Test <percentage> invalid value: \fE%\f
+PASS Test <percentage> invalid value: \fe%\f
+PASS Test <percentage> invalid value: \fe+%\f
+PASS Test <percentage> invalid value: \fE-%\f
+PASS Test <percentage> invalid value: \f-%\f
+PASS Test <percentage> invalid value: \f+%\f
+PASS Test <percentage> invalid value: \f-.%\f
+PASS Test <percentage> invalid value: \f.-%\f
+PASS Test <percentage> invalid value: \f.%\f
+PASS Test <percentage> invalid value: \f+.%\f
+PASS Test <percentage> invalid value: \f.E0%\f
+PASS Test <percentage> invalid value: \fe1%\f
+

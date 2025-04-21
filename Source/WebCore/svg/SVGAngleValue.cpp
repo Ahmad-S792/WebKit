@@ -121,7 +121,7 @@ ExceptionOr<void> SVGAngleValue::setValueAsString(const String& value)
     }
 
     return readCharactersForParsing(value, [&](auto buffer) -> ExceptionOr<void> {
-        auto valueInSpecifiedUnits = parseNumber(buffer, SuffixSkippingPolicy::DontSkip);
+        auto valueInSpecifiedUnits = parseNumber(buffer, SVGWhitespaceMode::AllowLeadingWhitespace);
         if (!valueInSpecifiedUnits)
             return Exception { ExceptionCode::SyntaxError };
 

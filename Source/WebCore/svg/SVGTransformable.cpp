@@ -48,7 +48,7 @@ template<typename CharacterType> static int parseTransformParamList(StringParsin
     while (requiredParams < required) {
         if (buffer.atEnd())
             return -1;
-        auto parsedNumber = parseNumber(buffer, SuffixSkippingPolicy::DontSkip);
+        auto parsedNumber = parseNumber(buffer, SVGWhitespaceMode::DisallowWhitespace);
         if (!parsedNumber)
             return -1;
         values[requiredParams] = *parsedNumber;
@@ -73,7 +73,7 @@ template<typename CharacterType> static int parseTransformParamList(StringParsin
         while (optionalParams < optional) {
             if (buffer.atEnd())
                 return -1;
-            auto parsedNumber = parseNumber(buffer, SuffixSkippingPolicy::DontSkip);
+            auto parsedNumber = parseNumber(buffer, SVGWhitespaceMode::DisallowWhitespace);
             if (!parsedNumber)
                 return -1;
             values[requiredParams + optionalParams] = *parsedNumber;

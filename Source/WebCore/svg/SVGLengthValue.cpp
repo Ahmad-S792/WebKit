@@ -349,7 +349,7 @@ ExceptionOr<void> SVGLengthValue::setValueAsString(StringView string)
         return { };
 
     return readCharactersForParsing(string, [&](auto buffer) -> ExceptionOr<void> {
-        auto convertedNumber = parseNumber(buffer, SuffixSkippingPolicy::DontSkip);
+        auto convertedNumber = parseNumber(buffer, SVGWhitespaceMode::AllowLeadingWhitespace);
         if (!convertedNumber)
             return Exception { ExceptionCode::SyntaxError };
 
