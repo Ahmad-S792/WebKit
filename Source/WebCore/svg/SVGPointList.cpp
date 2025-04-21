@@ -25,6 +25,7 @@
 
 #include "config.h"
 #include "SVGPointList.h"
+#include "SVGParserUtilities.h"
 
 #include <wtf/text/StringBuilder.h>
 #include <wtf/text/StringParsingBuffer.h>
@@ -46,7 +47,7 @@ bool SVGPointList::parse(StringView value)
             if (!xPos)
                 return false;
 
-            auto yPos = parseNumber(buffer, SuffixSkippingPolicy::DontSkip);
+            auto yPos = parseNumber(buffer, SVGWhitespaceMode::DisallowWhitespace);
             if (!yPos)
                 return false;
 
