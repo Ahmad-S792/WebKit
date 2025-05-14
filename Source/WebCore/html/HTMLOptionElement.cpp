@@ -285,8 +285,8 @@ HTMLSelectElement* HTMLOptionElement::ownerSelectElement() const
 String HTMLOptionElement::label() const
 {
     String label = attributeWithoutSynchronization(labelAttr);
-    if (!label.isNull())
-        return label.trim(isASCIIWhitespace);
+    if (!label.isEmpty())
+        return label;
     return collectOptionInnerText().trim(isASCIIWhitespace).simplifyWhiteSpace(isASCIIWhitespace);
 }
 
