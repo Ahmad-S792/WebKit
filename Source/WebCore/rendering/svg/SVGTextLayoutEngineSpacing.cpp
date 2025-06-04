@@ -36,14 +36,16 @@ SVGTextLayoutEngineSpacing::SVGTextLayoutEngineSpacing(const FontCascade& font)
 
 float SVGTextLayoutEngineSpacing::calculateCSSSpacing(const char16_t* currentCharacter)
 {
-    const char16_t* lastCharacter = m_lastCharacter;
+    static constexpr char16_t nullFallback = 0;
+    const char16_t* lastCharacter = m_lastCharacter ? m_lastCharacter : &nullFallback;
+    currentCharacter = currentCharacter ? currentCharacter : &nullFallback;
     m_lastCharacter = currentCharacter;
 
     if (!m_font.letterSpacing() && !m_font.wordSpacing())
         return 0;
 
     float spacing = m_font.letterSpacing();
-    if (currentCharacter && lastCharacter && m_font.wordSpacing()) {
+    if (m_font.wordSpacing()) {
         if (FontCascade::treatAsSpace(*currentCharacter) && !FontCascade::treatAsSpace(*lastCharacter))
             spacing += m_font.wordSpacing();
     }
