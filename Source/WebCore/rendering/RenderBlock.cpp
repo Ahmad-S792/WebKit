@@ -1331,7 +1331,7 @@ bool RenderBlock::createsNewFormattingContext() const
         || isFieldset()
         || isDocumentElementRenderer()
         || isRenderFragmentedFlow()
-        || isRenderSVGForeignObject()
+        || isRenderOrLegacyRenderSVGForeignObject()
         || style.specifiesColumns()
         || style.columnSpan() == ColumnSpan::All
         || style.display() == DisplayType::FlowRoot
