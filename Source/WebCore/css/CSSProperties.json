@@ -5449,8 +5449,8 @@
                     "marker-mid",
                     "marker-end"
                 ],
-                "skip-style-extractor": true,
-                "skip-style-extractor-comment": "FIXME: Figure out and document why this has no computed value",
+                "svg": true,
+                "shorthand-pattern": "Single",
                 "parser-function": "consumeMarkerShorthand",
                 "parser-grammar-unused": "<'marker-start'>",
                 "parser-grammar-unused-reason": "Needs support for shorthand grammars."
