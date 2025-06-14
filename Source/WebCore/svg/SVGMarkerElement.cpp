@@ -2,7 +2,7 @@
  * Copyright (C) 2004, 2005, 2006, 2007, 2008 Nikolas Zimmermann <zimmermann@kde.org>
  * Copyright (C) 2004, 2005, 2006, 2007 Rob Buis <buis@kde.org>
  * Copyright (C) Research In Motion Limited 2009-2010. All rights reserved.
- * Copyright (C) 2018-2019 Apple Inc. All rights reserved.
+ * Copyright (C) 2018-2025 Apple Inc. All rights reserved.
  * Copyright (C) 2024 Igalia S.L.
  *
  * This library is free software; you can redistribute it and/or
@@ -86,10 +86,10 @@ void SVGMarkerElement::attributeChanged(const QualifiedName& name, const AtomStr
         Ref { m_refY }->setBaseValInternal(SVGLengthValue::construct(SVGLengthMode::Height, newValue, parseError));
         break;
     case AttributeNames::markerWidthAttr:
-        Ref { m_markerWidth }->setBaseValInternal(SVGLengthValue::construct(SVGLengthMode::Width, newValue, parseError));
+        Ref { m_markerWidth }->setBaseValInternal(SVGLengthValue::construct(SVGLengthMode::Width, newValue, "3"_s));
         break;
     case AttributeNames::markerHeightAttr:
-        Ref { m_markerHeight }->setBaseValInternal(SVGLengthValue::construct(SVGLengthMode::Height, newValue, parseError));
+        Ref { m_markerHeight }->setBaseValInternal(SVGLengthValue::construct(SVGLengthMode::Height, newValue, "3"_s));
         break;
     default:
         break;

@@ -71,6 +71,7 @@ public:
 
     static std::optional<SVGLengthValue> construct(SVGLengthMode, StringView);
     static SVGLengthValue construct(SVGLengthMode, StringView, SVGParsingError&, SVGLengthNegativeValuesMode = SVGLengthNegativeValuesMode::Allow);
+    static SVGLengthValue construct(SVGLengthMode, StringView, ASCIILiteral);
     static SVGLengthValue blend(const SVGLengthValue& from, const SVGLengthValue& to, float progress);
 
     static SVGLengthValue fromCSSPrimitiveValue(const CSSPrimitiveValue&, const CSSToLengthConversionData&, ShouldConvertNumberToPxLength = ShouldConvertNumberToPxLength::No);

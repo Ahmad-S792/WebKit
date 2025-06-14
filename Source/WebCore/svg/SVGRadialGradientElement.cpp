@@ -4,7 +4,7 @@
  * Copyright (C) 2008 Eric Seidel <eric@webkit.org>
  * Copyright (C) 2008 Dirk Schulze <krit@webkit.org>
  * Copyright (C) Research In Motion Limited 2010. All rights reserved.
- * Copyright (C) 2018-2019 Apple Inc. All rights reserved.
+ * Copyright (C) 2018-2025 Apple Inc. All rights reserved.
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Library General Public
@@ -72,23 +72,27 @@ void SVGRadialGradientElement::attributeChanged(const QualifiedName& name, const
 
     switch (name.nodeName()) {
     case AttributeNames::cxAttr:
-        Ref { m_cx }->setBaseValInternal(SVGLengthValue::construct(SVGLengthMode::Width, newValue, parseError));
+        Ref { m_cx }->setBaseValInternal(SVGLengthValue::construct(SVGLengthMode::Width, newValue, "50%"_s));
         break;
     case AttributeNames::cyAttr:
-        Ref { m_cy }->setBaseValInternal(SVGLengthValue::construct(SVGLengthMode::Height, newValue, parseError));
+        Ref { m_cy }->setBaseValInternal(SVGLengthValue::construct(SVGLengthMode::Height, newValue, "50%"_s));
         break;
     case AttributeNames::rAttr:
-        Ref { m_r }->setBaseValInternal(SVGLengthValue::construct(SVGLengthMode::Other, newValue, parseError, SVGLengthNegativeValuesMode::Forbid));
+        Ref { m_r }->setBaseValInternal(SVGLengthValue::construct(SVGLengthMode::Other, newValue, "50%"_s));
         break;
     case AttributeNames::fxAttr:
-        Ref { m_fx }->setBaseValInternal(SVGLengthValue::construct(SVGLengthMode::Width, newValue, parseError));
+        Ref { m_fx }->setBaseValInternal(SVGLengthValue::construct(SVGLengthMode::Width, newValue, "50%"_s));
         break;
     case AttributeNames::fyAttr:
-        Ref { m_fy }->setBaseValInternal(SVGLengthValue::construct(SVGLengthMode::Height, newValue, parseError));
+        Ref { m_fy }->setBaseValInternal(SVGLengthValue::construct(SVGLengthMode::Height, newValue, "50%"_s));
         break;
-    case AttributeNames::frAttr:
-        Ref { m_fr }->setBaseValInternal(SVGLengthValue::construct(SVGLengthMode::Other, newValue, parseError, SVGLengthNegativeValuesMode::Forbid));
+    case AttributeNames::frAttr: {
+        auto length = SVGLengthValue::construct(SVGLengthMode::Other, newValue, parseError, SVGLengthNegativeValuesMode::Forbid);
+        if (parseError != SVGParsingError::None || newValue.isNull())
+            length = SVGLengthValue(SVGLengthMode::Other, "0%"_s);
+        Ref { m_fr }->setBaseValInternal(length);
         break;
+    }
     default:
         break;
     }

@@ -223,6 +223,15 @@ SVGLengthValue SVGLengthValue::construct(SVGLengthMode lengthMode, StringView va
     return length;
 }
 
+SVGLengthValue SVGLengthValue::construct(SVGLengthMode lengthMode, StringView newValue, ASCIILiteral fallbackValue)
+{
+    auto parseError = SVGParsingError::None;
+    auto length = SVGLengthValue::construct(lengthMode, newValue, parseError);
+    if (parseError != SVGParsingError::None || newValue.isNull())
+        return SVGLengthValue(lengthMode, fallbackValue);
+    return length;
+}
+
 SVGLengthValue SVGLengthValue::blend(const SVGLengthValue& from, const SVGLengthValue& to, float progress)
 {
     if ((from.isZero() && to.isZero())

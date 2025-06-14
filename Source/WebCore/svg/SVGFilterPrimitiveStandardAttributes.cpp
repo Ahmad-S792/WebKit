@@ -2,7 +2,7 @@
  * Copyright (C) 2004, 2005, 2006, 2007 Nikolas Zimmermann <zimmermann@kde.org>
  * Copyright (C) 2004, 2005, 2006 Rob Buis <buis@kde.org>
  * Copyright (C) 2009 Dirk Schulze <krit@webkit.org>
- * Copyright (C) 2018-2024 Apple Inc. All rights reserved.
+ * Copyright (C) 2018-2025 Apple Inc. All rights reserved.
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Library General Public
@@ -57,16 +57,16 @@ void SVGFilterPrimitiveStandardAttributes::attributeChanged(const QualifiedName&
 
     switch (name.nodeName()) {
     case AttributeNames::xAttr:
-        Ref { m_x }->setBaseValInternal(SVGLengthValue::construct(SVGLengthMode::Width, newValue, parseError));
+        Ref { m_x }->setBaseValInternal(SVGLengthValue::construct(SVGLengthMode::Width, newValue, "0%"_s));
         break;
     case AttributeNames::yAttr:
-        Ref { m_y }->setBaseValInternal(SVGLengthValue::construct(SVGLengthMode::Height, newValue, parseError));
+        Ref { m_y }->setBaseValInternal(SVGLengthValue::construct(SVGLengthMode::Height, newValue, "0%"_s));
         break;
     case AttributeNames::widthAttr:
-        Ref { m_width }->setBaseValInternal(SVGLengthValue::construct(SVGLengthMode::Width, newValue, parseError));
+        Ref { m_width }->setBaseValInternal(SVGLengthValue::construct(SVGLengthMode::Width, newValue, "100%"_s));
         break;
     case AttributeNames::heightAttr:
-        Ref { m_height }->setBaseValInternal(SVGLengthValue::construct(SVGLengthMode::Height, newValue, parseError));
+        Ref { m_height }->setBaseValInternal(SVGLengthValue::construct(SVGLengthMode::Height, newValue, "100%"_s));
         break;
     case AttributeNames::resultAttr:
         Ref { m_result }->setBaseValInternal(newValue);

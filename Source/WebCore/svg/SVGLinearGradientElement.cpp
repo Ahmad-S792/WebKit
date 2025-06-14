@@ -4,7 +4,7 @@
  * Copyright (C) 2008 Eric Seidel <eric@webkit.org>
  * Copyright (C) 2008 Dirk Schulze <krit@webkit.org>
  * Copyright (C) Research In Motion Limited 2010. All rights reserved.
- * Copyright (C) 2018-2019 Apple Inc. All rights reserved.
+ * Copyright (C) 2018-2025 Apple Inc. All rights reserved.
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Library General Public
@@ -69,16 +69,16 @@ void SVGLinearGradientElement::attributeChanged(const QualifiedName& name, const
 
     switch (name.nodeName()) {
     case AttributeNames::x1Attr:
-        Ref { m_x1 }->setBaseValInternal(SVGLengthValue::construct(SVGLengthMode::Width, newValue, parseError));
+        Ref { m_x1 }->setBaseValInternal(SVGLengthValue::construct(SVGLengthMode::Width, newValue, "0%"_s));
         break;
     case AttributeNames::y1Attr:
-        Ref { m_y1 }->setBaseValInternal(SVGLengthValue::construct(SVGLengthMode::Height, newValue, parseError));
+        Ref { m_y1 }->setBaseValInternal(SVGLengthValue::construct(SVGLengthMode::Height, newValue, "0%"_s));
         break;
     case AttributeNames::x2Attr:
-        Ref { m_x2 }->setBaseValInternal(SVGLengthValue::construct(SVGLengthMode::Width, newValue, parseError));
+        Ref { m_x2 }->setBaseValInternal(SVGLengthValue::construct(SVGLengthMode::Width, newValue, "100%"_s));
         break;
     case AttributeNames::y2Attr:
-        Ref { m_y2 }->setBaseValInternal(SVGLengthValue::construct(SVGLengthMode::Height, newValue, parseError));
+        Ref { m_y2 }->setBaseValInternal(SVGLengthValue::construct(SVGLengthMode::Height, newValue, "0%"_s));
         break;
     default:
         break;
