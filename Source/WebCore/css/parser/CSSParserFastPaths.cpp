@@ -603,7 +603,7 @@ static std::optional<SRGBA<uint8_t>> parseNumericColor(std::span<const Character
             return *hexColor;
     }
 
-    if (isQuirksModeBehavior(context.mode) && (characters.size() == 3 || characters.size() == 6)) {
+    if (isQuirksModeBehavior(context.mode) && !isStrictParserMode(context.mode) && (characters.size() == 3 || characters.size() == 6)) {
         if (auto hexColor = parseHexColorInternal(characters))
             return *hexColor;
     }
