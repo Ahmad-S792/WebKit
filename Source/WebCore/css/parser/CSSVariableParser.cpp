@@ -223,11 +223,7 @@ bool CSSVariableParser::containsValidVariableReferences(CSSParserTokenRange rang
 
 RefPtr<CSSCustomPropertyValue> CSSVariableParser::parseDeclarationValue(const AtomString& variableName, CSSParserTokenRange range, const CSSParserContext& parserContext)
 {
-    if (range.atEnd())
-        return nullptr;
-
     auto type = classifyVariableRange(range, parserContext);
-
     if (!type)
         return nullptr;
 
@@ -242,11 +238,7 @@ RefPtr<CSSCustomPropertyValue> CSSVariableParser::parseDeclarationValue(const At
 
 RefPtr<const Style::CustomProperty> CSSVariableParser::parseInitialValueForUniversalSyntax(const AtomString& variableName, CSSParserTokenRange range)
 {
-    if (range.atEnd())
-        return nullptr;
-
     auto type = classifyVariableRange(range, strictCSSParserContext());
-
     if (!type || type->cssWideKeyword || type->hasReferences)
         return nullptr;
 
