@@ -1,7 +1,7 @@
 /*
  * Copyright (C) 2004, 2005, 2008 Nikolas Zimmermann <zimmermann@kde.org>
  * Copyright (C) 2004, 2005, 2007 Rob Buis <buis@kde.org>
- * Copyright (C) 2008-2024 Apple Inc. All rights reserved.
+ * Copyright (C) 2008-2025 Apple Inc. All rights reserved.
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Library General Public
@@ -29,6 +29,8 @@
 
 namespace WebCore {
 
+enum class RequestPriority : uint8_t;
+
 class SVGScriptElement final : public SVGElement, public SVGURIReference, public ScriptElement {
     WTF_MAKE_TZONE_OR_ISO_ALLOCATED(SVGScriptElement);
     WTF_OVERRIDE_DELETE_FOR_CHECKED_PTR(SVGScriptElement);
@@ -38,6 +40,9 @@ public:
     using PropertyRegistry = SVGPropertyOwnerRegistry<SVGScriptElement, SVGElement, SVGURIReference>;
     using SVGElement::ref;
     using SVGElement::deref;
+
+    String fetchPriorityForBindings() const;
+    RequestPriority fetchPriority() const final;
 
 private:
     SVGScriptElement(const QualifiedName&, Document&, bool wasInsertedByParser, bool alreadyStarted);

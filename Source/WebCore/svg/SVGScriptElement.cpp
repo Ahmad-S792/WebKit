@@ -1,7 +1,7 @@
 /*
  * Copyright (C) 2004, 2005, 2008 Nikolas Zimmermann <zimmermann@kde.org>
  * Copyright (C) 2004, 2005, 2007 Rob Buis <buis@kde.org>
- * Copyright (C) 2018 Apple Inc. All rights reserved.
+ * Copyright (C) 2018-2025 Apple Inc. All rights reserved.
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Library General Public
@@ -25,7 +25,9 @@
 #include "Document.h"
 #include "DocumentInlines.h"
 #include "Event.h"
+#include "JSRequestPriority.h"
 #include "NodeInlines.h"
+#include "RequestPriority.h"
 #include <wtf/TZoneMallocInlines.h>
 
 namespace WebCore {
@@ -103,6 +105,16 @@ void SVGScriptElement::dispatchErrorEvent()
 {
     setErrorOccurred(true);
     ScriptElement::dispatchErrorEvent();
+}
+
+String SVGScriptElement::fetchPriorityForBindings() const
+{
+    return convertEnumerationToString(fetchPriority());
+}
+
+RequestPriority SVGScriptElement::fetchPriority() const
+{
+    return parseEnumerationFromString<RequestPriority>(attributeWithoutSynchronization(SVGNames::fetchpriorityAttr)).value_or(RequestPriority::Auto);
 }
 
 }

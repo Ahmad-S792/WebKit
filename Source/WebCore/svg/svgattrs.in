@@ -46,6 +46,7 @@ edgeMode
 elevation
 end
 exponent
+fetchpriority
 fill
 fill-opacity
 fill-rule

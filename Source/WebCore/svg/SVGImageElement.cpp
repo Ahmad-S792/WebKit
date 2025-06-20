@@ -3,7 +3,7 @@
  * Copyright (C) 2004, 2005, 2006, 2007, 2008, 2009 Rob Buis <buis@kde.org>
  * Copyright (C) 2006 Alexander Kellett <lypanov@kde.org>
  * Copyright (C) 2014 Adobe Systems Incorporated. All rights reserved.
- * Copyright (C) 2018-2024 Apple Inc. All rights reserved.
+ * Copyright (C) 2018-2025 Apple Inc. All rights reserved.
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Library General Public
@@ -27,12 +27,14 @@
 #include "CSSPropertyNames.h"
 #include "ContainerNodeInlines.h"
 #include "HTMLParserIdioms.h"
+#include "JSRequestPriority.h"
 #include "LegacyRenderSVGImage.h"
 #include "LegacyRenderSVGResource.h"
 #include "NodeInlines.h"
 #include "NodeName.h"
 #include "RenderImageResource.h"
 #include "RenderSVGImage.h"
+#include "RequestPriority.h"
 #include "SVGElementInlines.h"
 #include "SVGNames.h"
 #include "SVGParsingError.h"
@@ -225,6 +227,16 @@ void SVGImageElement::didMoveToNewDocument(Document& oldDocument, Document& newD
 void SVGImageElement::decode(Ref<DeferredPromise>&& promise)
 {
     return m_imageLoader.decode(WTFMove(promise));
+}
+
+String SVGImageElement::fetchPriorityForBindings() const
+{
+    return convertEnumerationToString(fetchPriority());
+}
+
+RequestPriority SVGImageElement::fetchPriority() const
+{
+    return parseEnumerationFromString<RequestPriority>(attributeWithoutSynchronization(SVGNames::fetchpriorityAttr)).value_or(RequestPriority::Auto);
 }
 
 }

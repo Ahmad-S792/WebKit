@@ -23,6 +23,8 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE. 
  */
 
+// https://svgwg.org/svg2-draft/embedded.html#InterfaceSVGImageElement
+
 [
     Exposed=Window,
     JSGenerateToNativeObject
@@ -33,6 +35,7 @@
     readonly attribute SVGAnimatedLength height;
     readonly attribute SVGAnimatedPreserveAspectRatio preserveAspectRatio;
     [CEReactions=NotNeeded] attribute [AtomString] DOMString? crossOrigin;
+    [ImplementedAs=fetchPriorityForBindings, ReflectSetter] attribute [AtomString] DOMString fetchPriority;
 
     Promise<undefined> decode();
 };
