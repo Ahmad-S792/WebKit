@@ -1,7 +1,7 @@
 /*
  * Copyright (C) 2004, 2005, 2007 Nikolas Zimmermann <zimmermann@kde.org>
  * Copyright (C) 2004, 2005 Rob Buis <buis@kde.org>
- * Copyright (C) 2018-2022 Apple Inc. All rights reserved.
+ * Copyright (C) 2018-2025 Apple Inc. All rights reserved.
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Library General Public
@@ -29,6 +29,8 @@
 
 namespace WebCore {
 
+enum class RequestPriority : uint8_t;
+
 class SVGFEImageElement final : public SVGFilterPrimitiveStandardAttributes, public SVGURIReference, private CachedImageClient {
     WTF_MAKE_TZONE_OR_ISO_ALLOCATED(SVGFEImageElement);
     WTF_OVERRIDE_DELETE_FOR_CHECKED_PTR(SVGFEImageElement);
@@ -47,6 +49,9 @@ public:
 
     const SVGPreserveAspectRatioValue& preserveAspectRatio() const { return m_preserveAspectRatio->currentValue(); }
     SVGAnimatedPreserveAspectRatio& preserveAspectRatioAnimated() { return m_preserveAspectRatio; }
+
+    String fetchPriorityForBindings() const;
+    RequestPriority fetchPriority() const;
 
     using PropertyRegistry = SVGPropertyOwnerRegistry<SVGFEImageElement, SVGFilterPrimitiveStandardAttributes, SVGURIReference>;
 

@@ -30,6 +30,7 @@
 ] interface SVGScriptElement : SVGElement {
     [Reflect] attribute DOMString type;
     [ReflectSetter] attribute boolean async;
+    [ImplementedAs=fetchPriorityForBindings, ReflectSetter] attribute [AtomString] DOMString fetchPriority;
 };
 
 SVGScriptElement includes SVGURIReference;

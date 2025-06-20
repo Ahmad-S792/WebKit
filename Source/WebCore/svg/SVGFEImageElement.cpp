@@ -2,7 +2,7 @@
  * Copyright (C) 2004, 2005, 2007 Nikolas Zimmermann <zimmermann@kde.org>
  * Copyright (C) 2004, 2005 Rob Buis <buis@kde.org>
  * Copyright (C) 2010 Dirk Schulze <krit@webkit.org>
- * Copyright (C) 2018-2022 Apple Inc. All rights reserved.
+ * Copyright (C) 2018-2025 Apple Inc. All rights reserved.
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Library General Public
@@ -30,10 +30,12 @@
 #include "Document.h"
 #include "FEImage.h"
 #include "Image.h"
+#include "JSRequestPriority.h"
 #include "LegacyRenderSVGResource.h"
 #include "NativeImage.h"
 #include "NodeInlines.h"
 #include "RenderObject.h"
+#include "RequestPriority.h"
 #include "SVGElementInlines.h"
 #include "SVGNames.h"
 #include "SVGPreserveAspectRatioValue.h"
@@ -244,6 +246,16 @@ void SVGFEImageElement::addSubresourceAttributeURLs(ListHashSet<URL>& urls) cons
     SVGFilterPrimitiveStandardAttributes::addSubresourceAttributeURLs(urls);
 
     addSubresourceURL(urls, document().completeURL(href()));
+}
+
+String SVGFEImageElement::fetchPriorityForBindings() const
+{
+    return convertEnumerationToString(fetchPriority());
+}
+
+RequestPriority SVGFEImageElement::fetchPriority() const
+{
+    return parseEnumerationFromString<RequestPriority>(attributeWithoutSynchronization(SVGNames::fetchpriorityAttr)).value_or(RequestPriority::Auto);
 }
 
 } // namespace WebCore

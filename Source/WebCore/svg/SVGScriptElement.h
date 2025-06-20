@@ -29,6 +29,8 @@
 
 namespace WebCore {
 
+enum class RequestPriority : uint8_t;
+
 class SVGScriptElement final : public SVGElement, public SVGURIReference, public ScriptElement {
     WTF_MAKE_TZONE_OR_ISO_ALLOCATED(SVGScriptElement);
     WTF_OVERRIDE_DELETE_FOR_CHECKED_PTR(SVGScriptElement);
@@ -38,6 +40,9 @@ public:
     using PropertyRegistry = SVGPropertyOwnerRegistry<SVGScriptElement, SVGElement, SVGURIReference>;
     using SVGElement::ref;
     using SVGElement::deref;
+
+    String fetchPriorityForBindings() const;
+    RequestPriority fetchPriority() const final;
 
     bool async() const;
 

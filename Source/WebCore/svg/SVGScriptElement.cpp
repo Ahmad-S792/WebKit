@@ -25,7 +25,9 @@
 #include "Document.h"
 #include "DocumentInlines.h"
 #include "Event.h"
+#include "JSRequestPriority.h"
 #include "NodeInlines.h"
+#include "RequestPriority.h"
 #include "ScriptElement.h"
 #include <wtf/TZoneMallocInlines.h>
 
@@ -117,6 +119,16 @@ void SVGScriptElement::dispatchErrorEvent()
 {
     setErrorOccurred(true);
     ScriptElement::dispatchErrorEvent();
+}
+
+String SVGScriptElement::fetchPriorityForBindings() const
+{
+    return convertEnumerationToString(fetchPriority());
+}
+
+RequestPriority SVGScriptElement::fetchPriority() const
+{
+    return parseEnumerationFromString<RequestPriority>(attributeWithoutSynchronization(SVGNames::fetchpriorityAttr)).value_or(RequestPriority::Auto);
 }
 
 }

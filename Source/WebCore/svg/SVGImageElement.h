@@ -1,7 +1,7 @@
 /*
  * Copyright (C) 2004, 2005, 2006, 2008 Nikolas Zimmermann <zimmermann@kde.org>
  * Copyright (C) 2004, 2005, 2006 Rob Buis <buis@kde.org>
- * Copyright (C) 2018-2024 Apple Inc. All rights reserved.
+ * Copyright (C) 2018-2025 Apple Inc. All rights reserved.
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Library General Public
@@ -27,6 +27,8 @@
 #include <wtf/TZoneMalloc.h>
 
 namespace WebCore {
+
+enum class RequestPriority : uint8_t;
 
 class SVGImageElement final : public SVGGraphicsElement, public SVGURIReference {
     WTF_MAKE_TZONE_OR_ISO_ALLOCATED(SVGImageElement);
@@ -54,6 +56,9 @@ public:
     SVGAnimatedPreserveAspectRatio& preserveAspectRatioAnimated() { return m_preserveAspectRatio; }
 
     using PropertyRegistry = SVGPropertyOwnerRegistry<SVGImageElement, SVGGraphicsElement, SVGURIReference>;
+
+    String fetchPriorityForBindings() const;
+    RequestPriority fetchPriority() const;
 
     void decode(Ref<DeferredPromise>&&);
 
