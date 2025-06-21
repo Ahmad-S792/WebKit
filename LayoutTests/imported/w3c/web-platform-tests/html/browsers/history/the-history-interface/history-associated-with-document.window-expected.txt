@@ -1,0 +1,5 @@
+
+PASS Navigating from the initial about:blank must replace window.history
+PASS Discarding the browsing context must not change window.history
+PASS document.open() must not replace window.history
+
