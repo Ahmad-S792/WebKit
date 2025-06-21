@@ -1,0 +1,3 @@
+
+PASS history.go(0) on an iframe must reload the iframe's document, not the parent document
+

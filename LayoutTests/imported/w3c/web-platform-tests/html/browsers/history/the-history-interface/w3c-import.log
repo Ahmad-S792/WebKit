@@ -44,6 +44,8 @@ List of files:
 /LayoutTests/imported/w3c/web-platform-tests/html/browsers/history/the-history-interface/combination_history_005.html
 /LayoutTests/imported/w3c/web-platform-tests/html/browsers/history/the-history-interface/combination_history_006.html
 /LayoutTests/imported/w3c/web-platform-tests/html/browsers/history/the-history-interface/combination_history_007.html
+/LayoutTests/imported/w3c/web-platform-tests/html/browsers/history/the-history-interface/history-associated-with-document.window.js
+/LayoutTests/imported/w3c/web-platform-tests/html/browsers/history/the-history-interface/history-state-after-bfcache.window.js
 /LayoutTests/imported/w3c/web-platform-tests/html/browsers/history/the-history-interface/history.js
 /LayoutTests/imported/w3c/web-platform-tests/html/browsers/history/the-history-interface/history_back-1.html
 /LayoutTests/imported/w3c/web-platform-tests/html/browsers/history/the-history-interface/history_back.html
@@ -66,15 +68,18 @@ List of files:
 /LayoutTests/imported/w3c/web-platform-tests/html/browsers/history/the-history-interface/history_go_undefined.html
 /LayoutTests/imported/w3c/web-platform-tests/html/browsers/history/the-history-interface/history_go_zero-1.html
 /LayoutTests/imported/w3c/web-platform-tests/html/browsers/history/the-history-interface/history_go_zero.html
+/LayoutTests/imported/w3c/web-platform-tests/html/browsers/history/the-history-interface/history_go_zero_which_document.window.js
 /LayoutTests/imported/w3c/web-platform-tests/html/browsers/history/the-history-interface/history_properties_only_fully_active.html
 /LayoutTests/imported/w3c/web-platform-tests/html/browsers/history/the-history-interface/history_pushstate.html
 /LayoutTests/imported/w3c/web-platform-tests/html/browsers/history/the-history-interface/history_pushstate_err.html
 /LayoutTests/imported/w3c/web-platform-tests/html/browsers/history/the-history-interface/history_pushstate_nooptionalparam.html
+/LayoutTests/imported/w3c/web-platform-tests/html/browsers/history/the-history-interface/history_pushstate_too_many_calls.optional.html
 /LayoutTests/imported/w3c/web-platform-tests/html/browsers/history/the-history-interface/history_pushstate_url.html
 /LayoutTests/imported/w3c/web-platform-tests/html/browsers/history/the-history-interface/history_pushstate_url_rewriting.html
 /LayoutTests/imported/w3c/web-platform-tests/html/browsers/history/the-history-interface/history_replacestate.html
 /LayoutTests/imported/w3c/web-platform-tests/html/browsers/history/the-history-interface/history_replacestate_err.html
 /LayoutTests/imported/w3c/web-platform-tests/html/browsers/history/the-history-interface/history_replacestate_nooptionalparam.html
+/LayoutTests/imported/w3c/web-platform-tests/html/browsers/history/the-history-interface/history_replacestate_too_many_calls.optional.html
 /LayoutTests/imported/w3c/web-platform-tests/html/browsers/history/the-history-interface/history_state.html
 /LayoutTests/imported/w3c/web-platform-tests/html/browsers/history/the-history-interface/iframe_history_go_0.html
 /LayoutTests/imported/w3c/web-platform-tests/html/browsers/history/the-history-interface/traverse-during-beforeunload.html
