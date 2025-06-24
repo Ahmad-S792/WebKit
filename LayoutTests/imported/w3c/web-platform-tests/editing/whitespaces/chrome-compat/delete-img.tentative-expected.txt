@@ -1,0 +1,11 @@
+
+a   
+
+PASS document.execCommand("delete") when "<img src="${src}">[]&nbsp;&nbsp;&nbsp;"
+PASS document.execCommand("delete") when "<img src="${src}">[]&nbsp;&nbsp;&nbsp;b"
+PASS document.execCommand("delete") when "a<img src="${src}">[]&nbsp;&nbsp;&nbsp;b"
+PASS document.execCommand("delete") when "a&nbsp;&nbsp;&nbsp;<img src="${src}">[]&nbsp;&nbsp;&nbsp;b"
+PASS document.execCommand("delete") when "a&nbsp;&nbsp;&nbsp;<img src="${src}">[]b"
+FAIL document.execCommand("delete") when "a&nbsp;&nbsp;&nbsp;<img src="${src}">{}" assert_equals: expected "a&nbsp; &nbsp;" but got "a &nbsp;&nbsp;"
+FAIL document.execCommand("delete") when "a&nbsp;&nbsp; <img src="${src}">{}" assert_equals: expected "a&nbsp; &nbsp;" but got "a &nbsp;&nbsp;"
+

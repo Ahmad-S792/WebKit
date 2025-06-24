@@ -1,0 +1,16 @@
+
+a         b
+
+PASS document.execCommand("insertImage") when "[]a&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;b"
+PASS document.execCommand("insertImage") when "a[]&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;b"
+PASS document.execCommand("insertImage") when "a&nbsp;[]&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;b"
+FAIL document.execCommand("insertImage") when "a&nbsp;&nbsp;[]&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;b" assert_equals: expected "a&nbsp;&nbsp;<img>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;b" but got "a &nbsp;<img>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;b"
+FAIL document.execCommand("insertImage") when "a&nbsp;&nbsp;&nbsp;[]&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;b" assert_equals: expected "a&nbsp; &nbsp;<img>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;b" but got "a &nbsp;&nbsp;<img>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;b"
+FAIL document.execCommand("insertImage") when "a&nbsp;&nbsp;&nbsp;&nbsp;[]&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;b" assert_equals: expected "a&nbsp; &nbsp;&nbsp;<img>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;b" but got "a &nbsp; &nbsp;<img>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;b"
+FAIL document.execCommand("insertImage") when "a&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;[]&nbsp;&nbsp;&nbsp;&nbsp;b" assert_equals: expected "a&nbsp; &nbsp; &nbsp;<img>&nbsp;&nbsp;&nbsp;&nbsp;b" but got "a &nbsp; &nbsp;&nbsp;<img>&nbsp;&nbsp;&nbsp;&nbsp;b"
+FAIL document.execCommand("insertImage") when "a&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;[]&nbsp;&nbsp;&nbsp;b" assert_equals: expected "a&nbsp; &nbsp; &nbsp;&nbsp;<img>&nbsp;&nbsp;&nbsp;b" but got "a &nbsp; &nbsp; &nbsp;<img>&nbsp;&nbsp;&nbsp;b"
+FAIL document.execCommand("insertImage") when "a&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;[]&nbsp;&nbsp;b" assert_equals: expected "a&nbsp; &nbsp; &nbsp; &nbsp;<img>&nbsp;&nbsp;b" but got "a &nbsp; &nbsp; &nbsp;&nbsp;<img>&nbsp;&nbsp;b"
+FAIL document.execCommand("insertImage") when "a&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;[]&nbsp;b" assert_equals: expected "a&nbsp; &nbsp; &nbsp; &nbsp;&nbsp;<img>&nbsp;b" but got "a &nbsp; &nbsp; &nbsp; &nbsp;<img>&nbsp;b"
+FAIL document.execCommand("insertImage") when "a&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;[]b" assert_equals: expected "a&nbsp; &nbsp; &nbsp; &nbsp; &nbsp;<img>b" but got "a &nbsp; &nbsp; &nbsp; &nbsp;&nbsp;<img>b"
+PASS document.execCommand("insertImage") when "a&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;b[]"
+

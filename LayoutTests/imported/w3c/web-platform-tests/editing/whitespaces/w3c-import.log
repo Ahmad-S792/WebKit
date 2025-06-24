@@ -1,0 +1,24 @@
+The tests in this directory were imported from the W3C repository.
+Do NOT modify these tests directly in WebKit.
+Instead, create a pull request on the WPT github:
+	https://github.com/web-platform-tests/wpt
+
+Then run the Tools/Scripts/import-w3c-tests in WebKit to reimport
+
+Do NOT modify or remove this file.
+
+------------------------------------------------------------------------
+Properties requiring vendor prefixes:
+None
+Property values requiring vendor prefixes:
+None
+------------------------------------------------------------------------
+List of files:
+/LayoutTests/imported/w3c/web-platform-tests/editing/whitespaces/delete-chars-following-collapsible-white-space.html
+/LayoutTests/imported/w3c/web-platform-tests/editing/whitespaces/delete-last-word-in-inline-block-editing-host.html
+/LayoutTests/imported/w3c/web-platform-tests/editing/whitespaces/delete-word-around-span.html
+/LayoutTests/imported/w3c/web-platform-tests/editing/whitespaces/forwarddelete-chars-following-collapsible-white-space.html
+/LayoutTests/imported/w3c/web-platform-tests/editing/whitespaces/forwarddelete-word-around-span.html
+/LayoutTests/imported/w3c/web-platform-tests/editing/whitespaces/inserttext-at-end-of-block-when-br-always-block.html
+/LayoutTests/imported/w3c/web-platform-tests/editing/whitespaces/keep-collapsible-white-space-after-web-app-delete-padding-br.html
+/LayoutTests/imported/w3c/web-platform-tests/editing/whitespaces/keep-typed-collapsible-white-space-visible-after-muation.html

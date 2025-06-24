@@ -1,0 +1,46 @@
+abc
+
+defghi
+
+FAIL Backspace when <p> a[]</p> assert_in_array: value "<p> a</p>" not in array ["<p><br></p>", "<p> <br></p>"]
+PASS Backspace when <p> a[]</p> after extending selection backward
+FAIL Backspace when <p><b> a[]</b></p> assert_in_array: value "<p><b> a</b></p>" not in array ["<p><br></p>", "<p><b><br></b></p>", "<p><b> <br></b></p>"]
+PASS Backspace when <p><b> a[]</b></p> after extending selection backward
+FAIL Backspace when <p>abc d[]</p> assert_in_array: value "<p>abc d</p>" not in array ["<p>abc <br></p>", "<p>abc&nbsp;</p>"]
+PASS Backspace when <p>abc d[]</p> after extending selection backward
+FAIL Backspace when <p><b>abc d[]</b></p> assert_in_array: value "<p><b>abc d</b></p>" not in array ["<p><b>abc <br></b></p>", "<p><b>abc&nbsp;</b></p>"]
+PASS Backspace when <p><b>abc d[]</b></p> after extending selection backward
+FAIL Backspace when <p>abc d[]<br></p> assert_in_array: value "<p>abc d<br></p>" not in array ["<p>abc <br></p>", "<p>abc&nbsp;</p>"]
+FAIL Backspace when <p>abc d[]<br></p> after extending selection backward assert_in_array: value "<p>abc&nbsp;<br></p>" not in array ["<p>abc <br></p>", "<p>abc&nbsp;</p>"]
+FAIL Backspace when  a[]<p>bc</p> assert_in_array: value " abc" not in array ["<br><p>bc</p>", " <br><p>bc</p>"]
+PASS Backspace when  a[]<p>bc</p> after extending selection backward
+FAIL Backspace when abc d[]<p>ef</p> assert_in_array: value "abc def" not in array ["abc <br><p>ef</p>", "abc&nbsp;<p>ef</p>"]
+PASS Backspace when abc d[]<p>ef</p> after extending selection backward
+FAIL Backspace when <b>abc d[]</b><p>ef</p> assert_in_array: value "<b>abc d</b>ef" not in array ["<b>abc <br></b><p>ef</p>", "<b>abc&nbsp;</b><p>ef</p>"]
+PASS Backspace when <b>abc d[]</b><p>ef</p> after extending selection backward
+FAIL Backspace when <p>abc</p> d[] assert_in_array: value "<p>abc</p> d" not in array ["<p>abc</p><br>", "<p>abc</p> <br>"]
+PASS Backspace when <p>abc</p> d[] after extending selection backward
+FAIL Backspace when <p>abc</p>def g[] assert_in_array: value "<p>abc</p>def g" not in array ["<p>abc</p>def <br>", "<p>abc</p>def&nbsp;"]
+PASS Backspace when <p>abc</p>def g[] after extending selection backward
+FAIL Backspace when <p>abc</p><b> d[]</b> assert_in_array: value "<p>abc</p><b> d</b>" not in array ["<p>abc</p><br>", "<p>abc</p><b><br></b>", "<p>abc</p><b> <br></b>"]
+PASS Backspace when <p>abc</p><b> d[]</b> after extending selection backward
+FAIL Backspace when <p>abc</p>def g[]<p>hij</p> assert_in_array: value "<p>abc</p>def ghij" not in array ["<p>abc</p>def <br><p>hij</p>", "<p>abc</p>def&nbsp;<p>hij</p>"]
+PASS Backspace when <p>abc</p>def g[]<p>hij</p> after extending selection backward
+FAIL Backspace when <p>abc</p> d[]<p>efg</p> assert_in_array: value "<p>abc</p> defg" not in array ["<p>abc</p><br><p>efg</p>", "<p>abc</p> <br><p>efg</p>"]
+PASS Backspace when <p>abc</p> d[]<p>efg</p> after extending selection backward
+FAIL Backspace when <p>abc</p><b> d[]</b><p>efg</p> assert_in_array: value "<p>abc</p><b> d</b>efg" not in array ["<p>abc</p><br><p>efg</p>", "<p>abc</p><b><br></b><p>efg</p>", "<p>abc</p><b> <br></b><p>efg</p>"]
+PASS Backspace when <p>abc</p><b> d[]</b><p>efg</p> after extending selection backward
+FAIL Alt+Backspace when "<p> abc[]</p>" assert_in_array: value "<p> abc</p>" not in array ["<p><br></p>", "<p> <br></p>"]
+FAIL Alt+Backspace when "<p>abc def[]</p>" assert_in_array: value "<p>abc def</p>" not in array ["<p>abc <br></p>", "<p>abc&nbsp;</p>"]
+FAIL Alt+Backspace when "<p><b>abc def[]</b></p>" assert_in_array: value "<p><b>abc def</b></p>" not in array ["<p><b>abc <br></b></p>", "<p><b>abc&nbsp;</b></p>"]
+FAIL Alt+Backspace when "<p>abc def[]<br></p>" assert_in_array: value "<p>abc def<br></p>" not in array ["<p>abc <br></p>", "<p>abc&nbsp;</p>"]
+FAIL Alt+Backspace when " abc[]<p>def</p>" assert_in_array: value " abcdef" not in array ["<br><p>def</p>", " <br><p>def</p>"]
+FAIL Alt+Backspace when "abc def[]<p>ghi</p>" assert_in_array: value "abc defghi" not in array ["abc <br><p>ghi</p>", "abc&nbsp;<p>ghi</p>"]
+FAIL Alt+Backspace when "<b>abc def[]</b><p>ghi</p>" assert_in_array: value "<b>abc def</b>ghi" not in array ["<b>abc <br></b><p>ghi</p>", "<b>abc&nbsp;</b><p>ghi</p>"]
+FAIL Alt+Backspace when "<p>abc</p> def[]" assert_in_array: value "<p>abc</p> def" not in array ["<p>abc</p><br>", "<p>abc</p> <br>"]
+FAIL Alt+Backspace when "<p>abc</p>def ghi[]" assert_in_array: value "<p>abc</p>def ghi" not in array ["<p>abc</p>def <br>", "<p>abc</p>def&nbsp;"]
+FAIL Alt+Backspace when "<p>abc</p><b> def[]</b>" assert_in_array: value "<p>abc</p><b> def</b>" not in array ["<p>abc</p><br>", "<p>abc</p><b><br></b>", "<p>abc</p><b> <br></b>"]
+FAIL Alt+Backspace when "<p>abc</p>def ghi[]<p>jkl</p>" assert_in_array: value "<p>abc</p>def ghijkl" not in array ["<p>abc</p>def <br><p>jkl</p>", "<p>abc</p>def&nbsp;<p>jkl</p>"]
+FAIL Alt+Backspace when "<p>abc</p> def[]<p>ghi</p>" assert_in_array: value "<p>abc</p> defghi" not in array ["<p>abc</p><br><p>ghi</p>", "<p>abc</p> <br><p>ghi</p>"]
+FAIL Alt+Backspace when "<p>abc</p><b> def[]</b><p>ghi</p>" assert_in_array: value "<p>abc</p><b> def</b>ghi" not in array ["<p>abc</p><br><p>ghi</p>", "<p>abc</p><b><br></b><p>ghi</p>", "<p>abc</p><b> <br></b><p>ghi</p>"]
+

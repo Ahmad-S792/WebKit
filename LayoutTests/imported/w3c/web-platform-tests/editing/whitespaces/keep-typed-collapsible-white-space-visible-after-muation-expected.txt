@@ -1,0 +1,5 @@
+abc
+
+PASS Even after mutation, the inserted white-space should be visible
+PASS Undoing should remove the white-space
+

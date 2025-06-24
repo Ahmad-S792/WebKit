@@ -1,0 +1,9 @@
+abc def hi
+
+PASS Ctrl/Cmd - Delete when "[]abc <span>def</span> ghi" should get same innerText as when "[]abc def ghi"
+PASS Ctrl/Cmd - Delete when "abc[] <span>def</span> ghi" should get same innerText as when "abc[] def ghi"
+PASS Ctrl/Cmd - Delete when "abc []<span>def</span> ghi" should get same innerText as when "abc []def ghi"
+PASS Ctrl/Cmd - Delete when "abc <span>[]def</span> ghi" should get same innerText as when "abc []def ghi"
+PASS Ctrl/Cmd - Delete when "abc <span>def</span>[] ghi" should get same innerText as when "abc def[] ghi"
+PASS Ctrl/Cmd - Delete when "abc <span>def</span> []ghi" should get same innerText as when "abc def []ghi"
+

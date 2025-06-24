@@ -1,0 +1,4 @@
+abc d
+
+PASS Inserting white-space and a character at block end should keep the white-space even before block <br> element
+

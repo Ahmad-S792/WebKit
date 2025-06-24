@@ -1,0 +1,48 @@
+abc
+
+ef
+ghi
+
+
+PASS Backspace when <p> []a</p>
+PASS Delete when <p> []a</p> after extending selection forward
+PASS Backspace when <p><b> []a</b></p>
+PASS Delete when <p><b> []a</b></p> after extending selection forward
+PASS Backspace when <p>abc []d</p>
+PASS Delete when <p>abc []d</p> after extending selection forward
+PASS Backspace when <p><b>abc []d</b></p>
+PASS Delete when <p><b>abc []d</b></p> after extending selection forward
+FAIL Backspace when <p>abc []d<br></p> assert_in_array: value "<p>abc&nbsp;<br></p>" not in array ["<p>abc <br></p>", "<p>abc&nbsp;</p>"]
+FAIL Delete when <p>abc []d<br></p> after extending selection forward assert_in_array: value "<p>abc&nbsp;<br></p>" not in array ["<p>abc <br></p>", "<p>abc&nbsp;</p>"]
+PASS Backspace when  []a<p>bc</p>
+PASS Delete when  []a<p>bc</p> after extending selection forward
+PASS Backspace when abc []d<p>ef</p>
+PASS Delete when abc []d<p>ef</p> after extending selection forward
+PASS Backspace when <b>abc []d</b><p>ef</p>
+PASS Delete when <b>abc []d</b><p>ef</p> after extending selection forward
+PASS Backspace when <p>abc</p> []d
+PASS Delete when <p>abc</p> []d after extending selection forward
+PASS Backspace when <p>abc</p>def []g
+PASS Delete when <p>abc</p>def []g after extending selection forward
+PASS Backspace when <p>abc</p><b> []d</b>
+PASS Delete when <p>abc</p><b> []d</b> after extending selection forward
+PASS Backspace when <p>abc</p>def []g<p>hij</p>
+PASS Delete when <p>abc</p>def []g<p>hij</p> after extending selection forward
+PASS Backspace when <p>abc</p> []d<p>efg</p>
+PASS Delete when <p>abc</p> []d<p>efg</p> after extending selection forward
+PASS Backspace when <p>abc</p><b> []d</b><p>efg</p>
+PASS Delete when <p>abc</p><b> []d</b><p>efg</p> after extending selection forward
+FAIL Alt+Delete when "<p> []abc</p>" assert_in_array: value "<p>bc</p>" not in array ["<p><br></p>", "<p> <br></p>"]
+FAIL Alt+Delete when "<p>abc []def</p>" assert_in_array: value "<p>abc ef</p>" not in array ["<p>abc <br></p>", "<p>abc&nbsp;</p>"]
+FAIL Alt+Delete when "<p><b>abc []def</b></p>" assert_in_array: value "<p><b>abc ef</b></p>" not in array ["<p><b>abc <br></b></p>", "<p><b>abc&nbsp;</b></p>"]
+FAIL Alt+Delete when "<p>abc []def<br></p>" assert_in_array: value "<p>abc ef<br></p>" not in array ["<p>abc <br></p>", "<p>abc&nbsp;</p>"]
+FAIL Alt+Delete when " []abc<p>def</p>" assert_in_array: value "bc<p>def</p>" not in array ["<br><p>def</p>", " <br><p>def</p>"]
+FAIL Alt+Delete when "abc []def<p>ghi</p>" assert_in_array: value "abc ef<p>ghi</p>" not in array ["abc <br><p>ghi</p>", "abc&nbsp;<p>ghi</p>"]
+FAIL Alt+Delete when "<b>abc []def</b><p>ghi</p>" assert_in_array: value "<b>abc ef</b><p>ghi</p>" not in array ["<b>abc <br></b><p>ghi</p>", "<b>abc&nbsp;</b><p>ghi</p>"]
+FAIL Alt+Delete when "<p>abc</p> []def" assert_in_array: value "<p>abc</p>ef" not in array ["<p>abc</p><br>", "<p>abc</p> <br>"]
+FAIL Alt+Delete when "<p>abc</p>def []ghi" assert_in_array: value "<p>abc</p>def hi" not in array ["<p>abc</p>def <br>", "<p>abc</p>def&nbsp;"]
+FAIL Alt+Delete when "<p>abc</p><b> []def</b>" assert_in_array: value "<p>abc</p><b>ef</b>" not in array ["<p>abc</p><br>", "<p>abc</p><b><br></b>", "<p>abc</p><b> <br></b>"]
+FAIL Alt+Delete when "<p>abc</p>def []ghi<p>jkl</p>" assert_in_array: value "<p>abc</p>def hi<p>jkl</p>" not in array ["<p>abc</p>def <br><p>jkl</p>", "<p>abc</p>def&nbsp;<p>jkl</p>"]
+FAIL Alt+Delete when "<p>abc</p> []def<p>ghi</p>" assert_in_array: value "<p>abc</p>ef<p>ghi</p>" not in array ["<p>abc</p><br><p>ghi</p>", "<p>abc</p> <br><p>ghi</p>"]
+FAIL Alt+Delete when "<p>abc</p><b> []def</b><p>ghi</p>" assert_in_array: value "<p>abc</p><b>ef</b><p>ghi</p>" not in array ["<p>abc</p><br><p>ghi</p>", "<p>abc</p><b><br></b><p>ghi</p>", "<p>abc</p><b> <br></b><p>ghi</p>"]
+

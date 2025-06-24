@@ -2336,6 +2336,15 @@
     "imported/w3c/web-platform-tests/editing/run/unlink.html": [
         "slow"
     ],
+    "imported/w3c/web-platform-tests/editing/whitespaces/chrome-compat/delete.tentative.html": [
+        "slow"
+    ],
+    "imported/w3c/web-platform-tests/editing/whitespaces/delete-chars-following-collapsible-white-space.html": [
+        "slow"
+    ],
+    "imported/w3c/web-platform-tests/editing/whitespaces/forwarddelete-chars-following-collapsible-white-space.html": [
+        "slow"
+    ],
     "imported/w3c/web-platform-tests/encoding/legacy-mb-japanese/euc-jp/eucjp-decode-cseucpkdfmtjapanese.html": [
         "slow"
     ],

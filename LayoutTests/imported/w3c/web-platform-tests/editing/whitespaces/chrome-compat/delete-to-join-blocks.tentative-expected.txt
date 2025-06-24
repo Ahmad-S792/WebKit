@@ -1,0 +1,21 @@
+a      b
+
+PASS document.execCommand("delete") when "<div>&nbsp;&nbsp;&nbsp;</div><div>{}<br></div>"
+FAIL document.execCommand("delete") when "<div>a&nbsp;&nbsp;&nbsp;</div><div>{}<br></div>" assert_equals: expected "<div>a&nbsp; &nbsp;</div>" but got "<div>a &nbsp;&nbsp;</div>"
+FAIL document.execCommand("delete") when "<div><br></div><div>[]&nbsp;&nbsp;&nbsp;</div>" assert_equals: expected "<div>&nbsp; &nbsp;</div>" but got "<div>&nbsp; &nbsp;<br></div>"
+FAIL document.execCommand("delete") when "<div><br></div><div>[]&nbsp;&nbsp;&nbsp;b</div>" assert_equals: expected "<div>&nbsp; &nbsp;b</div>" but got "<div>&nbsp; &nbsp;b<br></div>"
+FAIL document.execCommand("delete") when "<div>a</div><div>[]&nbsp;&nbsp;&nbsp;b</div>" assert_equals: expected "<div>a&nbsp; &nbsp;b</div>" but got "<div>a &nbsp; b</div>"
+FAIL document.execCommand("delete") when "<div>a&nbsp;&nbsp;&nbsp;</div><div>[]&nbsp;&nbsp;&nbsp;b</div>" assert_equals: expected "<div>a&nbsp; &nbsp; &nbsp; b</div>" but got "<div>a &nbsp; &nbsp; &nbsp;b</div>"
+PASS document.execCommand("delete") when "<div>&nbsp;&nbsp;&nbsp;<div>{}<br></div></div>"
+FAIL document.execCommand("delete") when "<div>a&nbsp;&nbsp;&nbsp;<div>{}<br></div></div>" assert_equals: expected "<div>a&nbsp; &nbsp;</div>" but got "<div>a &nbsp;&nbsp;</div>"
+FAIL document.execCommand("delete") when "<div><br><div>[]&nbsp;&nbsp;&nbsp;</div></div>" assert_equals: expected "<div><div>&nbsp; &nbsp;</div></div>" but got "&nbsp; &nbsp;<br>"
+FAIL document.execCommand("delete") when "<div><br><div>[]&nbsp;&nbsp;&nbsp;b</div></div>" assert_equals: expected "<div><div>&nbsp; &nbsp;b</div></div>" but got "&nbsp; &nbsp;b<br>"
+FAIL document.execCommand("delete") when "<div>a<div>[]&nbsp;&nbsp;&nbsp;b</div></div>" assert_equals: expected "a&nbsp; &nbsp;b" but got "a &nbsp; b"
+FAIL document.execCommand("delete") when "<div>a&nbsp;&nbsp;&nbsp;<div>[]&nbsp;&nbsp;&nbsp;b</div></div>" assert_equals: expected "a&nbsp; &nbsp; &nbsp; b" but got "a &nbsp; &nbsp; &nbsp;b"
+PASS document.execCommand("delete") when "<div><div>&nbsp;&nbsp;&nbsp;</div>{}<br></div>"
+FAIL document.execCommand("delete") when "<div><div>a&nbsp;&nbsp;&nbsp;</div>{}<br></div>" assert_equals: expected "<div><div>a&nbsp; &nbsp;</div></div>" but got "<div><div>a &nbsp;&nbsp;</div></div>"
+FAIL document.execCommand("delete") when "<div><div><br></div>[]&nbsp;&nbsp;&nbsp;</div>" assert_equals: expected "<div>&nbsp; &nbsp;</div>" but got "<div>&nbsp; &nbsp;<br></div>"
+FAIL document.execCommand("delete") when "<div><div><br></div>[]&nbsp;&nbsp;&nbsp;b</div>" assert_equals: expected "<div>&nbsp; &nbsp;b</div>" but got "<div>&nbsp; &nbsp;b<br></div>"
+FAIL document.execCommand("delete") when "<div><div>a</div>[]&nbsp;&nbsp;&nbsp;b</div>" assert_equals: expected "<div>a&nbsp; &nbsp;b</div>" but got "<div>a &nbsp; b</div>"
+FAIL document.execCommand("delete") when "<div><div>a&nbsp;&nbsp;&nbsp;</div>[]&nbsp;&nbsp;&nbsp;b</div>" assert_equals: expected "<div>a&nbsp; &nbsp; &nbsp; b</div>" but got "<div>a &nbsp; &nbsp; &nbsp;b</div>"
+

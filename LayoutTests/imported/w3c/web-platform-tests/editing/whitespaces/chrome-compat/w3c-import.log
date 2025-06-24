@@ -1,0 +1,27 @@
+The tests in this directory were imported from the W3C repository.
+Do NOT modify these tests directly in WebKit.
+Instead, create a pull request on the WPT github:
+	https://github.com/web-platform-tests/wpt
+
+Then run the Tools/Scripts/import-w3c-tests in WebKit to reimport
+
+Do NOT modify or remove this file.
+
+------------------------------------------------------------------------
+Properties requiring vendor prefixes:
+None
+Property values requiring vendor prefixes:
+None
+------------------------------------------------------------------------
+List of files:
+/LayoutTests/imported/w3c/web-platform-tests/editing/whitespaces/chrome-compat/README.md
+/LayoutTests/imported/w3c/web-platform-tests/editing/whitespaces/chrome-compat/delete-img.tentative.html
+/LayoutTests/imported/w3c/web-platform-tests/editing/whitespaces/chrome-compat/delete-to-join-blocks.tentative.html
+/LayoutTests/imported/w3c/web-platform-tests/editing/whitespaces/chrome-compat/delete.tentative.html
+/LayoutTests/imported/w3c/web-platform-tests/editing/whitespaces/chrome-compat/forwarddelete-img.tentative.html
+/LayoutTests/imported/w3c/web-platform-tests/editing/whitespaces/chrome-compat/forwarddelete-to-join-blocks.tentative.html
+/LayoutTests/imported/w3c/web-platform-tests/editing/whitespaces/chrome-compat/forwarddelete.tentative.html
+/LayoutTests/imported/w3c/web-platform-tests/editing/whitespaces/chrome-compat/insert-or-paste-image.tentative.html
+/LayoutTests/imported/w3c/web-platform-tests/editing/whitespaces/chrome-compat/insertlinebreak.tentative.html
+/LayoutTests/imported/w3c/web-platform-tests/editing/whitespaces/chrome-compat/insertparagraph.tentative.html
+/LayoutTests/imported/w3c/web-platform-tests/editing/whitespaces/chrome-compat/inserttext.tentative.html
