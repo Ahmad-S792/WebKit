@@ -28,8 +28,8 @@
 ] interface SVGGraphicsElement : SVGElement {
     readonly attribute SVGAnimatedTransformList transform;
 
-    readonly attribute SVGElement nearestViewportElement;
-    readonly attribute SVGElement farthestViewportElement;
+    [EnabledBySetting=EnableSVGDeprecatedProperties] readonly attribute SVGElement nearestViewportElement;
+    [EnabledBySetting=EnableSVGDeprecatedProperties] readonly attribute SVGElement farthestViewportElement;
 
     [ImplementedAs=getBBoxForBindings, NewObject] SVGRect getBBox();
     [ImplementedAs=getCTMForBindings, NewObject] SVGMatrix getCTM();

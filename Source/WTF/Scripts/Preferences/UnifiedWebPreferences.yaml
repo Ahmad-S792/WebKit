@@ -2635,6 +2635,20 @@ EnableInheritURIQueryComponent:
     WebCore:
       default: false
 
+EnableSVGDeprecatedProperties:
+  type: bool
+  status: preview
+  category: dom
+  humanReadableName: "Enable SVG 1.1 Deprecated Properties"
+  humanReadableDescription: "Enable SVG 1.1 Deprecated Properties"
+  defaultValue:
+    WebKitLegacy:
+      default: false
+    WebKit:
+      default: false
+    WebCore:
+      default: false
+
 EncryptedMediaAPIEnabled:
   type: bool
   status: embedder
