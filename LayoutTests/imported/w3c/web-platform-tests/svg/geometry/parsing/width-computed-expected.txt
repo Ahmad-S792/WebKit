@@ -23,9 +23,9 @@ PASS SVG Geometry Properties: getComputedStyle().width, <image> inline style (pi
 PASS SVG Geometry Properties: getComputedStyle().width, <image> inline style but "display: none"
 PASS SVG Geometry Properties: getComputedStyle().width, <foreignObject> initial
 PASS SVG Geometry Properties: getComputedStyle().width, <foreignObject> presentation attribute
-FAIL SVG Geometry Properties: getComputedStyle().width, <foreignObject> inline style (percentage) assert_equals: inline style (percentage) expected "100px" but got "0px"
+PASS SVG Geometry Properties: getComputedStyle().width, <foreignObject> inline style (percentage)
 PASS SVG Geometry Properties: getComputedStyle().width, <foreignObject> inline style (auto)
-FAIL SVG Geometry Properties: getComputedStyle().width, <foreignObject> inline style (pixels) assert_equals: inline style (pixels) expected "75px" but got "0px"
+PASS SVG Geometry Properties: getComputedStyle().width, <foreignObject> inline style (pixels)
 PASS SVG Geometry Properties: getComputedStyle().width, <foreignObject> inline style but "display: none"
 FAIL SVG Geometry Properties: getComputedStyle().width, <svg> initial assert_equals: initial expected "200px" but got "auto"
 PASS SVG Geometry Properties: getComputedStyle().width, <svg> presentation attribute
