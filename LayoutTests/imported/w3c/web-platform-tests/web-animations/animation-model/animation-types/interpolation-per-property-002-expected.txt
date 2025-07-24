@@ -188,10 +188,22 @@ PASS position (type: discrete) has testInterpolation function
 PASS position uses discrete animation when animating between "absolute" and "fixed" with linear easing
 PASS position uses discrete animation when animating between "absolute" and "fixed" with effect easing
 PASS position uses discrete animation when animating between "absolute" and "fixed" with keyframe easing
+PASS position-anchor (type: discrete) has testInterpolation function
+PASS position-anchor uses discrete animation when animating between "auto" and "--anchor" with linear easing
+PASS position-anchor uses discrete animation when animating between "auto" and "--anchor" with effect easing
+PASS position-anchor uses discrete animation when animating between "auto" and "--anchor" with keyframe easing
 PASS position-visibility (type: discrete) has testInterpolation function
-PASS position-visibility uses discrete animation when animating between "always" and "anchors-visible" with linear easing
-PASS position-visibility uses discrete animation when animating between "always" and "anchors-visible" with effect easing
-PASS position-visibility uses discrete animation when animating between "always" and "anchors-visible" with keyframe easing
+PASS position-visibility uses discrete animation when animating between "always" and "anchors-valid" with linear easing
+PASS position-visibility uses discrete animation when animating between "always" and "anchors-valid" with effect easing
+PASS position-visibility uses discrete animation when animating between "always" and "anchors-valid" with keyframe easing
+PASS position-try-fallbacks (type: discrete) has testInterpolation function
+PASS position-try-fallbacks uses discrete animation when animating between "none" and "flip-block" with linear easing
+PASS position-try-fallbacks uses discrete animation when animating between "none" and "flip-block" with effect easing
+PASS position-try-fallbacks uses discrete animation when animating between "none" and "flip-block" with keyframe easing
+PASS position-try-order (type: discrete) has testInterpolation function
+PASS position-try-order uses discrete animation when animating between "normal" and "most-width" with linear easing
+PASS position-try-order uses discrete animation when animating between "normal" and "most-width" with effect easing
+PASS position-try-order uses discrete animation when animating between "normal" and "most-width" with keyframe easing
 PASS quotes (type: discrete) has testInterpolation function
 PASS quotes uses discrete animation when animating between ""“" "”" "‘" "’"" and ""‘" "’" "“" "”"" with linear easing
 PASS quotes uses discrete animation when animating between ""“" "”" "‘" "’"" and ""‘" "’" "“" "”"" with effect easing

@@ -154,9 +154,18 @@ PASS pointer-events: "fill" onto "none"
 PASS position (type: discrete) has testAccumulation function
 PASS position: "fixed" onto "absolute"
 PASS position: "absolute" onto "fixed"
+PASS position-anchor (type: discrete) has testAccumulation function
+PASS position-anchor: "--anchor" onto "auto"
+PASS position-anchor: "auto" onto "--anchor"
 PASS position-visibility (type: discrete) has testAccumulation function
-PASS position-visibility: "anchors-visible" onto "always"
-PASS position-visibility: "always" onto "anchors-visible"
+PASS position-visibility: "anchors-valid" onto "always"
+PASS position-visibility: "always" onto "anchors-valid"
+PASS position-try-fallbacks (type: discrete) has testAccumulation function
+PASS position-try-fallbacks: "flip-block" onto "none"
+PASS position-try-fallbacks: "none" onto "flip-block"
+PASS position-try-order (type: discrete) has testAccumulation function
+PASS position-try-order: "most-width" onto "normal"
+PASS position-try-order: "normal" onto "most-width"
 PASS quotes (type: discrete) has testAccumulation function
 PASS quotes: ""‘" "’" "“" "”"" onto ""“" "”" "‘" "’""
 PASS quotes: ""“" "”" "‘" "’"" onto ""‘" "’" "“" "”""
