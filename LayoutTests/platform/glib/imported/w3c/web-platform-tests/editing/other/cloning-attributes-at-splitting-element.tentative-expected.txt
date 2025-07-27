@@ -1,4 +1,5 @@
-abcdef
+abc
+def
 
 PASS Splitting <div id="splittee">
 PASS Splitting <div class="splittee">
@@ -16,40 +17,48 @@ PASS Splitting <dd id="splittee">
 PASS Splitting <dd class="splittee">
 PASS Splitting <dd data-foo="1" data-bar="2">
 PASS Splitting <div id="splittee-parent"> and <span id="splittee">
-FAIL Splitting <div class="splittee-parent"> and <span class="splittee"> promise_test: Unhandled rejection with value: object "TypeError: null is not an object (evaluating 'rightParent.querySelector')"
-FAIL Splitting <div data-foo="1" data-bar="2"> and <span data-foo="3" data-bar="4"> promise_test: Unhandled rejection with value: object "TypeError: null is not an object (evaluating 'rightParent.querySelector')"
+PASS Splitting <div class="splittee-parent"> and <span class="splittee">
+PASS Splitting <div data-foo="1" data-bar="2"> and <span data-foo="3" data-bar="4">
 PASS Cloning attributes at splitting an element in contenteditable
-PASS Cloning attributes at splitting an element in contenteditable 1
+FAIL Cloning attributes at splitting an element in contenteditable 1 assert_equals: The new element created by splitting an element shouldn't have same id attribute value (Splitting <div id="splittee">) expected 1 but got 2
 PASS Cloning attributes at splitting an element in contenteditable 2
-FAIL Cloning attributes at splitting an element in contenteditable 3 null is not an object (evaluating 'rightNode.getAttribute')
+PASS Cloning attributes at splitting an element in contenteditable 3
 PASS Cloning attributes at splitting an element in contenteditable 4
-FAIL Cloning attributes at splitting an element in contenteditable 5 null is not an object (evaluating 'rightNode.getAttribute')
+PASS Cloning attributes at splitting an element in contenteditable 5
 PASS Cloning attributes at splitting an element in contenteditable 6
-PASS Cloning attributes at splitting an element in contenteditable 7
+FAIL Cloning attributes at splitting an element in contenteditable 7 assert_equals: The new element created by splitting an element shouldn't have same id attribute value (Splitting <li id="splittee">) expected 1 but got 2
 PASS Cloning attributes at splitting an element in contenteditable 8
-FAIL Cloning attributes at splitting an element in contenteditable 9 null is not an object (evaluating 'rightNode.getAttribute')
+PASS Cloning attributes at splitting an element in contenteditable 9
 PASS Cloning attributes at splitting an element in contenteditable 10
-FAIL Cloning attributes at splitting an element in contenteditable 11 null is not an object (evaluating 'rightNode.getAttribute')
+PASS Cloning attributes at splitting an element in contenteditable 11
 PASS Cloning attributes at splitting an element in contenteditable 12
-PASS Cloning attributes at splitting an element in contenteditable 13
+FAIL Cloning attributes at splitting an element in contenteditable 13 assert_equals: The new element created by splitting an element shouldn't have same id attribute value (Splitting <h3 id="p">) expected 1 but got 2
 PASS Cloning attributes at splitting an element in contenteditable 14
-FAIL Cloning attributes at splitting an element in contenteditable 15 null is not an object (evaluating 'rightNode.getAttribute')
+PASS Cloning attributes at splitting an element in contenteditable 15
 PASS Cloning attributes at splitting an element in contenteditable 16
-FAIL Cloning attributes at splitting an element in contenteditable 17 null is not an object (evaluating 'rightNode.getAttribute')
+PASS Cloning attributes at splitting an element in contenteditable 17
 PASS Cloning attributes at splitting an element in contenteditable 18
-PASS Cloning attributes at splitting an element in contenteditable 19
+FAIL Cloning attributes at splitting an element in contenteditable 19 assert_equals: The new element created by splitting an element shouldn't have same id attribute value (Splitting <dt id="splittee">) expected 1 but got 2
 PASS Cloning attributes at splitting an element in contenteditable 20
-FAIL Cloning attributes at splitting an element in contenteditable 21 null is not an object (evaluating 'rightNode.getAttribute')
+PASS Cloning attributes at splitting an element in contenteditable 21
 PASS Cloning attributes at splitting an element in contenteditable 22
-FAIL Cloning attributes at splitting an element in contenteditable 23 null is not an object (evaluating 'rightNode.getAttribute')
+PASS Cloning attributes at splitting an element in contenteditable 23
 PASS Cloning attributes at splitting an element in contenteditable 24
-PASS Cloning attributes at splitting an element in contenteditable 25
+FAIL Cloning attributes at splitting an element in contenteditable 25 assert_equals: The new element created by splitting an element shouldn't have same id attribute value (Splitting <dd id="splittee">) expected 1 but got 2
 PASS Cloning attributes at splitting an element in contenteditable 26
-FAIL Cloning attributes at splitting an element in contenteditable 27 null is not an object (evaluating 'rightNode.getAttribute')
+PASS Cloning attributes at splitting an element in contenteditable 27
 PASS Cloning attributes at splitting an element in contenteditable 28
-FAIL Cloning attributes at splitting an element in contenteditable 29 null is not an object (evaluating 'rightNode.getAttribute')
-PASS Cloning attributes at splitting an element in contenteditable 30
+PASS Cloning attributes at splitting an element in contenteditable 29
+FAIL Cloning attributes at splitting an element in contenteditable 30 assert_equals: The element instance returned by Document.getElementById shouldn't be changed after splitting the element (Splitting <div id="splittee-parent"> and <span id="splittee">) expected Element node <span>def</span> but got Element node <span id="splittee">abc</span>
 PASS Cloning attributes at splitting an element in contenteditable 31
 PASS Cloning attributes at splitting an element in contenteditable 32
-PASS Cloning attributes at splitting an element in contenteditable 33
+FAIL Cloning attributes at splitting an element in contenteditable 33 assert_equals: The new element created by splitting an element shouldn't have same id attribute value (splittee-parent) (Splitting <div id="splittee-parent"> and <span id="splittee">) expected 1 but got 2
+PASS Cloning attributes at splitting an element in contenteditable 34
+PASS Cloning attributes at splitting an element in contenteditable 35
+PASS Cloning attributes at splitting an element in contenteditable 36
+PASS Cloning attributes at splitting an element in contenteditable 37
+PASS Cloning attributes at splitting an element in contenteditable 38
+PASS Cloning attributes at splitting an element in contenteditable 39
+PASS Cloning attributes at splitting an element in contenteditable 40
+PASS Cloning attributes at splitting an element in contenteditable 41
 
