@@ -460,11 +460,11 @@ void SVGImage::reportApproximateMemoryCost() const
     for (RefPtr<Node> node = localTopDocument; node; node = NodeTraversal::next(*node))
         decodedImageMemoryCost += node->approximateMemoryCost();
 
+    size_t totalMemoryCost = decodedImageMemoryCost + data()->size();
+
     JSC::VM& vm = commonVM();
     JSC::JSLockHolder lock(vm);
-    // FIXME: Adopt reportExtraMemoryVisited, and switch to reportExtraMemoryAllocated.
-    // https://bugs.webkit.org/show_bug.cgi?id=142595
-    vm.heap.deprecatedReportExtraMemory(decodedImageMemoryCost + data()->size());
+    vm.heap.reportExtraMemoryAllocated(nullptr, totalMemoryCost);
 }
 
 EncodedDataStatus SVGImage::dataChanged(bool allDataReceived)

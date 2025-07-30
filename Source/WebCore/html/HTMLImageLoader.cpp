@@ -1,7 +1,7 @@
 /*
  * Copyright (C) 1999 Lars Knoll (knoll@kde.org)
  *           (C) 1999 Antti Koivisto (koivisto@kde.org)
- * Copyright (C) 2004, 2005, 2006, 2007, 2010, 2015 Apple Inc. All rights reserved.
+ * Copyright (C) 2004-2025 Apple Inc. All rights reserved.
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Library General Public
@@ -87,9 +87,7 @@ void HTMLImageLoader::notifyFinished(CachedResource&, const NetworkLoadMetrics& 
         if (!element().isConnected()) {
             JSC::VM& vm = commonVM();
             JSC::JSLockHolder lock(vm);
-            // FIXME: Adopt reportExtraMemoryVisited, and switch to reportExtraMemoryAllocated.
-            // https://bugs.webkit.org/show_bug.cgi?id=142595
-            vm.heap.deprecatedReportExtraMemory(cachedImage.encodedSize());
+            vm.heap.reportExtraMemoryAllocated(nullptr, cachedImage.encodedSize());
         }
     }
 

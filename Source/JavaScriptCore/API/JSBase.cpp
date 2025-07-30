@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2006, 2007, 2013, 2016 Apple Inc. All rights reserved.
+ * Copyright (C) 2006-2025 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -149,7 +149,7 @@ void JSReportExtraMemoryCost(JSContextRef ctx, size_t size)
     VM& vm = globalObject->vm();
     JSLockHolder locker(vm);
 
-    vm.heap.deprecatedReportExtraMemory(size);
+    vm.heap.reportExtraMemoryAllocated(nullptr, size);
 }
 
 extern "C" JS_EXPORT void JSSynchronousGarbageCollectForDebugging(JSContextRef);

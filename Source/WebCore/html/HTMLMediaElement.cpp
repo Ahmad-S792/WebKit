@@ -1149,9 +1149,7 @@ void HTMLMediaElement::pauseAfterDetachedTask()
 
         size_t extraMemoryCostDelta = extraMemoryCost - m_reportedExtraMemoryCost;
         m_reportedExtraMemoryCost = extraMemoryCost;
-        // FIXME: Adopt reportExtraMemoryVisited, and switch to reportExtraMemoryAllocated.
-        // https://bugs.webkit.org/show_bug.cgi?id=142595
-        vm.heap.deprecatedReportExtraMemory(extraMemoryCostDelta);
+        vm.heap.reportExtraMemoryAllocated(nullptr, extraMemoryCostDelta);
     }
 }
 
