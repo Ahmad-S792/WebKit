@@ -185,19 +185,6 @@ bool SVGAnimateMotionElement::setToAtEndOfDurationValue(const String& toAtEndOfD
     return true;
 }
 
-void SVGAnimateMotionElement::buildTransformForProgress(AffineTransform* transform, float percentage)
-{
-    ASSERT(!m_animationPath.isEmpty());
-
-    float positionOnPath = m_animationPath.length() * percentage;
-    auto traversalState(m_animationPath.traversalStateAtLength(positionOnPath));
-    if (!traversalState.success())
-        return;
-
-    FloatPoint position = traversalState.current();
-    transform->translate(position);
-}
-
 void SVGAnimateMotionElement::calculateAnimatedValue(float percentage, unsigned repeatCount)
 {
     RefPtr targetElement = this->targetElement();
@@ -226,15 +213,23 @@ void SVGAnimateMotionElement::calculateAnimatedValue(float percentage, unsigned 
         return;
     }
 
-    buildTransformForProgress(transform, percentage);
+    ASSERT(!m_animationPath.isEmpty());
+    float positionOnPath = m_animationPath.length() * percentage;
+    auto traversalState = m_animationPath.traversalStateAtLength(positionOnPath);
+    if (!traversalState.success())
+        return;
+    FloatPoint position = traversalState.current();
+    transform->translate(position);
 
     // Handle accumulate="sum".
     if (isAccumulated() && repeatCount) {
-        for (unsigned i = 0; i < repeatCount; ++i)
-            buildTransformForProgress(transform, 1);
+        float pathLength = m_animationPath.length();
+        auto endTraversalState = m_animationPath.traversalStateAtLength(pathLength);
+        if (endTraversalState.success()) {
+            FloatPoint endPoint = endTraversalState.current();
+            transform->translate(endPoint.x() * repeatCount, endPoint.y() * repeatCount);
+        }
     }
-    float positionOnPath = m_animationPath.length() * percentage;
-    auto traversalState(m_animationPath.traversalStateAtLength(positionOnPath));
 
     // The 'angle' below is in 'degrees'.
     float angle = traversalState.normalAngle();

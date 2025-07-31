@@ -57,7 +57,6 @@ private:
         RotateAutoReverse
     };
     RotateMode rotateMode() const;
-    void buildTransformForProgress(AffineTransform*, float percentage);
 
     void updateAnimationMode() override;
     void childrenChanged(const ChildChange&) final;
