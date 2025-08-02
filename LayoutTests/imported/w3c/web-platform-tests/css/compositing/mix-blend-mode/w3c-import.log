@@ -59,6 +59,8 @@ List of files:
 /LayoutTests/imported/w3c/web-platform-tests/css/compositing/mix-blend-mode/mix-blend-mode-paragraph-background-image.html
 /LayoutTests/imported/w3c/web-platform-tests/css/compositing/mix-blend-mode/mix-blend-mode-paragraph-expected.html
 /LayoutTests/imported/w3c/web-platform-tests/css/compositing/mix-blend-mode/mix-blend-mode-paragraph.html
+/LayoutTests/imported/w3c/web-platform-tests/css/compositing/mix-blend-mode/mix-blend-mode-parent-element-overflow-hidden-and-border-radius-2-expected.html
+/LayoutTests/imported/w3c/web-platform-tests/css/compositing/mix-blend-mode/mix-blend-mode-parent-element-overflow-hidden-and-border-radius-2.html
 /LayoutTests/imported/w3c/web-platform-tests/css/compositing/mix-blend-mode/mix-blend-mode-parent-element-overflow-hidden-and-border-radius-expected.html
 /LayoutTests/imported/w3c/web-platform-tests/css/compositing/mix-blend-mode/mix-blend-mode-parent-element-overflow-hidden-and-border-radius.html
 /LayoutTests/imported/w3c/web-platform-tests/css/compositing/mix-blend-mode/mix-blend-mode-parent-element-overflow-scroll-blended-position-fixed-expected.html
