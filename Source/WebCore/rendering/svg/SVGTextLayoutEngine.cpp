@@ -33,6 +33,8 @@
 #include "SVGTextContentElement.h"
 #include "SVGTextLayoutEngineBaseline.h"
 #include "SVGTextLayoutEngineSpacing.h"
+#include <algorithm>
+#include <ranges>
 
 // Set to a value > 0 to dump the text fragments
 #define DUMP_SVG_TEXT_LAYOUT_FRAGMENTS 0
@@ -266,17 +268,17 @@ void SVGTextLayoutEngine::finalizeTransformMatrices(Vector<InlineIterator::SVGTe
     if (textBoxes.isEmpty())
         return;
 
-    for (auto textBox : textBoxes) {
-        auto textBoxTransformation = m_chunkLayoutBuilder.transformationForTextBox(textBox);
-        if (textBoxTransformation.isIdentity())
-            continue;
+    auto boxesToTransform = textBoxes | std::views::filter([&](const auto& textBox) {
+        return !m_chunkLayoutBuilder.transformationForTextBox(textBox).isIdentity();
+    });
 
-        auto it = m_fragmentMap.find(makeKey(*textBox));
-        if (it != m_fragmentMap.end()) {
-            for (auto& fragment : it->value) {
+    for (const auto& textBox : boxesToTransform) {
+        auto textBoxTransformation = m_chunkLayoutBuilder.transformationForTextBox(textBox);
+        if (auto it = m_fragmentMap.find(makeKey(*textBox)); it != m_fragmentMap.end()) {
+            std::ranges::for_each(it->value, [&](auto& fragment) {
                 ASSERT(fragment.lengthAdjustTransform.isIdentity());
                 fragment.lengthAdjustTransform = textBoxTransformation;
-            }
+            });
         }
     }
 
