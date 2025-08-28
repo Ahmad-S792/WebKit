@@ -1,0 +1,7 @@
+
+FAIL RTCOutboundRtpStreamStats does not exist as early as have-local-offer assert_false: outbound-rtp does not exist in have-local-offer expected false got true
+PASS RTCOutboundRtpStreamStats exists after returning to stable
+FAIL RTCOutboundRtpStreamStats exists per simulcast encoding assert_not_equals: got disallowed value undefined
+FAIL RTCInboundRtpStreamStats are created by packet reception assert_false: inbound-rtp does not exist before packets are received expected false got true
+PASS RTCInboundRtpStreamStats exists for early media
+

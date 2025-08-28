@@ -1,0 +1,3 @@
+
+PASS RTCRtpReceiver.track.getSettings() contains resolution entries
+

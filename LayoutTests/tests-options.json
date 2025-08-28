@@ -6878,6 +6878,9 @@
     "imported/w3c/web-platform-tests/webrtc/RTCDataChannel-send.html": [
         "slow"
     ],
+    "imported/w3c/web-platform-tests/webrtc/RTCDataChannel-worker-GC.html": [
+        "slow"
+    ],
     "imported/w3c/web-platform-tests/webrtc/RTCIceConnectionState-candidate-pair.https.html": [
         "slow"
     ],
@@ -6894,6 +6897,9 @@
         "slow"
     ],
     "imported/w3c/web-platform-tests/webrtc/RTCPeerConnection-addTcpIceCandidate.html": [
+        "slow"
+    ],
+    "imported/w3c/web-platform-tests/webrtc/RTCPeerConnection-addTransceiver-renegotiation.https.html": [
         "slow"
     ],
     "imported/w3c/web-platform-tests/webrtc/RTCPeerConnection-capture-video.https.html": [
@@ -7016,6 +7022,9 @@
     "imported/w3c/web-platform-tests/webrtc/protocol/h264-profile-levels.https.html": [
         "slow"
     ],
+    "imported/w3c/web-platform-tests/webrtc/protocol/h265-loopback.https.html": [
+        "slow"
+    ],
     "imported/w3c/web-platform-tests/webrtc/protocol/ice-state.https.html": [
         "slow"
     ],
@@ -7032,6 +7041,9 @@
         "slow"
     ],
     "imported/w3c/web-platform-tests/webrtc/protocol/vp8-fmtp.html": [
+        "slow"
+    ],
+    "imported/w3c/web-platform-tests/webrtc/rtp-stats-lifetime.https.html": [
         "slow"
     ],
     "imported/w3c/web-platform-tests/webrtc/simulcast/av1.https.html": [

@@ -8277,3 +8277,7 @@ fast/images/async-image-intersect-different-size-for-drawing.html [ Pass Timeout
 fast/images/low-memory-decode.html [ Pass Timeout ]
 
 webkit.org/b/298608 imported/w3c/web-platform-tests/digital-credentials/create.tentative.https.html [ Pass Failure ]
+imported/w3c/web-platform-tests/webrtc/protocol/h265-loopback.https.html [ Skip ]
+imported/w3c/web-platform-tests/webrtc/RTCRtpReceiver-track-settings.tentative.html [ Failure Pass ]
+imported/w3c/web-platform-tests/webrtc/RTCDataChannel-worker-GC.html [ Failure Pass ]
+imported/w3c/web-platform-tests/webrtc/RTCIceTransport.html [ Failure ]
