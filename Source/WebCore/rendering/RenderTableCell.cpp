@@ -4,7 +4,7 @@
  *           (C) 1998 Waldo Bastian (bastian@kde.org)
  *           (C) 1999 Lars Knoll (knoll@kde.org)
  *           (C) 1999 Antti Koivisto (koivisto@kde.org)
- * Copyright (C) 2003-2024 Apple Inc. All rights reserved.
+ * Copyright (C) 2003-2025 Apple Inc. All rights reserved.
  * Copyright (C) 2016-2017 Google Inc. All rights reserved.
  * Copyright (C) 2025 Samuel Weinig <sam@webkit.org>
  *
@@ -285,10 +285,25 @@ bool RenderTableCell::computeIntrinsicPadding(LayoutUnit heightConstraint)
     }
 
     auto applyStandard = [&] {
+        auto hasInFlowChildren = [&] {
+            for (auto& child : childrenOfType<RenderObject>(*this)) {
+                if (!child.isOutOfFlowPositioned())
+                    return true;
+            }
+            return false;
+        };
+
         auto baseline = cellBaselinePosition();
-        auto needsIntrinsicPadding = baseline > borderAndPaddingBefore() || !borderBoxLogicalHeight;
-        if (needsIntrinsicPadding)
-            intrinsicPaddingBefore = section()->rowBaseline(rowIndex()) - (baseline - oldIntrinsicPaddingBefore);
+
+        if (hasInFlowChildren()) {
+            auto needsIntrinsicPadding = baseline > borderAndPaddingBefore() || !borderBoxLogicalHeight;
+            if (needsIntrinsicPadding)
+                intrinsicPaddingBefore = section()->rowBaseline(rowIndex()) - (baseline - oldIntrinsicPaddingBefore);
+            else {
+                // No inflow children → baseline is content edge, don’t shift padding.
+                intrinsicPaddingBefore = 0;
+            }
+        }
     };
 
     WTF::switchOn(alignment,
