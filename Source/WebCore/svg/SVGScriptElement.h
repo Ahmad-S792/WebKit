@@ -29,6 +29,8 @@
 
 namespace WebCore {
 
+enum class RequestPriority : uint8_t;
+
 class SVGScriptElement final : public SVGElement, public SVGURIReference, public ScriptElement {
     WTF_MAKE_TZONE_OR_ISO_ALLOCATED(SVGScriptElement);
     WTF_OVERRIDE_DELETE_FOR_CHECKED_PTR(SVGScriptElement);
@@ -40,6 +42,8 @@ public:
     using SVGElement::deref;
 
     bool async() const;
+    String fetchPriorityForBindings() const;
+    RequestPriority fetchPriority() const final;
 
 private:
     SVGScriptElement(const QualifiedName&, Document&, bool wasInsertedByParser, bool alreadyStarted);
