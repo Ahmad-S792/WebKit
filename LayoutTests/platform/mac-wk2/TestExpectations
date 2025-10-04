@@ -945,6 +945,8 @@ webkit.org/b/197207 http/wpt/resource-timing/rt-resources-per-frame.html [ Pass 
 
 webkit.org/b/197662 imported/w3c/web-platform-tests/webrtc/RTCPeerConnection-getStats.https.html [ Pass Failure ]
 
+imported/w3c/web-platform-tests/webrtc/RTCIceTransport.html [ Skip ]
+
 webkit.org/b/198195 fast/css/sticky/sticky-left-percentage.html [ Pass ImageOnlyFailure ]
 
 fast/css/accent-color/datalist.html [ Pass ]

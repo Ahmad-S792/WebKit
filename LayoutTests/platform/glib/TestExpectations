@@ -2808,6 +2808,9 @@ http/wpt/webrtc/rtcNetworkInterface.html [ Failure ]
 
 webkit.org/b/276587 webrtc/video-av1.html [ Pass Timeout ]
 
+# Crashes on WebKitGTK and WPE platform
+imported/w3c/web-platform-tests/webrtc/protocol/h265-loopback.https.html [ Skip ]
+
 #////////////////////////////////////////////////////////////////////////////////////////
 # End of WebRTC-related bugs
 #////////////////////////////////////////////////////////////////////////////////////////

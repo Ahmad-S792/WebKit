@@ -1,5 +1,5 @@
 
-FAIL new RTCPeerConnection() should have default configuration.iceServers of undefined assert_array_equals: value is undefined, expected array
+FAIL new RTCPeerConnection() should have default configuration.iceServers of [] assert_array_equals: value is undefined, expected array
 PASS new RTCPeerConnection(config) - {} should succeed
 PASS setConfiguration(config) - {} should succeed
 PASS new RTCPeerConnection(config) - { iceServers: null } should throw TypeError
@@ -28,6 +28,8 @@ FAIL new RTCPeerConnection(config) - with turn server and empty string username,
 FAIL setConfiguration(config) - with turn server and empty string username, credential should succeed Bad Configuration Parameters
 PASS new RTCPeerConnection(config) - with one turns server, one turn server, username, credential should succeed
 PASS setConfiguration(config) - with one turns server, one turn server, username, credential should succeed
+PASS new RTCPeerConnection(config) - with a turn server and a username of 509 characters should succeed
+PASS setConfiguration(config) - with a turn server and a username of 509 characters should succeed
 PASS new RTCPeerConnection(config) - with turn server and no credentials should throw InvalidAccessError
 PASS setConfiguration(config) - with turn server and no credentials should throw InvalidAccessError
 PASS new RTCPeerConnection(config) - with turn server and only username should throw InvalidAccessError
@@ -40,6 +42,18 @@ PASS new RTCPeerConnection(config) - with turns server and only username should 
 PASS setConfiguration(config) - with turns server and only username should throw InvalidAccessError
 PASS new RTCPeerConnection(config) - with turns server and only credential should throw InvalidAccessError
 PASS setConfiguration(config) - with turns server and only credential should throw InvalidAccessError
+FAIL new RTCPeerConnection(config) - with a turn server and a username of 510 characters throw InvalidAccessError assert_throws_dom: function "() =>
+      makePc({ iceServers: [{
+        urls: 'turns:turn.example.net',
+        username: kUsernameOfMaxPermittedLength + 'a',
+        credential: 'cred'
+      }] })" threw object "TypeError: TURN/TURNS username and/or credential are too long" that is not a DOMException InvalidAccessError: property "code" is equal to undefined, expected 15
+FAIL setConfiguration(config) - with a turn server and a username of 510 characters throw InvalidAccessError assert_throws_dom: function "() =>
+      makePc({ iceServers: [{
+        urls: 'turns:turn.example.net',
+        username: kUsernameOfMaxPermittedLength + 'a',
+        credential: 'cred'
+      }] })" threw object "TypeError: TURN/TURNS username and/or credential are too long" that is not a DOMException InvalidAccessError: property "code" is equal to undefined, expected 15
 PASS new RTCPeerConnection(config) - with "" url should throw SyntaxError
 PASS setConfiguration(config) - with "" url should throw SyntaxError
 PASS new RTCPeerConnection(config) - with ["stun:stun1.example.net", ""] url should throw SyntaxError
@@ -51,10 +65,14 @@ PASS setConfiguration(config) - with http url should throw SyntaxError
 FAIL new RTCPeerConnection(config) - with invalid turn url should throw SyntaxError assert_throws_dom: function "() =>
       makePc({ iceServers: [{
         urls: 'turn://example.org/foo?x=y'
+        // `username` and `credential` are not passed because the invalid url
+        // should be rejected before the check for those arguments.
       }] })" threw object "InvalidAccessError: TURN/TURNS server requires both username and credential" that is not a DOMException SyntaxError: property "code" is equal to 15, expected 12
 FAIL setConfiguration(config) - with invalid turn url should throw SyntaxError assert_throws_dom: function "() =>
       makePc({ iceServers: [{
         urls: 'turn://example.org/foo?x=y'
+        // `username` and `credential` are not passed because the invalid url
+        // should be rejected before the check for those arguments.
       }] })" threw object "InvalidAccessError: TURN/TURNS server requires both username and credential" that is not a DOMException SyntaxError: property "code" is equal to 15, expected 12
 FAIL new RTCPeerConnection(config) - with invalid stun url should throw SyntaxError assert_throws_dom: function "() =>
       makePc({ iceServers: [{
@@ -72,4 +90,7 @@ FAIL setConfiguration(config) - with empty urls should throw SyntaxError assert_
       makePc({ iceServers: [{
         urls: []
       }] })" did not throw
+FAIL setConfiguration(config) - without iceServers removes ice servers undefined is not an object (evaluating 'config.iceServers.length')
+PASS new RTCPeerConnection(config) - with 32 ice servers must succeed
+PASS setConfiguration(config) - with 32 ice servers must succeed
 

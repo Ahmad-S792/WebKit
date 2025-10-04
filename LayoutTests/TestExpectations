@@ -2819,7 +2819,13 @@ imported/w3c/web-platform-tests/webrtc-stats/supported-stats.https.html [ Failur
 imported/w3c/web-platform-tests/webrtc/RTCConfiguration-bundlePolicy.html [ Failure ]
 
 # Skip timing out test
-imported/w3c/web-platform-tests/webrtc/RTCDataChannel-send-close.html [ Skip ]
+imported/w3c/web-platform-tests/webrtc/RTCDataChannel-send-close-array-buffer-negotiated.window.html [ Skip ]
+imported/w3c/web-platform-tests/webrtc/RTCDataChannel-send-close-array-buffer.window.html [ Skip ]
+imported/w3c/web-platform-tests/webrtc/RTCDataChannel-send-close-blob-negotiated.window.html [ Skip ]
+imported/w3c/web-platform-tests/webrtc/RTCDataChannel-send-close-blob.window.html [ Skip ]
+imported/w3c/web-platform-tests/webrtc/RTCDataChannel-send-close-string-negotiated.window.html [ Skip ]
+imported/w3c/web-platform-tests/webrtc/RTCDataChannel-send-close-string.window.html [ Skip ]
+
 imported/w3c/web-platform-tests/webrtc/RTCTrackEvent-fire.html [ Skip ]
 fast/mediastream/RTCPeerConnection-closed-state.html [ Skip ]
 fast/mediastream/RTCPeerConnection-iceconnectionstatechange-event.html [ Skip ]
@@ -8157,3 +8163,5 @@ imported/w3c/web-platform-tests/css/CSS2/visudet/replaced-elements-min-width-80.
 
 imported/w3c/web-platform-tests/css/CSS2/stacking-context/opacity-affects-block-in-inline.html [ ImageOnlyFailure ]
 imported/w3c/web-platform-tests/css/CSS2/stacking-context/zindex-affects-block-in-inline.html [ ImageOnlyFailure ]
+imported/w3c/web-platform-tests/webrtc/RTCDataChannel-worker-GC.html [ Failure Pass ]
+imported/w3c/web-platform-tests/webrtc/RTCRtpReceiver-track-settings.tentative.html [ Failure Pass ]

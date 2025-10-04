@@ -1,0 +1,4 @@
+
+FAIL Rejects invalid modification of send direction assert_unreached: Should have rejected: undefined Reached unreachable code
+FAIL Rejects invalid modification of receive direction assert_unreached: Should have rejected: undefined Reached unreachable code
+

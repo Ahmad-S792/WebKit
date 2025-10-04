@@ -1,0 +1,13 @@
+
+FAIL RTCOutboundRtpStreamStats does not exist as early as have-local-offer assert_false: outbound-rtp does not exist in have-local-offer expected false got true
+PASS RTCOutboundRtpStreamStats exists after returning to stable
+FAIL RTCOutboundRtpStreamStats exists per simulcast encoding assert_not_equals: got disallowed value undefined
+FAIL RTCInboundRtpStreamStats are created by packet reception assert_false: inbound-rtp does not exist before packets are received expected false got true
+PASS RTCOutboundRtpStreamStats exist in pc.getStats() after created with a null track through pc.addTransceiver("audio")
+PASS RTCOutboundRtpStreamStats exist in sender.getStats() after created with a null track through pc.addTransceiver("audio")
+PASS RTCOutboundRtpStreamStats exist in pc.getStats() after created with a null track through pc.addTransceiver("video")
+PASS RTCOutboundRtpStreamStats exist in sender.getStats() after created with a null track through pc.addTransceiver("video")
+PASS RTCOutboundRtpStreamStats remain in pc.getStats() after sender.replaceTrack(null)
+PASS RTCOutboundRtpStreamStats remain in sender.getStats() after sender.replaceTrack(null)
+PASS RTCInboundRtpStreamStats exists for early media
+
