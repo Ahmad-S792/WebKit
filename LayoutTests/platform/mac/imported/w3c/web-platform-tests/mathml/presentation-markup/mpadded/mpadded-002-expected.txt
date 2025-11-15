@@ -6,9 +6,9 @@ FAIL Percentage calculation for width, height and depth assert_equals: width exp
 PASS Different depths
 PASS Various combinations of height, depth and width.
 PASS Preferred width
-FAIL dynamic attributes (remove) assert_approx_equals: expected 100 +/- 1 but got 10
-FAIL dynamic attributes (attach) assert_approx_equals: expected 50 +/- 1 but got 100
-FAIL dynamic attributes (modify) assert_approx_equals: expected 50 +/- 1 but got 100
+PASS dynamic attributes (remove)
+PASS dynamic attributes (attach)
+PASS dynamic attributes (modify)
 
 
 
