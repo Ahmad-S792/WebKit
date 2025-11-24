@@ -44,7 +44,7 @@ inline RenderMathMLTable::RenderMathMLTable(MathMLElement& element, RenderStyle&
 
 inline LayoutUnit RenderMathMLBlock::ascentForChild(const RenderBox& child)
 {
-    return child.firstLineBaseline().value_or(child.logicalHeight().toInt());
+    return child.firstLineBaseline().value_or(child.logicalHeight());
 }
 
 inline LayoutUnit RenderMathMLBlock::mirrorIfNeeded(LayoutUnit horizontalOffset, const RenderBox& child) const
