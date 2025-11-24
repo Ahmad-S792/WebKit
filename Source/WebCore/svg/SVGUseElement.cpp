@@ -325,6 +325,8 @@ RefPtr<SVGElement> SVGUseElement::targetClone() const
 
 RenderPtr<RenderElement> SVGUseElement::createElementRenderer(RenderStyle&& style, const RenderTreePosition&)
 {
+    if (style.display() == DisplayType::Contents)
+        return nullptr;
     if (document().settings().layerBasedSVGEngineEnabled())
         return createRenderer<RenderSVGTransformableContainer>(*this, WTF::move(style));
     return createRenderer<LegacyRenderSVGTransformableContainer>(*this, WTF::move(style));

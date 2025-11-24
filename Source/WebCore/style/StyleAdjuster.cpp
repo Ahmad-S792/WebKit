@@ -904,10 +904,16 @@ static bool hasEffectiveDisplayNoneForDisplayContents(const Element& element)
 {
     using namespace ElementNames;
 
+    // According to the CSS Display spec[1], nested <svg> elements, <g>,
+    // <use>, and <tspan> elements are not rendered and their children are
+    // "hoisted". For other elements display:contents behaves as display:none.
     // https://drafts.csswg.org/css-display-3/#unbox-svg
-    // FIXME: <g>, <use> and <tspan> have special (?) behavior for display:contents in the current draft spec.
-    if (is<SVGElement>(element))
-        return true;
+    if (RefPtr svgElement = dynamicDowncast<SVGElement>(element)) {
+        bool isOutermostSVG = svgElement->isOutermostSVGSVGElement();
+        if (isOutermostSVG || (!svgElement->hasTagName(SVGNames::svgTag) && !svgElement->hasTagName(SVGNames::tspanTag) && !svgElement->hasTagName(SVGNames::gTag) && !svgElement->hasTagName(SVGNames::useTag)))
+            return true;
+        return false;
+    }
 #if ENABLE(MATHML)
     // Not sure MathML code can handle it.
     if (is<MathMLElement>(element))
