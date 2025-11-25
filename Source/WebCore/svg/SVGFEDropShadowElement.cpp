@@ -1,6 +1,6 @@
 /*
  * Copyright (C) Research In Motion Limited 2011. All rights reserved.
- * Copyright (C) 2018-2022 Apple Inc. All rights reserved.
+ * Copyright (C) 2018-2025 Apple Inc. All rights reserved.
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Library General Public
@@ -68,16 +68,19 @@ void SVGFEDropShadowElement::attributeChanged(const QualifiedName& name, const A
         if (auto result = parseNumberOptionalNumber(newValue)) {
             Ref { m_stdDeviationX }->setBaseValInternal(result->first);
             Ref { m_stdDeviationY }->setBaseValInternal(result->second);
+        } else {
+            Ref { m_stdDeviationX }->setBaseValInternal(2);
+            Ref { m_stdDeviationY }->setBaseValInternal(2);
         }
         break;
     case AttributeNames::inAttr:
         Ref { m_in1 }->setBaseValInternal(newValue);
         break;
     case AttributeNames::dxAttr:
-        Ref { m_dx }->setBaseValInternal(newValue.toFloat());
+        Ref { m_dx }->setBaseValInternal(parseNumber(newValue).value_or(2));
         break;
     case AttributeNames::dyAttr:
-        Ref { m_dy }->setBaseValInternal(newValue.toFloat());
+        Ref { m_dy }->setBaseValInternal(parseNumber(newValue).value_or(2));
         break;
     default:
         break;

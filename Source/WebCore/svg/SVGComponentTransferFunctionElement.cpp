@@ -1,7 +1,7 @@
 /*
  * Copyright (C) 2004, 2005, 2007 Nikolas Zimmermann <zimmermann@kde.org>
  * Copyright (C) 2004, 2005, 2006 Rob Buis <buis@kde.org>
- * Copyright (C) 2018-2019 Apple Inc. All rights reserved.
+ * Copyright (C) 2018-2025 Apple Inc. All rights reserved.
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Library General Public
@@ -62,19 +62,19 @@ void SVGComponentTransferFunctionElement::attributeChanged(const QualifiedName& 
         m_tableValues->baseVal()->parse(newValue);
         break;
     case AttributeNames::slopeAttr:
-        m_slope->setBaseValInternal(newValue.toFloat());
+        m_slope->setBaseValInternal(parseNumber(newValue).value_or(1));
         break;
     case AttributeNames::interceptAttr:
-        m_intercept->setBaseValInternal(newValue.toFloat());
+        m_intercept->setBaseValInternal(parseNumber(newValue).value_or(0));
         break;
     case AttributeNames::amplitudeAttr:
-        m_amplitude->setBaseValInternal(newValue.toFloat());
+        m_amplitude->setBaseValInternal(parseNumber(newValue).value_or(1));
         break;
     case AttributeNames::exponentAttr:
-        m_exponent->setBaseValInternal(newValue.toFloat());
+        m_exponent->setBaseValInternal(parseNumber(newValue).value_or(1));
         break;
     case AttributeNames::offsetAttr:
-        m_offset->setBaseValInternal(newValue.toFloat());
+        m_offset->setBaseValInternal(parseNumber(newValue).value_or(0));
         break;
     default:
         break;

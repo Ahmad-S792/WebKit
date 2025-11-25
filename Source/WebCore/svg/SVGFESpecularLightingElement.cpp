@@ -2,7 +2,7 @@
  * Copyright (C) 2004, 2005, 2007 Nikolas Zimmermann <zimmermann@kde.org>
  * Copyright (C) 2004, 2005, 2006 Rob Buis <buis@kde.org>
  * Copyright (C) 2005 Oliver Hunt <oliver@nerget.com>
- * Copyright (C) 2018-2022 Apple Inc. All rights reserved.
+ * Copyright (C) 2018-2025 Apple Inc. All rights reserved.
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Library General Public
@@ -65,18 +65,21 @@ void SVGFESpecularLightingElement::attributeChanged(const QualifiedName& name, c
         Ref { m_in1 }->setBaseValInternal(newValue);
         break;
     case AttributeNames::surfaceScaleAttr:
-        Ref { m_surfaceScale }->setBaseValInternal(newValue.toFloat());
+        Ref { m_surfaceScale }->setBaseValInternal(parseNumber(newValue).value_or(1));
         break;
     case AttributeNames::specularConstantAttr:
-        Ref { m_specularConstant }->setBaseValInternal(newValue.toFloat());
+        Ref { m_specularConstant }->setBaseValInternal(parseNumber(newValue).value_or(1));
         break;
     case AttributeNames::specularExponentAttr:
-        Ref { m_specularExponent }->setBaseValInternal(newValue.toFloat());
+        Ref { m_specularExponent }->setBaseValInternal(parseNumber(newValue).value_or(1));
         break;
     case AttributeNames::kernelUnitLengthAttr:
         if (auto result = parseNumberOptionalNumber(newValue)) {
             Ref { m_kernelUnitLengthX }->setBaseValInternal(result->first);
             Ref { m_kernelUnitLengthY }->setBaseValInternal(result->second);
+        } else {
+            Ref { m_kernelUnitLengthX }->setBaseValInternal(0);
+            Ref { m_kernelUnitLengthY }->setBaseValInternal(0);
         }
         break;
     default:
