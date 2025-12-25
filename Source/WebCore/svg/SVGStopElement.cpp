@@ -56,10 +56,36 @@ Ref<SVGStopElement> SVGStopElement::create(const QualifiedName& tagName, Documen
 void SVGStopElement::attributeChanged(const QualifiedName& name, const AtomString& oldValue, const AtomString& newValue, AttributeModificationReason attributeModificationReason)
 {
     if (name == SVGNames::offsetAttr) {
-        if (newValue.endsWith('%'))
-            Ref { m_offset }->setBaseValInternal(newValue.string().left(newValue.length() - 1).toFloat() / 100.0f);
+        auto parseOffsetValue = [](StringView value) -> std::optional<float> {
+            return readCharactersForParsing(value, [](auto buffer) -> std::optional<float> {
+                skipOptionalSVGSpaces(buffer);
+
+                auto number = parseNumber(buffer, SVGWhitespaceMode::DisallowWhitespace);
+                if (!number)
+                    return std::nullopt;
+
+                float result = *number;
+                // Check for percentage sign (must immediately follow number)
+                if (buffer.hasCharactersRemaining() && *buffer == '%') {
+                    ++buffer;
+                    result /= 100.0f;
+                }
+
+                // Skip trailing whitespace
+                skipOptionalSVGSpaces(buffer);
+
+                // Must have consumed entire string
+                if (!buffer.atEnd())
+                    return std::nullopt;
+
+                return result;
+            });
+        };
+
+        if (auto offset = parseOffsetValue(newValue))
+            Ref { m_offset }->setBaseValInternal(*offset);
         else
-            Ref { m_offset }->setBaseValInternal(newValue.toFloat());
+            Ref { m_offset }->setBaseValInternal(0.0f); // Fallback to default value (0) for invalid input
     }
 
     SVGElement::attributeChanged(name, oldValue, newValue, attributeModificationReason);

@@ -43,8 +43,11 @@ template <typename FloatType> static inline bool isValidRange(const FloatType x)
 // at a higher precision internally, without any unnecessary runtime cost or code
 // complexity.
 // FIXME: Can this be shared/replaced with number parsing in WTF?
-template <typename CharacterType, typename FloatType = float> static std::optional<FloatType> genericParseNumber(StringParsingBuffer<CharacterType>& buffer, SuffixSkippingPolicy skip = SuffixSkippingPolicy::Skip)
+template <typename CharacterType, typename FloatType = float> static std::optional<FloatType> genericParseNumber(StringParsingBuffer<CharacterType>& buffer, SVGWhitespaceMode mode)
 {
+    if (mode & SVGWhitespaceMode::AllowLeadingWhitespace)
+        skipOptionalSVGSpaces(buffer);
+
     // read the sign
     int sign = 1;
     if (buffer.hasCharactersRemaining() && *buffer == '+')
@@ -144,26 +147,26 @@ template <typename CharacterType, typename FloatType = float> static std::option
     if (!isValidRange(number))
         return std::nullopt;
 
-    if (skip == SuffixSkippingPolicy::Skip)
+    if (mode & SVGWhitespaceMode::AllowTrailingWhitespace)
         skipOptionalSVGSpacesOrDelimiter(buffer);
 
     return number;
 }
 
-std::optional<float> parseNumber(StringParsingBuffer<Latin1Character>& buffer, SuffixSkippingPolicy skip)
+std::optional<float> parseNumber(StringParsingBuffer<Latin1Character>& buffer, SVGWhitespaceMode mode)
 {
-    return genericParseNumber(buffer, skip);
+    return genericParseNumber(buffer, mode);
 }
 
-std::optional<float> parseNumber(StringParsingBuffer<char16_t>& buffer, SuffixSkippingPolicy skip)
+std::optional<float> parseNumber(StringParsingBuffer<char16_t>& buffer, SVGWhitespaceMode mode)
 {
-    return genericParseNumber(buffer, skip);
+    return genericParseNumber(buffer, mode);
 }
 
-std::optional<float> parseNumber(StringView string, SuffixSkippingPolicy skip)
+std::optional<float> parseNumber(StringView string, SVGWhitespaceMode mode)
 {
-    return readCharactersForParsing(string, [skip](auto buffer) -> std::optional<float> {
-        auto result = genericParseNumber(buffer, skip);
+    return readCharactersForParsing(string, [mode](auto buffer) -> std::optional<float> {
+        auto result = genericParseNumber(buffer, mode);
         if (!buffer.atEnd())
             return std::nullopt;
         return result;
@@ -216,7 +219,7 @@ std::optional<std::pair<float, float>> parseNumberOptionalNumber(StringView stri
         if (buffer.atEnd())
             return std::make_pair(*x, *x);
 
-        auto y = parseNumber(buffer, SuffixSkippingPolicy::DontSkip);
+        auto y = parseNumber(buffer, SVGWhitespaceMode::AllowLeadingAndTrailingWhitespace);
         if (!y)
             return std::nullopt;
 
@@ -261,7 +264,7 @@ std::optional<FloatRect> parseRect(StringView string)
         auto width = parseNumber(buffer);
         if (!width)
             return std::nullopt;
-        auto height = parseNumber(buffer, SuffixSkippingPolicy::DontSkip);
+        auto height = parseNumber(buffer, SVGWhitespaceMode::DisallowWhitespace);
         if (!height)
             return std::nullopt;
 

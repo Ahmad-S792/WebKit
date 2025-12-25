@@ -109,7 +109,7 @@ static std::optional<Vector<UnitBezier>> parseKeySplines(StringView string)
             if (!posC || !isInRange<float>(*posC, 0, 1))
                 return std::nullopt;
 
-            auto posD = parseNumber(buffer, SuffixSkippingPolicy::DontSkip);
+            auto posD = parseNumber(buffer, SVGWhitespaceMode::DisallowWhitespace);
             if (!posD || !isInRange<float>(*posD, 0, 1))
                 return std::nullopt;
 

@@ -32,14 +32,16 @@ namespace WebCore {
 class FloatPoint;
 class FloatRect;
 
-enum class SuffixSkippingPolicy {
-    DontSkip,
-    Skip
+enum SVGWhitespaceMode {
+    DisallowWhitespace = 0,
+    AllowLeadingWhitespace = 0x1,
+    AllowTrailingWhitespace = 0x2,
+    AllowLeadingAndTrailingWhitespace = AllowLeadingWhitespace | AllowTrailingWhitespace
 };
 
-std::optional<float> parseNumber(StringParsingBuffer<Latin1Character>&, SuffixSkippingPolicy = SuffixSkippingPolicy::Skip);
-std::optional<float> parseNumber(StringParsingBuffer<char16_t>&, SuffixSkippingPolicy = SuffixSkippingPolicy::Skip);
-std::optional<float> parseNumber(StringView, SuffixSkippingPolicy = SuffixSkippingPolicy::Skip);
+std::optional<float> parseNumber(StringParsingBuffer<Latin1Character>&, SVGWhitespaceMode = SVGWhitespaceMode::AllowLeadingAndTrailingWhitespace);
+std::optional<float> parseNumber(StringParsingBuffer<char16_t>&, SVGWhitespaceMode = SVGWhitespaceMode::AllowLeadingAndTrailingWhitespace);
+std::optional<float> parseNumber(StringView, SVGWhitespaceMode = SVGWhitespaceMode::AllowLeadingAndTrailingWhitespace);
 
 std::optional<std::pair<float, float>> parseNumberOptionalNumber(StringView);
 

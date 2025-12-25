@@ -117,7 +117,7 @@ template<typename CharacterType> std::optional<FloatRect> SVGFitToViewBox::parse
     auto x = parseNumber(buffer);
     auto y = parseNumber(buffer);
     auto width = parseNumber(buffer);
-    auto height = parseNumber(buffer, SuffixSkippingPolicy::DontSkip);
+    auto height = parseNumber(buffer, SVGWhitespaceMode::DisallowWhitespace);
 
     if (validate) {
         Ref document = Ref { m_viewBox }->contextElement()->document();

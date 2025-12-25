@@ -93,23 +93,40 @@ String SVGAngleValue::valueAsString() const
     return String();
 }
 
-template<typename CharacterType> static inline SVGAngleValue::Type parseAngleType(StringParsingBuffer<CharacterType> buffer)
+template<typename CharacterType> static inline SVGAngleValue::Type parseAngleType(StringParsingBuffer<CharacterType>& buffer)
 {
-    switch (buffer.lengthRemaining()) {
-    case 0:
+    // Handle empty buffer (unitless value)
+    if (!buffer.hasCharactersRemaining())
         return SVGAngleValue::SVG_ANGLETYPE_UNSPECIFIED;
-    case 3:
-        if (compareCharacters(buffer.position(), 'd', 'e', 'g'))
-            return SVGAngleValue::SVG_ANGLETYPE_DEG;
-        if (compareCharacters(buffer.position(), 'r', 'a', 'd'))
-            return SVGAngleValue::SVG_ANGLETYPE_RAD;
-        break;
-    case 4:
-        if (compareCharacters(buffer.position(), 'g', 'r', 'a', 'd'))
-            return SVGAngleValue::SVG_ANGLETYPE_GRAD;
-        if (compareCharacters(buffer.position(), 't', 'u', 'r', 'n'))
-            return SVGAngleValue::SVG_ANGLETYPE_TURN;
-        break;
+
+    // Check if we start with whitespace - if so, it's either unitless with trailing WS, or invalid
+    if (isASCIIWhitespace(*buffer)) {
+        // Skip the whitespace
+        skipOptionalSVGSpaces(buffer);
+        // If nothing remains after whitespace, it's a unitless value with trailing whitespace
+        if (!buffer.hasCharactersRemaining())
+            return SVGAngleValue::SVG_ANGLETYPE_UNSPECIFIED;
+        // If there's something after whitespace, it's invalid (e.g., "47 deg")
+        return SVGAngleValue::SVG_ANGLETYPE_UNKNOWN;
+    }
+
+    // Try to match unit strings
+    auto remaining = buffer.lengthRemaining();
+    if (remaining >= 3 && compareCharacters(buffer.position(), 'd', 'e', 'g')) {
+        buffer += 3;
+        return SVGAngleValue::SVG_ANGLETYPE_DEG;
+    }
+    if (remaining >= 3 && compareCharacters(buffer.position(), 'r', 'a', 'd')) {
+        buffer += 3;
+        return SVGAngleValue::SVG_ANGLETYPE_RAD;
+    }
+    if (remaining >= 4 && compareCharacters(buffer.position(), 'g', 'r', 'a', 'd')) {
+        buffer += 4;
+        return SVGAngleValue::SVG_ANGLETYPE_GRAD;
+    }
+    if (remaining >= 4 && compareCharacters(buffer.position(), 't', 'u', 'r', 'n')) {
+        buffer += 4;
+        return SVGAngleValue::SVG_ANGLETYPE_TURN;
     }
     return SVGAngleValue::SVG_ANGLETYPE_UNKNOWN;
 }
@@ -122,12 +139,19 @@ ExceptionOr<void> SVGAngleValue::setValueAsString(const String& value)
     }
 
     return readCharactersForParsing(value, [&](auto buffer) -> ExceptionOr<void> {
-        auto valueInSpecifiedUnits = parseNumber(buffer, SuffixSkippingPolicy::DontSkip);
+        auto valueInSpecifiedUnits = parseNumber(buffer, SVGWhitespaceMode::AllowLeadingWhitespace);
         if (!valueInSpecifiedUnits)
             return Exception { ExceptionCode::SyntaxError };
 
         auto unitType = parseAngleType(buffer);
         if (unitType == SVGAngleValue::SVG_ANGLETYPE_UNKNOWN)
+            return Exception { ExceptionCode::SyntaxError };
+
+        // Skip trailing whitespace
+        skipOptionalSVGSpaces(buffer);
+
+        // Ensure nothing remains
+        if (buffer.hasCharactersRemaining())
             return Exception { ExceptionCode::SyntaxError };
 
         m_unitType = unitType;
