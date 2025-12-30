@@ -6013,7 +6013,6 @@ webkit.org/b/230004 imported/w3c/web-platform-tests/css/css-pseudo/selection-tex
 
 
 # css/filter-effects
-imported/w3c/web-platform-tests/css/filter-effects/backdrop-filter-fixed-clip.html [ ImageOnlyFailure ]
 imported/w3c/web-platform-tests/css/filter-effects/backdrop-filter-svg-foreignObject.html [ ImageOnlyFailure ]
 imported/w3c/web-platform-tests/css/filter-effects/backdrop-filter-svg.html [ ImageOnlyFailure ]
 imported/w3c/web-platform-tests/css/filter-effects/blur-text.html [ ImageOnlyFailure ]
@@ -6074,7 +6073,6 @@ imported/w3c/web-platform-tests/css/filter-effects/svg-external-filter-resource.
 imported/w3c/web-platform-tests/css/filter-effects/svg-mutation-filter-used-by-mask.html [ ImageOnlyFailure ]
 imported/w3c/web-platform-tests/css/filter-effects/will-change-blur-filter-under-clip.html [ ImageOnlyFailure ]
 imported/w3c/web-platform-tests/css/filter-effects/svg-feimage-002.html [ ImageOnlyFailure ]
-imported/w3c/web-platform-tests/css/filter-effects/backdrop-filter-backdrop-root-opacity.html [ ImageOnlyFailure ]
 imported/w3c/web-platform-tests/css/filter-effects/backdrop-filter-reference-filter-mutated.html [ ImageOnlyFailure ]
 imported/w3c/web-platform-tests/css/filter-effects/backdrop-filter-svg-blur.html [ ImageOnlyFailure ]
 imported/w3c/web-platform-tests/css/filter-effects/empty-element-with-filter-002.html [ ImageOnlyFailure ]
@@ -6082,6 +6080,18 @@ imported/w3c/web-platform-tests/css/filter-effects/empty-element-with-filter-003
 imported/w3c/web-platform-tests/css/filter-effects/empty-element-with-filter-004.html [ ImageOnlyFailure ]
 imported/w3c/web-platform-tests/css/filter-effects/filter-region-html-content-viewport.tentative.html [ ImageOnlyFailure ]
 imported/w3c/web-platform-tests/css/filter-effects/svg-feimage-003.html [ ImageOnlyFailure ]
+imported/w3c/web-platform-tests/css/filter-effects/backdrop-filter-backdrop-root-clip-path-2.html [ ImageOnlyFailure ]
+imported/w3c/web-platform-tests/css/filter-effects/backdrop-filter-inline-positioning.html [ ImageOnlyFailure ]
+imported/w3c/web-platform-tests/css/filter-effects/css-filters-animation-opacity.html [ ImageOnlyFailure ]
+imported/w3c/web-platform-tests/css/filter-effects/fecolormatrix-special-value.html [ ImageOnlyFailure ]
+imported/w3c/web-platform-tests/css/filter-effects/fecomponenttransfer-display-p3.html [ ImageOnlyFailure ]
+imported/w3c/web-platform-tests/css/filter-effects/feconvolve-divisor.html [ ImageOnlyFailure ]
+imported/w3c/web-platform-tests/css/filter-effects/feconvolve-region-001.html [ ImageOnlyFailure ]
+imported/w3c/web-platform-tests/css/filter-effects/feconvolve-region-002.html [ ImageOnlyFailure ]
+imported/w3c/web-platform-tests/css/filter-effects/svg-empty-hidden-foreignobject-with-filter-001.html [ ImageOnlyFailure ]
+imported/w3c/web-platform-tests/css/filter-effects/svg-visibility-hidden-element-with-filter-001.html [ ImageOnlyFailure ]
+imported/w3c/web-platform-tests/css/filter-effects/svg-visibility-hidden-element-with-filter-002.html [ ImageOnlyFailure ]
+imported/w3c/web-platform-tests/css/filter-effects/visibility-hidden-element-with-filter-001.html [ ImageOnlyFailure ]
 
 # CSS motion path URL support.
 imported/w3c/web-platform-tests/css/motion/offset-path-url-002.html [ ImageOnlyFailure ]
