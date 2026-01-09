@@ -1,7 +1,7 @@
 /*
  * Copyright (C) 2004, 2005, 2006, 2008 Nikolas Zimmermann <zimmermann@kde.org>
  * Copyright (C) 2004, 2005, 2006, 2007 Rob Buis <buis@kde.org>
- * Copyright (C) 2018-2024 Apple Inc. All rights reserved.
+ * Copyright (C) 2018-2025 Apple Inc. All rights reserved.
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Library General Public
@@ -238,6 +238,14 @@ RenderPtr<RenderElement> SVGPathElement::createElementRenderer(RenderStyle&& sty
 const SVGPathByteStream& SVGPathElement::pathByteStream() const
 {
     if (document().settings().cssDPropertyEnabled()) {
+        // Try computed style first (works for display:none elements).
+        auto path = const_cast<SVGPathElement*>(this);
+        if (auto* style = path->computedStyle()) {
+            if (auto& pathFunction = style->d().tryPath())
+                return pathFunction->parameters.data.byteStream;
+        }
+
+        // Fallback to renderer style, if no computed style.
         if (CheckedPtr renderer = this->renderer()) {
             if (auto& pathFunction = renderer->style().d().tryPath())
                 return pathFunction->parameters.data.byteStream;

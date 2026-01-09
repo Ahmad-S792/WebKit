@@ -1691,9 +1691,6 @@ webkit.org/b/222573 media/media-fullscreen-pause-inline.html [ Pass Failure ]
 
 webkit.org/b/222692 inspector/page/empty-or-missing-resources.html [ Pass Timeout ]
 
-# webkit.org/b/223223 these two tests fail on Apple Silicon only
-[ Debug arm64 ] svg/W3C-SVG-1.1/paths-data-03-f.svg [ Failure ]
-
 # webkit.org/b/223043 the following tests have issues only on Apple Silicon
 webrtc/h264-baseline.html  [ Failure Timeout ]
 
