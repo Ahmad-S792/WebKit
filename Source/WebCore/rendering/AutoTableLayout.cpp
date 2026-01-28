@@ -107,6 +107,22 @@ void AutoTableLayout::recalcColumn(unsigned effCol)
                         if (fixedCellLogicalWidth->resolveZoom(cellUsedZoom) > cCellMaxWidth)
                             cellLogicalWidth = Style::PreferredSize::Fixed { cCellMaxWidth };
                     }
+
+                    // Handle calc() - treat calc(% + 0px) as pure percentage, others as auto.
+                    // Per https://github.com/w3c/csswg-drafts/issues/3482
+                    if (cellLogicalWidth.isCalculated()) {
+                        // Evaluate calc at two different base values to detect if it's percentage-based:
+                        // e.g., calc(50% + 0px) will scale with base, calc(50% + 10px) won't scale proportionally
+                        float atZero = Style::evaluateMinimum<float>(cellLogicalWidth, 0.0f, Style::ZoomFactor { cellUsedZoom });
+                        float atHundred = Style::evaluateMinimum<float>(cellLogicalWidth, 100.0f, Style::ZoomFactor { cellUsedZoom });
+
+                        // If it scales proportionally (0 at 0, X at 100), it's percentage-based while rest as `auto`.
+                        if (!atZero && atHundred > 0)
+                            cellLogicalWidth = Style::PreferredSize::Percentage { atHundred };
+                        else
+                            cellLogicalWidth = CSS::Keyword::Auto { };
+                    }
+
                     WTF::switchOn(cellLogicalWidth,
                         [&](const Style::PreferredSize::Fixed& fixedCellLogicalWidth) {
                             // ignore width=0
