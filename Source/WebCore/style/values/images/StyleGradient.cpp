@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2022 Apple Inc. All rights reserved.
+ * Copyright (C) 2022-2026 Apple Inc. All rights reserved.
  * Copyright (C) 2024-2025 Samuel Weinig <sam@webkit.org>
  *
  * Redistribution and use in source and binary forms, with or without
@@ -205,9 +205,11 @@ public:
             m_data.point0 = { p0.x() + firstOffset * (p1.x() - p0.x()), p0.y() + firstOffset * (p1.y() - p0.y()) };
             m_data.point1 = { p1.x() + (lastOffset - 1) * (p1.x() - p0.x()), p1.y() + (lastOffset - 1) * (p1.y() - p0.y()) };
         } else {
-            // There's a single position that is outside the scale, clamp the positions to 1.
-            for (auto& stop : stops)
-                stop.offset = 1;
+            // All stops are at the same position - render as solid color of the last stop
+            auto lastColor = stops.last().color;
+            stops.clear();
+            stops.append({ lastColor, 0 });
+            stops.append({ lastColor, 1 });
         }
     }
 
