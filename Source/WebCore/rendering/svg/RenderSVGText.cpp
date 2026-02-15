@@ -652,24 +652,24 @@ bool RenderSVGText::nodeAtFloatPoint(const HitTestRequest& request, HitTestResul
 {
     ASSERT(!document().settings().layerBasedSVGEngineEnabled());
 
-    PointerEventsHitRules hitRules(PointerEventsHitRules::HitTestingTargetType::SVGText, request, usedPointerEvents());
-    if (isVisibleToHitTesting(style(), request) || !hitRules.requireVisible) {
-        if ((hitRules.canHitStroke && (style().hasStroke() || !hitRules.requireStroke))
-            || (hitRules.canHitFill && (style().hasFill() || !hitRules.requireFill))) {
-            static NeverDestroyed<SVGVisitedRendererTracking::VisitedSet> s_visitedSet;
+    // We only draw in the foreground phase, so we only hit-test then.
+    if (hitTestAction != HitTestForeground)
+        return false;
 
-            SVGVisitedRendererTracking recursionTracking(s_visitedSet);
-            if (recursionTracking.isVisiting(*this))
-                return false;
+    FloatPoint localPoint = valueOrDefault(localToParentTransform().inverse()).mapPoint(pointInParent);
+    if (!SVGRenderSupport::pointInClippingArea(*this, localPoint))
+        return false;
 
-            SVGVisitedRendererTracking::Scope recursionScope(recursionTracking, *this);
+    HitTestLocation hitTestLocation(roundedIntPoint(localPoint));
+    if (RenderBlock::nodeAtPoint(request, result, hitTestLocation, LayoutPoint(), hitTestAction))
+        return true;
 
-            FloatPoint localPoint = valueOrDefault(localToParentTransform().inverse()).mapPoint(pointInParent);
-            if (!SVGRenderSupport::pointInClippingArea(*this, localPoint))
-                return false;
-
-            HitTestLocation hitTestLocation(LayoutPoint(flooredIntPoint(localPoint)));
-            return RenderBlock::nodeAtPoint(request, result, hitTestLocation, LayoutPoint(), hitTestAction);
+    // Consider the bounding box if requested.
+    if (style().usedPointerEvents() == PointerEvents::BoundingBox) {
+        if (isObjectBoundingBoxValid() && objectBoundingBox().contains(localPoint)) {
+            updateHitTestResult(result, LayoutPoint(flooredIntPoint(localPoint)));
+            if (result.addNodeToListBasedTestResult(protect(nodeForHitTest()).get(), request, hitTestLocation) == HitTestProgress::Stop)
+                return true;
         }
     }
 
