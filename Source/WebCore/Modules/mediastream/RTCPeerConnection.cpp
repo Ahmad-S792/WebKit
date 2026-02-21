@@ -40,6 +40,7 @@
 #include "DNS.h"
 #include "DocumentPage.h"
 #include "Event.h"
+#include "EventLoop.h"
 #include "EventNames.h"
 #include "FrameDestructionObserverInlines.h"
 #include "JSDOMPromiseDeferred.h"
@@ -330,17 +331,30 @@ void RTCPeerConnection::createOffer(RTCOfferOptions&& options, Ref<DeferredPromi
             promise->reject(ExceptionCode::InvalidStateError);
             return;
         }
-        protectedBackend()->createOffer(WTF::move(options), [this, protectedThis = Ref { *this }, promise = PeerConnection::SessionDescriptionPromise(WTF::move(promise))](auto&& result) mutable {
-            if (isClosed())
-                return;
-            if (result.hasException()) {
-                promise.reject(result.releaseException());
-                return;
-            }
-            // https://w3c.github.io/webrtc-pc/#dfn-final-steps-to-create-an-offer steps 4,5 and 6.
-            m_lastCreatedOffer = result.returnValue().sdp;
-            promise.resolve(result.releaseReturnValue());
-        });
+        // Defer the backend call so that transceivers added synchronously after
+        // createOffer() on the same JS task are visible when the SDP is generated.
+        // Per spec, createOffer runs "in parallel", meaning the current JS task
+        // must complete first. The InvalidStateError check above still runs
+        // synchronously within the chained operation, preserving operations-chain
+        // semantics. We use queueTask (not a Networking task) to stay within the
+        // same event loop turn ordering that other chained operations expect.
+        if (RefPtr currentDocument = document()) {
+            protect(currentDocument->eventLoop())->queueTask(TaskSource::MediaElement, [protectedThis = Ref { *this }, options = WTF::move(options), promise = WTF::move(promise)]() mutable {
+                if (protectedThis->isClosed())
+                    return;
+                protectedThis->protectedBackend()->createOffer(WTF::move(options), [protectedThis = protectedThis.copyRef(), promise = PeerConnection::SessionDescriptionPromise(WTF::move(promise))](auto&& result) mutable {
+                    if (protectedThis->isClosed())
+                        return;
+                    if (result.hasException()) {
+                        promise.reject(result.releaseException());
+                        return;
+                    }
+                    // https://w3c.github.io/webrtc-pc/#dfn-final-steps-to-create-an-offer steps 4,5 and 6.
+                    protectedThis->m_lastCreatedOffer = result.returnValue().sdp;
+                    promise.resolve(result.releaseReturnValue());
+                });
+            });
+        }
     });
 }
 
