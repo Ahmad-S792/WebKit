@@ -33,6 +33,7 @@
 #include "ElementInlines.h"
 #include "NodeName.h"
 #include "RenderMathMLOperator.h"
+#include <unicode/uchar.h>
 #include <wtf/TZoneMallocInlines.h>
 #include <wtf/unicode/CharacterNames.h>
 
@@ -57,16 +58,42 @@ Ref<MathMLOperatorElement> MathMLOperatorElement::create(const QualifiedName& ta
 MathMLOperatorElement::OperatorChar MathMLOperatorElement::parseOperatorChar(const String& string)
 {
     OperatorChar operatorChar;
-    StringView view = string;
-    // FIXME: This operator dictionary does not accept multiple characters (https://webkit.org/b/124828).
-    if (auto codePoint = view.trim(isASCIIWhitespaceWithoutFF<char16_t>).convertToSingleCodePoint()) {
+    String trimmed = string.trim(isASCIIWhitespaceWithoutFF<UChar>);
+    if (trimmed.isEmpty())
+        return operatorChar;
+
+    // Try single code point first.
+    if (auto codePoint = StringView(trimmed).convertToSingleCodePoint()) {
         auto character = codePoint.value();
-        // The minus sign renders better than the hyphen sign used in some MathML formulas.
         if (character == hyphenMinus)
             character = minusSign;
         operatorChar.character = character;
         operatorChar.isVertical = isVertical(operatorChar.character);
+        return operatorChar;
     }
+
+    // Handle base character followed by combining character(s).
+    // Per MathML Core spec, use the base character for dictionary lookup.
+    char32_t firstChar = 0;
+    bool allCombining = true;
+    for (auto codePoint : StringView(trimmed).codePoints()) {
+        if (!firstChar) {
+            firstChar = codePoint;
+            continue;
+        }
+        if (!(U_GET_GC_MASK(codePoint) & (U_GC_MN_MASK | U_GC_MC_MASK | U_GC_ME_MASK))) {
+            allCombining = false;
+            break;
+        }
+    }
+
+    if (firstChar && allCombining) {
+        if (firstChar == hyphenMinus)
+            firstChar = minusSign;
+        operatorChar.character = firstChar;
+        operatorChar.isVertical = isVertical(operatorChar.character);
+    }
+
     return operatorChar;
 }
 
