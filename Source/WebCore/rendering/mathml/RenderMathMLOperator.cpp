@@ -310,7 +310,17 @@ LayoutUnit RenderMathMLOperator::verticalStretchedOperatorShift() const
 std::optional<LayoutUnit> RenderMathMLOperator::firstLineBaseline() const
 {
     if (useMathOperator()) {
-        auto baseline = settings().subpixelInlineLayoutEnabled() ? m_mathOperator.ascent() - verticalStretchedOperatorShift() : LayoutUnit(roundf(m_mathOperator.ascent() - verticalStretchedOperatorShift()));
+        auto shift = verticalStretchedOperatorShift();
+        // For non-stretchy symmetric large operators, we need to center around the math axis.
+        // The verticalStretchedOperatorShift() only works for stretchy operators.
+        if (!shift && isLargeOperatorInDisplayStyle() && hasOperatorFlag(MathMLOperatorDictionary::Symmetric)) {
+            // Center the glyph around the math axis.
+            // Baseline shift = ascent - (height/2 + axis) = (ascent - descent)/2 - axis.
+            LayoutUnit glyphHeight = m_mathOperator.ascent() + m_mathOperator.descent();
+            LayoutUnit axis = mathAxisHeight();
+            shift = m_mathOperator.ascent() - glyphHeight / 2 - axis;
+        }
+        auto baseline = settings().subpixelInlineLayoutEnabled() ? m_mathOperator.ascent() - shift : LayoutUnit(roundf(m_mathOperator.ascent() - shift));
         return { borderAndPaddingBefore() + baseline };
     }
     return RenderMathMLToken::firstLineBaseline();
