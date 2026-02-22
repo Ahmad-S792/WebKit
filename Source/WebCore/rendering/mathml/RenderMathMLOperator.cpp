@@ -103,16 +103,26 @@ LayoutUnit RenderMathMLOperator::trailingSpace() const
 
 LayoutUnit RenderMathMLOperator::minSize() const
 {
-    LayoutUnit minSize { style().fontCascade().size() }; // Default minsize is "1em".
-    minSize = toUserUnits(element().minSize(), style(), minSize);
-    return std::max<LayoutUnit>(0, minSize);
+    // Default minsize is 100% of the unstretched size per MathML Core.
+    LayoutUnit unstretchedSize = m_mathOperator.unstretchedSize();
+    if (!unstretchedSize)
+        unstretchedSize = style().fontCascade().size(); // Fallback to 1em.
+    LayoutUnit minSizeValue = toUserUnits(element().minSize(), style(), unstretchedSize);
+    return std::max(0_lu, minSizeValue);
 }
 
 LayoutUnit RenderMathMLOperator::maxSize() const
 {
-    LayoutUnit maxSize = intMaxForLayoutUnit; // Default maxsize is ∞.
-    maxSize = toUserUnits(element().maxSize(), style(), maxSize);
-    return std::max<LayoutUnit>(0, maxSize);
+    // Default maxsize is infinity. Percentages are relative to the unstretched size.
+    const auto& length = element().maxSize();
+    if (length.type == MathMLElement::LengthType::ParsingFailed)
+        return intMaxForLayoutUnit;
+
+    LayoutUnit unstretchedSize = m_mathOperator.unstretchedSize();
+    if (!unstretchedSize)
+        unstretchedSize = style().fontCascade().size(); // Fallback to 1em.
+    LayoutUnit maxSizeValue = toUserUnits(length, style(), unstretchedSize);
+    return std::max(0_lu, maxSizeValue);
 }
 
 bool RenderMathMLOperator::isVertical() const

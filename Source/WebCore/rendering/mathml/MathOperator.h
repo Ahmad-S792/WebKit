@@ -50,6 +50,7 @@ public:
     LayoutUnit ascent() const { return m_ascent; }
     LayoutUnit descent() const { return m_descent; }
     LayoutUnit italicCorrection() const { return m_italicCorrection; }
+    LayoutUnit unstretchedSize() const { return m_unstretchedSize; }
 
     void stretchTo(const RenderStyle&, LayoutUnit width);
 
@@ -108,6 +109,7 @@ private:
     LayoutUnit m_ascent { 0 };
     LayoutUnit m_descent { 0 };
     LayoutUnit m_italicCorrection { 0 };
+    LayoutUnit m_unstretchedSize { 0 };
     float m_radicalVerticalScale { 1 };
 };
 
