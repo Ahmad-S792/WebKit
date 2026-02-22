@@ -457,10 +457,11 @@ void RenderMathMLScripts::layoutBlock(RelayoutChildren relayoutChildren, LayoutU
             LayoutUnit subSupPairWidth = std::max(subScript->logicalWidth() + subScript->marginLogicalWidth(), supScript->logicalWidth() + supScript->marginLogicalWidth());
             horizontalOffset += space + subSupPairWidth;
             LayoutUnit subAscent = ascentForChild(*subScript);
-            LayoutPoint subScriptLocation(mirrorIfNeeded(horizontalOffset - subScript->marginEnd() - subScript->logicalWidth(), *subScript), ascent + metrics.subShift - subAscent);
+            LayoutUnit prescriptSpaceOffset = writingMode().isBidiRTL() ? space : 0_lu;
+            LayoutPoint subScriptLocation(mirrorIfNeeded(horizontalOffset - prescriptSpaceOffset - subScript->marginEnd() - subScript->logicalWidth(), *subScript), ascent + metrics.subShift - subAscent);
             subScript->setLocation(subScriptLocation);
             LayoutUnit supAscent = ascentForChild(*supScript);
-            LayoutPoint supScriptLocation(mirrorIfNeeded(horizontalOffset - supScript->marginEnd() - supScript->logicalWidth(), *supScript), ascent - metrics.supShift - supAscent);
+            LayoutPoint supScriptLocation(mirrorIfNeeded(horizontalOffset - prescriptSpaceOffset - supScript->marginEnd() - supScript->logicalWidth(), *supScript), ascent - metrics.supShift - supAscent);
             supScript->setLocation(supScriptLocation);
             subScript = supScript->nextInFlowSiblingBox();
         }
