@@ -544,6 +544,13 @@ void RenderBlockFlow::layoutBlock(RelayoutChildren relayoutChildren, LayoutUnit 
 
     LayoutRepainter repainter(*this);
 
+    // Before computing our logical width, dirty the preferred widths of any percent-height
+    // descendants with intrinsic aspect ratios. Our height may have changed, and those
+    // descendants' preferred widths depend on our height transitively (via height: % and
+    // aspect ratio). This must happen before recomputeLogicalWidthAndColumnWidth() so that
+    // a shrink-to-fit width (e.g., a float) picks up the updated preferred widths.
+    dirtyForLayoutFromPercentageHeightDescendants();
+
     if (recomputeLogicalWidthAndColumnWidth())
         relayoutChildren = RelayoutChildren::Yes;
 
@@ -745,6 +752,12 @@ void RenderBlockFlow::dirtyForLayoutFromPercentageHeightDescendants()
                 // (A horizontal flexbox that contains an inline image wrapped in an anonymous block for example.)
                 if (renderBox->hasIntrinsicAspectRatio() || renderBox->style().aspectRatio().hasRatio())
                     renderBox->setNeedsPreferredWidthsUpdate();
+                // Also propagate into nested percent-height descendants: a block whose percent-height
+                // children themselves have percent-height replaced elements with aspect ratios (e.g.
+                // #target -> div[height:100%] -> canvas[height:100%]) needs its own descendants dirtied
+                // so that the preferred widths cascade correctly up the tree.
+                if (CheckedPtr blockFlow = dynamicDowncast<RenderBlockFlow>(*renderBox))
+                    blockFlow->dirtyForLayoutFromPercentageHeightDescendants();
             }
         }
     }
