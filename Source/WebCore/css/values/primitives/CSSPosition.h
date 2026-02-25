@@ -158,6 +158,11 @@ bool isCenterPosition(const Position&);
 
 std::pair<CSS::PositionX, CSS::PositionY> split(CSS::Position&&);
 
+// Serializes a Position with keywords converted to their percentage equivalents
+// (e.g. center -> 50%, left -> 0%, right -> 100%, top -> 0%, bottom -> 100%).
+// Used for canonical serialization of positions in basic shape functions like circle() and ellipse().
+void serializePositionAsPercentages(StringBuilder&, const SerializationContext&, const Position&);
+
 } // namespace CSS
 } // namespace WebCore
 

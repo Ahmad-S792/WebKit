@@ -25,6 +25,7 @@
 #include "config.h"
 #include "CSSCircleFunction.h"
 
+#include "CSSPosition.h"
 #include "CSSPrimitiveNumericTypes+Serialization.h"
 #include <wtf/text/StringBuilder.h>
 
@@ -57,7 +58,7 @@ void Serialize<Circle>::operator()(StringBuilder& builder, const SerializationCo
         // FIXME: To match other serialization of Percentage, this should not serialize if equal to the default value of 50% 50%, but this does not match the tests.
         bool wroteSomething = builder.length() != lengthBefore;
         builder.append(wroteSomething ? " at "_s : "at "_s);
-        serializationForCSS(builder, context, *value.position);
+        serializePositionAsPercentages(builder, context, *value.position);
     }
 }
 

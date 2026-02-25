@@ -25,6 +25,9 @@
 #include "config.h"
 #include "CSSPosition.h"
 
+#include "CSSPrimitiveNumericTypes+Serialization.h"
+#include <wtf/text/StringBuilder.h>
+
 namespace WebCore {
 namespace CSS {
 
@@ -77,6 +80,46 @@ std::pair<CSS::PositionX, CSS::PositionY> split(CSS::Position&& position)
         },
         [&](const ThreeComponentPositionHorizontalVerticalLengthSecond& components) -> std::pair<CSS::PositionX, CSS::PositionY> {
             return { CSS::PositionX(toTwoComponent(get<0>(components))), CSS::PositionY(get<1>(components)) };
+        }
+    );
+}
+
+static void serializeHorizontalComponentAsPercentage(StringBuilder& builder, const SerializationContext& context, const TwoComponentPositionHorizontal& component)
+{
+    WTF::switchOn(component.offset,
+        [&](Keyword::Left)    { serializationForCSS(builder, context, LengthPercentage<>::Raw { 0_css_percentage }); },
+        [&](Keyword::Center)  { serializationForCSS(builder, context, LengthPercentage<>::Raw { 50_css_percentage }); },
+        [&](Keyword::Right)   { serializationForCSS(builder, context, LengthPercentage<>::Raw { 100_css_percentage }); },
+        [&](Keyword::XStart)  { serializationForCSS(builder, context, LengthPercentage<>::Raw { 0_css_percentage }); },
+        [&](Keyword::XEnd)    { serializationForCSS(builder, context, LengthPercentage<>::Raw { 100_css_percentage }); },
+        [&](const LengthPercentage<>& value) { serializationForCSS(builder, context, value); }
+    );
+}
+
+static void serializeVerticalComponentAsPercentage(StringBuilder& builder, const SerializationContext& context, const TwoComponentPositionVertical& component)
+{
+    WTF::switchOn(component.offset,
+        [&](Keyword::Top)     { serializationForCSS(builder, context, LengthPercentage<>::Raw { 0_css_percentage }); },
+        [&](Keyword::Center)  { serializationForCSS(builder, context, LengthPercentage<>::Raw { 50_css_percentage }); },
+        [&](Keyword::Bottom)  { serializationForCSS(builder, context, LengthPercentage<>::Raw { 100_css_percentage }); },
+        [&](Keyword::YStart)  { serializationForCSS(builder, context, LengthPercentage<>::Raw { 0_css_percentage }); },
+        [&](Keyword::YEnd)    { serializationForCSS(builder, context, LengthPercentage<>::Raw { 100_css_percentage }); },
+        [&](const LengthPercentage<>& value) { serializationForCSS(builder, context, value); }
+    );
+}
+
+void serializePositionAsPercentages(StringBuilder& builder, const SerializationContext& context, const Position& position)
+{
+    WTF::switchOn(position,
+        [&](const TwoComponentPositionHorizontalVertical& components) {
+            serializeHorizontalComponentAsPercentage(builder, context, get<0>(components));
+            builder.append(' ');
+            serializeVerticalComponentAsPercentage(builder, context, get<1>(components));
+        },
+        [&](const auto& components) {
+            // For three and four component positions, fall back to generic serialization
+            // as they already use explicit offsets from edges.
+            serializationForCSS(builder, context, components);
         }
     );
 }
