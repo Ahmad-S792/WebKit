@@ -2,7 +2,7 @@
  * Copyright (C) 1999 Lars Knoll (knoll@kde.org)
  *           (C) 2004-2005 Allan Sandfeld Jensen (kde@carewolf.com)
  * Copyright (C) 2006, 2007 Nicholas Shanks (webkit@nickshanks.com)
- * Copyright (C) 2005-2019 Apple Inc. All rights reserved.
+ * Copyright (C) 2005-2026 Apple Inc. All rights reserved.
  * Copyright (C) 2007 Alexey Proskuryakov <ap@webkit.org>
  * Copyright (C) 2007, 2008 Eric Seidel <eric@webkit.org>
  * Copyright (C) 2008, 2009 Torch Mobile Inc. All rights reserved. (http://www.torchmobile.com/)
@@ -101,6 +101,12 @@ static inline PropertyAllowlist determinePropertyAllowlist(const CSSSelector& se
 #endif
         if (component->match() == CSSSelector::Match::PseudoElement && component->pseudoElement() == CSSSelector::PseudoElement::Marker)
             return propertyAllowlistForPseudoElement(PseudoElementType::Marker);
+
+        if (component->match() == CSSSelector::Match::PseudoElement && component->pseudoElement() == CSSSelector::PseudoElement::FirstLetter)
+            return propertyAllowlistForPseudoElement(PseudoElementType::FirstLetter);
+
+        if (component->match() == CSSSelector::Match::PseudoElement && component->pseudoElement() == CSSSelector::PseudoElement::FirstLine)
+            return propertyAllowlistForPseudoElement(PseudoElementType::FirstLine);
 
         if (const auto* selectorList = selector.selectorList()) {
             for (auto& subSelector : *selectorList) {
