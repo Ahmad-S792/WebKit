@@ -1,0 +1,18 @@
+Table with CSS height should reach specified height regardless of td height attribute
+
+td with no height attribute
+td with height=1px attribute
+td with height=1px attribute, explicit border-spacing: 2px
+td with height=1px attribute, border-spacing: 0px
+td with height=1px attribute, border-spacing: 10px
+td with height=50px attribute
+two rows, both with td height=1px attribute
+
+PASS table 1
+PASS table 2
+PASS table 3
+PASS table 4
+PASS table 5
+PASS table 6
+PASS table 7
+

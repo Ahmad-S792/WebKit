@@ -1,0 +1,62 @@
+<!doctype html>
+<title>TABLE height with td height attribute</title>
+<script src='/resources/testharness.js'></script>
+<script src='/resources/testharnessreport.js'></script>
+<script src="/resources/check-layout-th.js"></script>
+<link rel='stylesheet' href='../support/base.css' />
+<link rel='stylesheet' href='./support/table-tentative.css' />
+<link rel="help" href="https://drafts.csswg.org/css-tables-3/#row-layout" />
+<style>
+  main table {
+    height: 100px;
+    width: 100px;
+    background: green;
+  }
+  main td {
+    padding: 0;
+  }
+</style>
+<main>
+<h1>Table with CSS height should reach specified height regardless of td height attribute</h1>
+
+<p class="testdesc">td with no height attribute</p>
+<table data-expected-height=100>
+  <tr><td></td></tr>
+</table>
+
+<p class="testdesc">td with height=1px attribute</p>
+<table data-expected-height=100>
+  <tr><td height=1px></td></tr>
+</table>
+
+<p class="testdesc">td with height=1px attribute, explicit border-spacing: 2px</p>
+<table style="border-spacing: 2px" data-expected-height=100>
+  <tr><td height=1px></td></tr>
+</table>
+
+<p class="testdesc">td with height=1px attribute, border-spacing: 0px</p>
+<table style="border-spacing: 0px" data-expected-height=100>
+  <tr><td height=1px></td></tr>
+</table>
+
+<p class="testdesc">td with height=1px attribute, border-spacing: 10px</p>
+<table style="border-spacing: 10px" data-expected-height=100>
+  <tr><td height=1px></td></tr>
+</table>
+
+<p class="testdesc">td with height=50px attribute</p>
+<table data-expected-height=100>
+  <tr><td height=50px></td></tr>
+</table>
+
+<p class="testdesc">two rows, both with td height=1px attribute</p>
+<table data-expected-height=100>
+  <tr><td height=1px></td></tr>
+  <tr><td height=1px></td></tr>
+</table>
+
+</main>
+
+<script>
+  checkLayout("table");
+</script>
