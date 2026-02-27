@@ -1611,7 +1611,6 @@ fast/css-custom-paint/out-of-memory-while-adding-worklet-module.html [ DumpJSCon
 # official flexbox tests
 webkit.org/b/136754 imported/w3c/web-platform-tests/css/css-flexbox/flexbox_visibility-collapse-line-wrapping.html [ ImageOnlyFailure ]
 webkit.org/b/136754 imported/w3c/web-platform-tests/css/css-flexbox/flexbox_visibility-collapse.html [ ImageOnlyFailure ]
-webkit.org/b/210243 imported/w3c/web-platform-tests/css/css-flexbox/percentage-size-quirks-002.html [ Failure ]
 webkit.org/b/136754 imported/w3c/web-platform-tests/css/css-flexbox/scrollbars-no-margin.html [ ImageOnlyFailure ]
 webkit.org/b/116117 imported/w3c/web-platform-tests/css/css-flexbox/intrinsic-size/row-002.html [ ImageOnlyFailure ]
 webkit.org/b/116117 imported/w3c/web-platform-tests/css/css-flexbox/intrinsic-size/row-003.html [ ImageOnlyFailure ]
@@ -2098,7 +2097,6 @@ webkit.org/b/289126 imported/w3c/web-platform-tests/webmessaging/broadcastchanne
 
 webkit.org/b/244022 imported/w3c/web-platform-tests/quirks/body-fills-html-quirk-vertical.html [ ImageOnlyFailure ]
 webkit.org/b/244022 imported/w3c/web-platform-tests/quirks/body-fills-html-quirk.html [ ImageOnlyFailure ]
-webkit.org/b/244022 imported/w3c/web-platform-tests/quirks/percentage-height-quirk-excludes-flex-grid-001.html [ ImageOnlyFailure ]
 webkit.org/b/244022 imported/w3c/web-platform-tests/quirks/text-decoration-doesnt-propagate-into-tables/quirks.html [ ImageOnlyFailure ]
 imported/w3c/web-platform-tests/quirks/line-height-preserved-segment-break.html [ ImageOnlyFailure ]
 

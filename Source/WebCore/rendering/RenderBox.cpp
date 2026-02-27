@@ -3672,10 +3672,16 @@ bool RenderBox::skipContainingBlockForPercentHeightCalculation(const RenderBox& 
     // non-anonymous.
     if (containingBlock.isAnonymousForPercentageResolution())
         return containingBlock.style().display() == Style::DisplayType::BlockFlow || containingBlock.style().display() == Style::DisplayType::InlineFlowRoot;
-    
+
+    if (!containingBlock.style().logicalHeight().isAuto())
+        return false;
+
+    if (containingBlock.isGridItem() || containingBlock.isFlexItem() || containingBlock.isRenderGrid() || containingBlock.isFlexibleBoxIncludingDeprecated())
+        return containingBlock.element() && containingBlock.element()->isInShadowTree();
+
     // For quirks mode, we skip most auto-height containing blocks when computing
     // percentages.
-    return document().inQuirksMode() && !containingBlock.isRenderTableCell() && !containingBlock.isOutOfFlowPositioned() && !containingBlock.isRenderGrid() && !containingBlock.isFlexibleBoxIncludingDeprecated() && containingBlock.style().logicalHeight().isAuto();
+    return document().inQuirksMode() && !containingBlock.isRenderTableCell() && !containingBlock.isOutOfFlowPositioned();
 }
 
 static bool NODELETE tableCellShouldHaveZeroInitialSize(const RenderTableCell& tableCell, const RenderBox& child, bool scrollsOverflowY)
