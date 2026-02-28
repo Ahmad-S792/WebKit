@@ -245,17 +245,15 @@ void RenderTableCell::computePreferredLogicalWidths()
     if (overridingLogicalHeight)
         setOverridingBorderBoxLogicalHeight(*overridingLogicalHeight);
 
-    if (!element() || style().textWrapMode() == TextWrapMode::NoWrap || !element()->hasAttributeWithoutSynchronization(nowrapAttr))
+    if (!element() || !document().inQuirksMode() || !element()->hasAttributeWithoutSynchronization(nowrapAttr))
         return;
 
     auto [ logicalWidth, usedZoom ] = styleOrColLogicalWidth();
     if (auto fixedLogicalWidth = logicalWidth.tryFixed()) {
-        // Nowrap is set, but we didn't actually use it because of the
-        // fixed width set on the cell. Even so, it is a WinIE/Moz trait
-        // to make the minwidth of the cell into the fixed width. They do this
-        // even in strict mode, so do not make this a quirk. Affected the top
+        // In quirks mode, when nowrap is set on a cell that also has an explicit fixed width,
+        // WinIE/Moz treat the fixed width as the minimum width of the cell. Affected the top
         // of hiptop.com.
-        m_minPreferredLogicalWidth = std::max(LayoutUnit(fixedLogicalWidth->resolveZoom(usedZoom)), m_minPreferredLogicalWidth);
+        m_minPreferredLogicalWidth = std::max(adjustBorderBoxLogicalWidthForBoxSizing(LayoutUnit(fixedLogicalWidth->resolveZoom(usedZoom))), m_minPreferredLogicalWidth);
     }
 }
 
