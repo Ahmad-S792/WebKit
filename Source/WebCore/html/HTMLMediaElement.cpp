@@ -1019,6 +1019,12 @@ void HTMLMediaElement::attributeChanged(const QualifiedName& name, const AtomStr
         if (RefPtr player = m_player)
             player->elementIdChanged(m_id);
         break;
+    case AttributeNames::mutedAttr:
+        if (attributeModificationReason != AttributeModificationReason::Directly && !m_explicitlyMuted) {
+            m_explicitlyMuted = true;
+            m_muted = !newValue.isNull();
+        }
+        break;
     case AttributeNames::srcAttr:
         // https://html.spec.whatwg.org/multipage/embedded-content.html#location-of-the-media-resource
         // Location of the Media Resource
@@ -4793,10 +4799,7 @@ bool HTMLMediaElement::muted() const
     if (implicitlyMuted())
         return true;
 
-    if (m_explicitlyMuted)
-        return m_muted;
-
-    return hasAttributeWithoutSynchronization(mutedAttr);
+    return m_muted;
 }
 
 void HTMLMediaElement::setMuted(bool muted)
