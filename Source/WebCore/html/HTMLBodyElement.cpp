@@ -3,7 +3,7 @@
  *           (C) 1999 Antti Koivisto (koivisto@kde.org)
  *           (C) 2000 Simon Hausmann (hausmann@kde.org)
  *           (C) 2001 Dirk Mueller (mueller@kde.org)
- * Copyright (C) 2004-2023 Apple Inc. All rights reserved.
+ * Copyright (C) 2004-2026 Apple Inc. All rights reserved.
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Library General Public
@@ -94,19 +94,29 @@ void HTMLBodyElement::collectPresentationalHintsForAttribute(const QualifiedName
         break;
     }
     case AttributeNames::marginwidthAttr:
-    case AttributeNames::leftmarginAttr:
-        addHTMLPixelLengthToStyle(style, CSSPropertyMarginRight, value);
         addHTMLPixelLengthToStyle(style, CSSPropertyMarginLeft, value);
+        addHTMLPixelLengthToStyle(style, CSSPropertyMarginRight, value);
         break;
+    case AttributeNames::leftmarginAttr:
     case AttributeNames::rightmarginAttr:
+        // https://html.spec.whatwg.org/multipage/rendering.html#the-page
+        // marginwidth takes precedence over leftmargin/rightmargin.
+        if (hasAttributeWithoutSynchronization(marginwidthAttr))
+            break;
+        addHTMLPixelLengthToStyle(style, CSSPropertyMarginLeft, value);
         addHTMLPixelLengthToStyle(style, CSSPropertyMarginRight, value);
         break;
     case AttributeNames::marginheightAttr:
-    case AttributeNames::topmarginAttr:
-        addHTMLPixelLengthToStyle(style, CSSPropertyMarginBottom, value);
         addHTMLPixelLengthToStyle(style, CSSPropertyMarginTop, value);
+        addHTMLPixelLengthToStyle(style, CSSPropertyMarginBottom, value);
         break;
+    case AttributeNames::topmarginAttr:
     case AttributeNames::bottommarginAttr:
+        // https://html.spec.whatwg.org/multipage/rendering.html#the-page
+        // marginheight takes precedence over topmargin/bottommargin.
+        if (hasAttributeWithoutSynchronization(marginheightAttr))
+            break;
+        addHTMLPixelLengthToStyle(style, CSSPropertyMarginTop, value);
         addHTMLPixelLengthToStyle(style, CSSPropertyMarginBottom, value);
         break;
     case AttributeNames::bgcolorAttr:
@@ -195,16 +205,19 @@ void HTMLBodyElement::didFinishInsertingNode()
 
     Ref ownerElement = *document->ownerElement();
 
-    // FIXME: It's surprising this is web compatible since it means marginwidth and marginheight attributes
-    // appear or get overwritten on body elements of a document embedded through <iframe> or <frame>.
-    // Better to find a way to do addHTMLLengthToStyle based on the attributes from the frame element,
-    // without modifying the body element's attributes. Could also add code so we can respond to updates
-    // to the frame element attributes.
+    // https://html.spec.whatwg.org/#attr-iframe-marginwidth
+    // Don't inject iframe marginwidth/marginheight if the body already has any margin attributes.
     auto marginWidth = ownerElement->attributeWithoutSynchronization(marginwidthAttr);
-    if (!marginWidth.isNull())
+    if (!marginWidth.isNull()
+        && !hasAttributeWithoutSynchronization(marginwidthAttr)
+        && !hasAttributeWithoutSynchronization(leftmarginAttr)
+        && !hasAttributeWithoutSynchronization(rightmarginAttr))
         setAttributeWithoutSynchronization(marginwidthAttr, marginWidth);
     auto marginHeight = ownerElement->attributeWithoutSynchronization(marginheightAttr);
-    if (!marginHeight.isNull())
+    if (!marginHeight.isNull()
+        && !hasAttributeWithoutSynchronization(marginheightAttr)
+        && !hasAttributeWithoutSynchronization(topmarginAttr)
+        && !hasAttributeWithoutSynchronization(bottommarginAttr))
         setAttributeWithoutSynchronization(marginheightAttr, marginHeight);
 }
 
