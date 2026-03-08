@@ -62,6 +62,7 @@
 #include "CSSTokenizer.h"
 #include "CSSTransformListValue.h"
 #include "CSSURLValue.h"
+#include "CSSValuePair.h"
 #include "CSSVariableParser.h"
 #include "CSSVariableReferenceValue.h"
 #include "CSSWideKeyword.h"
@@ -805,6 +806,14 @@ bool consumePageDescriptor(CSSParserTokenRange& range, const CSSParserContext& c
     if (RefPtr parsedValue = CSSPropertyParsing::parsePageDescriptor(range, property, state)) {
         if (!range.atEnd())
             return false;
+
+        // Drop the default 'portrait' orientation from page size serialization.
+        if (property == CSSPropertySize) {
+            if (auto* pair = dynamicDowncast<CSSValuePair>(*parsedValue)) {
+                if (pair->second().valueID() == CSSValuePortrait)
+                    parsedValue = &pair->first();
+            }
+        }
 
         result.addProperty(state, property, CSSPropertyInvalid, WTF::move(parsedValue), IsImportant::No);
         return true;
