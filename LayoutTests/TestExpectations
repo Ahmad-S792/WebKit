@@ -2035,6 +2035,7 @@ imported/w3c/web-platform-tests/mathml/presentation-markup/scripts/munderover-al
 imported/w3c/web-platform-tests/mathml/presentation-markup/scripts/munderover-align-accent-true.html [ ImageOnlyFailure ]
 imported/w3c/web-platform-tests/mathml/presentation-markup/scripts/stretchy-mover-1a.html [ ImageOnlyFailure Pass ]
 imported/w3c/web-platform-tests/mathml/presentation-markup/scripts/stretchy-mover-2b.html [ ImageOnlyFailure ]
+imported/w3c/web-platform-tests/mathml/presentation-markup/scripts/stretchy-mover-3.html [ ImageOnlyFailure ]
 imported/w3c/web-platform-tests/mathml/presentation-markup/scripts/stretchy-munderover-1a.html [ ImageOnlyFailure Pass ]
 imported/w3c/web-platform-tests/mathml/presentation-markup/scripts/stretchy-munderover-1b.html [ ImageOnlyFailure Pass ]
 imported/w3c/web-platform-tests/mathml/presentation-markup/scripts/stretchy-munderover-1c.html [ ImageOnlyFailure Pass ]
