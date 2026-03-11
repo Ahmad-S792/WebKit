@@ -1498,6 +1498,8 @@ webkit.org/b/296246 imported/w3c/web-platform-tests/event-timing/first-input-int
 webkit.org/b/296246 imported/w3c/web-platform-tests/event-timing/interaction-count-tap.html [ Skip ]
 webkit.org/b/296246 imported/w3c/web-platform-tests/event-timing/TapToStopFling.html [ Skip ]
 
+fast/forms/color/display-none-input-color-chooser-shown.html [ Skip ]
+
 fast/events/domactivate-sets-underlying-click-event-as-handled.html [ Failure Pass ]
 
 #////////////////////////////////////////////////////////////////////////////////////////

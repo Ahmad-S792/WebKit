@@ -1,0 +1,2 @@
+Pick a color
+PASS: Color picker is shown after clicking label for display:none color input

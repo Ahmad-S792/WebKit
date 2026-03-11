@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html>
+<head>
+<script src="../../../resources/ui-helper.js"></script>
+</head>
+<body>
+<input id="colorPick" type="color" />
+<label for="colorPick" id="labelPick">Pick a color</label>
+<script>
+    if (window.testRunner) {
+        testRunner.dumpAsText();
+        testRunner.waitUntilDone();
+    }
+
+    async function runTest() {
+        if (!window.testRunner || !testRunner.runUIScript) {
+            document.getElementById("result").textContent = "FAIL: test requires testRunner.runUIScript";
+            return;
+        }
+
+        var colorPicker = document.getElementById("colorPick");
+        colorPicker.style.display = "none";
+        await UIHelper.ensurePresentationUpdate();
+
+        var label = document.getElementById("labelPick");
+        await UIHelper.activateElement(label);
+        await UIHelper.waitForColorPickerToPresent();
+        await UIHelper.ensurePresentationUpdate();
+
+        var showing = await UIHelper.isShowingColorPicker();
+        document.getElementById("result").textContent = showing
+            ? "PASS: Color picker is shown after clicking label for display:none color input"
+            : "FAIL: Color picker was not shown";
+
+        testRunner.notifyDone();
+    }
+
+    window.addEventListener("load", runTest, false);
+</script>
+<div id="result"></div>
+</body>
+</html>
