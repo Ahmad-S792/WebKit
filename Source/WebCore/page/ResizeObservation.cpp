@@ -28,6 +28,7 @@
 
 #include "ElementInlines.h"
 #include "HTMLFrameOwnerElement.h"
+#include "LayoutPoint.h"
 #include "Logging.h"
 #include "NodeInlines.h"
 #include "RenderBoxInlines.h"
@@ -47,7 +48,7 @@ WTF_MAKE_TZONE_ALLOCATED_IMPL(ResizeObservation);
 
 ResizeObservation::ResizeObservation(Element& element, ResizeObserverBoxOptions observedBox)
     : m_target { element }
-    , m_lastObservationSizes { LayoutSize(-1, -1), LayoutSize(-1, -1), LayoutSize(-1, -1) }
+    , m_lastObservationSizes { LayoutSize(-1, -1), LayoutSize(-1, -1), LayoutSize(-1, -1), LayoutSize(-1, -1) }
     , m_observedBox { observedBox }
 {
 }
@@ -61,7 +62,7 @@ void ResizeObservation::updateObservationSize(const BoxSizes& boxSizes)
 
 void ResizeObservation::resetObservationSize()
 {
-    m_lastObservationSizes = { LayoutSize(-1, -1), LayoutSize(-1, -1), LayoutSize(-1, -1) };
+    m_lastObservationSizes = { LayoutSize(-1, -1), LayoutSize(-1, -1), LayoutSize(-1, -1), LayoutSize(-1, -1) };
 }
 
 auto ResizeObservation::computeObservedSizes() const -> std::optional<BoxSizes>
@@ -73,7 +74,11 @@ auto ResizeObservation::computeObservedSizes() const -> std::optional<BoxSizes>
                 size.setWidth(svgRect->width());
                 size.setHeight(svgRect->height());
             }
-            return { { size, size, size } };
+            Ref document = svg->document();
+            auto deviceScaleFactor = document->deviceScaleFactor();
+            float zoom = svg->computedStyle() ? svg->computedStyle()->usedZoom() : 1.0f;
+            LayoutSize devicePixelSize(roundf(size.width() * zoom * deviceScaleFactor), roundf(size.height() * zoom * deviceScaleFactor));
+            return { { size, size, size, devicePixelSize } };
         }
     }
 
@@ -81,10 +86,19 @@ auto ResizeObservation::computeObservedSizes() const -> std::optional<BoxSizes>
     if (box) {
         if (box->isSkippedContent())
             return std::nullopt;
+        auto contentBoxLogicalSize = box->contentBoxLogicalSize();
+        Ref document = box->document();
+        auto deviceScaleFactor = document->deviceScaleFactor();
+        auto absoluteContentBoxOrigin = box->localToAbsolute(FloatPoint(box->contentBoxLocation()));
+        LayoutPoint snappingOrigin(absoluteContentBoxOrigin.x(), absoluteContentBoxOrigin.y());
+        auto snappedPhysicalSize = snapSizeToDevicePixel(box->contentBoxSize(), snappingOrigin, deviceScaleFactor);
+        FloatSize snappedLogicalSize = box->isHorizontalWritingMode() ? snappedPhysicalSize : snappedPhysicalSize.transposedSize();
+        LayoutSize devicePixelContentBoxLogicalSize(snappedLogicalSize.width() * deviceScaleFactor, snappedLogicalSize.height() * deviceScaleFactor);
         return { {
             Style::adjustLayoutSizeForAbsoluteZoom(box->contentBoxSize(), *box),
-            Style::adjustLayoutSizeForAbsoluteZoom(box->contentBoxLogicalSize(), *box),
-            Style::adjustLayoutSizeForAbsoluteZoom(box->borderBoxLogicalSize(), *box)
+            Style::adjustLayoutSizeForAbsoluteZoom(contentBoxLogicalSize, *box),
+            Style::adjustLayoutSizeForAbsoluteZoom(box->borderBoxLogicalSize(), *box),
+            devicePixelContentBoxLogicalSize
         } };
     }
 
@@ -97,8 +111,10 @@ LayoutPoint ResizeObservation::computeTargetLocation() const
         return { };
 
     if (!m_target->isSVGElement()) {
-        if (CheckedPtr box = m_target->renderBox())
-            return LayoutPoint(box->paddingLeft(), box->paddingTop());
+        if (CheckedPtr box = m_target->renderBox()) {
+            auto zoom = box->style().usedZoom();
+            return LayoutPoint(box->paddingLeft() / zoom, box->paddingTop() / zoom);
+        }
     }
 
     return { };
@@ -124,6 +140,11 @@ FloatSize ResizeObservation::snappedContentBoxSize() const
     return m_lastObservationSizes.contentBoxLogicalSize; // FIXME: Need to pixel snap.
 }
 
+FloatSize ResizeObservation::devicePixelContentBoxSize() const
+{
+    return m_lastObservationSizes.devicePixelContentBoxLogicalSize;
+}
+
 std::optional<ResizeObservation::BoxSizes> ResizeObservation::elementSizeChanged() const
 {
     auto currentSizes = computeObservedSizes();
@@ -140,6 +161,12 @@ std::optional<ResizeObservation::BoxSizes> ResizeObservation::elementSizeChanged
     case ResizeObserverBoxOptions::ContentBox:
         if (m_lastObservationSizes.contentBoxLogicalSize != currentSizes->contentBoxLogicalSize) {
             LOG_WITH_STREAM(ResizeObserver, stream << "ResizeObservation " << *this << " elementSizeChanged - content box size changed from " << m_lastObservationSizes.contentBoxLogicalSize << " to " << currentSizes->contentBoxLogicalSize);
+            return currentSizes;
+        }
+        break;
+    case ResizeObserverBoxOptions::DevicePixelContentBox:
+        if (m_lastObservationSizes.devicePixelContentBoxLogicalSize != currentSizes->devicePixelContentBoxLogicalSize) {
+            LOG_WITH_STREAM(ResizeObserver, stream << "ResizeObservation " << *this << " elementSizeChanged - device pixel content box size changed from " << m_lastObservationSizes.devicePixelContentBoxLogicalSize << " to " << currentSizes->devicePixelContentBoxLogicalSize);
             return currentSizes;
         }
         break;
@@ -170,6 +197,7 @@ TextStream& operator<<(TextStream& ts, const ResizeObservation& observation)
     ts.dumpProperty("border box"_s, observation.borderBoxSize());
     ts.dumpProperty("content box"_s, observation.contentBoxSize());
     ts.dumpProperty("snapped content box"_s, observation.snappedContentBoxSize());
+    ts.dumpProperty("device pixel content box"_s, observation.devicePixelContentBoxSize());
     return ts;
 }
 

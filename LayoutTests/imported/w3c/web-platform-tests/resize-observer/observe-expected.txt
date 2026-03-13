@@ -1,8 +1,6 @@
 
-Harness Error (TIMEOUT), message = null
-
 PASS ResizeObserver implemented
-NOTRUN guard
+PASS guard
 PASS test0: simple observation
 PASS test1: multiple observation on same element trigger only one
 PASS test2: throw exception when observing non-element
@@ -21,5 +19,6 @@ PASS test14: observe the same target but using a different box should override t
 PASS test15: an observation is fired with box dimensions 0 when element's display property is set to inline
 PASS test16: observations fire once with 0x0 size for non-replaced inline elements
 PASS test17: Box sizing snd Resize Observer notifications
-FAIL test18: an observation is fired when device-pixel-content-box is being observed assert_unreached: Caught a throw, possible syntax error Reached unreachable code
+PASS test18: an observation is fired when device-pixel-content-box is being observed
+PASS test19: an observation is fired when device-pixel-content-box is being observed and zoom change
 
