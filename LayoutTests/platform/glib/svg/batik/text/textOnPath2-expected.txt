@@ -63,7 +63,7 @@ layer at (0,0) size 450x500
               chunk 1 text run 2 at (200.97,-85.06) startOffset 1 endOffset 2 width 4.00: "t"
               chunk 1 text run 3 at (205.16,-82.33) startOffset 2 endOffset 3 width 6.00: "s"
               chunk 1 text run 4 at (210.64,-77.99) startOffset 3 endOffset 4 width 8.00: "p"
-              chunk 1 text run 5 at (215.99,-72.74) startOffset 4 endOffset 5 width 7.00: "a"
+              chunk 1 text run 5 at (216.00,-72.74) startOffset 4 endOffset 5 width 7.00: "a"
               chunk 1 text run 6 at (220.78,-66.97) startOffset 5 endOffset 6 width 8.00: "n"
         RenderSVGInlineText {#text} at (218,36) size 32x17
           chunk 1 text run 1 at (228.78,-66.97) startOffset 0 endOffset 5 width 32.00: " xxx "
@@ -81,7 +81,7 @@ layer at (0,0) size 450x500
         RenderSVGTextPath {textPath} at (78,0) size 160x93
           RenderSVGInlineText {#text} at (78,14) size 64x79
             chunk 1 text run 1 at (102.61,-27.92) startOffset 0 endOffset 1 width 4.00: "t"
-            chunk 1 text run 2 at (103.81,-33.29) startOffset 1 endOffset 2 width 7.00: "e"
+            chunk 1 text run 2 at (103.80,-33.29) startOffset 1 endOffset 2 width 7.00: "e"
             chunk 1 text run 3 at (105.85,-40.50) startOffset 2 endOffset 3 width 8.00: "x"
             chunk 1 text run 4 at (107.85,-46.16) startOffset 3 endOffset 4 width 4.00: "t"
             chunk 1 text run 5 at (109.37,-49.86) startOffset 4 endOffset 5 width 4.00: " "
@@ -105,7 +105,7 @@ layer at (0,0) size 450x500
               chunk 1 text run 7 at (193.49,-88.89) startOffset 6 endOffset 7 width 7.00: "e"
               chunk 1 text run 8 at (199.32,-86.02) startOffset 7 endOffset 8 width 6.00: "s"
               chunk 1 text run 9 at (203.58,-83.41) startOffset 8 endOffset 9 width 4.00: "t"
-              chunk 1 text run 10 at (208.02,-80.18) startOffset 9 endOffset 10 width 7.00: "e"
+              chunk 1 text run 10 at (208.03,-80.18) startOffset 9 endOffset 10 width 7.00: "e"
               chunk 1 text run 11 at (213.63,-75.20) startOffset 10 endOffset 11 width 8.00: "d"
           RenderSVGTSpan {tspan} at (204,36) size 34x43
             RenderSVGInlineText {#text} at (204,36) size 34x43

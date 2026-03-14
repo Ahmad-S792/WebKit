@@ -18,19 +18,19 @@ layer at (0,0) size 450x500
           RenderSVGPath {path} at (239,70) size 161x40 [stroke={[type=SOLID] [color=#0000FF] [stroke width=2.00]}] [data="M 20 40 C 40 20 60 0 80 20 C 100 40 120 60 140 40 C 160 20 180 20 180 20"]
         RenderSVGText {text} at (4,-16) size 138x70 contains 1 chunk(s)
           RenderSVGTextPath {textPath} at (0,0) size 137x70
-            RenderSVGInlineText {#text} at (0,4) size 71x54
+            RenderSVGInlineText {#text} at (0,4) size 71x55
               chunk 1 text run 1 at (25.67,34.36) startOffset 0 endOffset 1 width 16.00: "B"
               chunk 1 text run 2 at (36.30,24.50) startOffset 1 endOffset 2 width 13.00: "a"
               chunk 1 text run 3 at (44.22,18.41) startOffset 2 endOffset 3 width 7.00: "t"
               chunk 1 text run 4 at (49.37,15.32) startOffset 3 endOffset 4 width 5.00: "i"
               chunk 1 text run 5 at (57.29,12.31) startOffset 4 endOffset 5 width 12.00: "k"
               chunk 1 text run 6 at (66.71,12.16) startOffset 5 endOffset 6 width 7.00: " "
-            RenderSVGTSpan {tspan} at (67,0) size 34x35
-              RenderSVGInlineText {#text} at (67,0) size 34x35
-                chunk 1 text run 1 at (72.33,14.21) startOffset 0 endOffset 1 width 5.00: "i"
+            RenderSVGTSpan {tspan} at (67,0) size 35x36
+              RenderSVGInlineText {#text} at (67,0) size 34x36
+                chunk 1 text run 1 at (72.34,14.21) startOffset 0 endOffset 1 width 5.00: "i"
                 chunk 1 text run 2 at (79.18,19.20) startOffset 1 endOffset 2 width 12.00: "s"
             RenderSVGTSpan {tspan} at (75,23) size 62x47
-              RenderSVGInlineText {#text} at (75,23) size 62x46
+              RenderSVGInlineText {#text} at (75,23) size 62x47
                 chunk 1 text run 1 at (85.93,25.89) startOffset 0 endOffset 1 width 7.00: " "
                 chunk 1 text run 2 at (95.44,34.75) startOffset 1 endOffset 2 width 19.00: "G"
                 chunk 1 text run 3 at (108.36,44.14) startOffset 2 endOffset 3 width 13.00: "o"
@@ -64,7 +64,7 @@ layer at (0,0) size 450x500
               chunk 1 text run 3 at (82.30,14.45) startOffset 2 endOffset 3 width 7.00: "t"
               chunk 1 text run 4 at (109.09,11.82) startOffset 3 endOffset 4 width 5.00: "i"
               chunk 1 text run 5 at (135.27,17.82) startOffset 4 endOffset 5 width 12.00: "k"
-              chunk 1 text run 6 at (159.56,29.60) startOffset 5 endOffset 6 width 7.00: " "
+              chunk 1 text run 6 at (159.56,29.61) startOffset 5 endOffset 6 width 7.00: " "
             RenderSVGTSpan {tspan} at (161,20) size 53x19
               RenderSVGInlineText {#text} at (161,20) size 52x19
                 chunk 1 text run 1 at (184.39,40.17) startOffset 0 endOffset 1 width 5.00: "i"
@@ -106,7 +106,7 @@ layer at (0,0) size 450x500
               chunk 1 text run 6 at (66.71,12.16) startOffset 5 endOffset 6 width 7.00: " "
             RenderSVGTSpan {tspan} at (73,0) size 35x36
               RenderSVGInlineText {#text} at (73,0) size 35x36
-                chunk 1 text run 1 at (72.33,14.21) startOffset 0 endOffset 1 width 5.00: "i"
+                chunk 1 text run 1 at (72.34,14.21) startOffset 0 endOffset 1 width 5.00: "i"
                 chunk 1 text run 2 at (79.18,19.20) startOffset 1 endOffset 2 width 12.00: "s"
             RenderSVGTSpan {tspan} at (82,23) size 56x46
               RenderSVGInlineText {#text} at (82,23) size 56x45
@@ -143,7 +143,7 @@ layer at (0,0) size 450x500
               chunk 1 text run 3 at (82.30,14.45) startOffset 2 endOffset 3 width 7.00: "t"
               chunk 1 text run 4 at (109.09,11.82) startOffset 3 endOffset 4 width 5.00: "i"
               chunk 1 text run 5 at (135.27,17.82) startOffset 4 endOffset 5 width 12.00: "k"
-              chunk 1 text run 6 at (159.56,29.60) startOffset 5 endOffset 6 width 7.00: " "
+              chunk 1 text run 6 at (159.56,29.61) startOffset 5 endOffset 6 width 7.00: " "
             RenderSVGTSpan {tspan} at (151,18) size 59x23
               RenderSVGInlineText {#text} at (151,18) size 59x23
                 chunk 1 text run 1 at (184.39,40.17) startOffset 0 endOffset 1 width 5.00: "i"

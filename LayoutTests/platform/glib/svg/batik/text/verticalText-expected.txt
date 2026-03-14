@@ -252,7 +252,7 @@ layer at (0,0) size 450x500
               chunk 1 (vertical) text run 9 at (112.70,22.45) startOffset 8 endOffset 9 height 14.00: " "
               chunk 1 (vertical) text run 10 at (123.51,13.58) startOffset 9 endOffset 10 height 14.00: "t"
               chunk 1 (vertical) text run 11 at (136.47,8.79) startOffset 10 endOffset 11 height 14.00: "e"
-              chunk 1 (vertical) text run 12 at (149.04,14.09) startOffset 11 endOffset 12 height 14.00: "x"
+              chunk 1 (vertical) text run 12 at (149.05,14.09) startOffset 11 endOffset 12 height 14.00: "x"
               chunk 1 (vertical) text run 13 at (159.09,23.84) startOffset 12 endOffset 13 height 14.00: "t"
               chunk 1 (vertical) text run 14 at (170.11,32.43) startOffset 13 endOffset 14 height 14.00: " "
               chunk 1 (vertical) text run 15 at (183.36,36.14) startOffset 14 endOffset 15 height 14.00: "o"
@@ -262,9 +262,9 @@ layer at (0,0) size 450x500
               chunk 1 (vertical) text run 19 at (230.23,9.16) startOffset 18 endOffset 19 height 14.00: " "
               chunk 1 (vertical) text run 20 at (241.74,16.74) startOffset 19 endOffset 20 height 14.00: "P"
               chunk 1 (vertical) text run 21 at (251.91,26.36) startOffset 20 endOffset 21 height 14.00: "a"
-              chunk 1 (vertical) text run 22 at (263.45,34.20) startOffset 21 endOffset 22 height 14.00: "t"
+              chunk 1 (vertical) text run 22 at (263.45,34.21) startOffset 21 endOffset 22 height 14.00: "t"
               chunk 1 (vertical) text run 23 at (277.04,35.31) startOffset 22 endOffset 23 height 14.00: "h"
-              chunk 1 (vertical) text run 24 at (288.08,26.93) startOffset 23 endOffset 24 height 14.00: "\x{753B}"
+              chunk 1 (vertical) text run 24 at (288.09,26.93) startOffset 23 endOffset 24 height 14.00: "\x{753B}"
               chunk 1 (vertical) text run 25 at (298.36,17.42) startOffset 24 endOffset 25 height 14.00: "\x{50CF}"
           RenderSVGInlineText {#text} at (0,0) size 0x0
     RenderSVGContainer {use} at (0,0) size 448x498

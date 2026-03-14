@@ -41,9 +41,9 @@ layer at (0,0) size 480x360
               RenderSVGInlineText {#text} at (30,28) size 43x39
                 chunk 1 text run 1 at (54.47,106.78) startOffset 0 endOffset 1 width 18.00: "x"
             RenderSVGInlineText {#text} at (45,0) size 156x112
-              chunk 1 text run 1 at (63.81,96.37) startOffset 0 endOffset 1 width 10.00: "t"
+              chunk 1 text run 1 at (63.81,96.36) startOffset 0 endOffset 1 width 10.00: "t"
               chunk 1 text run 2 at (71.16,90.36) startOffset 1 endOffset 2 width 9.00: " "
-              chunk 1 text run 3 at (83.26,84.54) startOffset 2 endOffset 3 width 18.00: "o"
+              chunk 1 text run 3 at (83.27,84.54) startOffset 2 endOffset 3 width 18.00: "o"
               chunk 1 text run 4 at (100.96,85.27) startOffset 3 endOffset 4 width 18.00: "n"
               chunk 1 text run 5 at (112.58,92.02) startOffset 4 endOffset 5 width 9.00: " "
               chunk 1 text run 6 at (121.62,100.64) startOffset 5 endOffset 6 width 16.00: "a"

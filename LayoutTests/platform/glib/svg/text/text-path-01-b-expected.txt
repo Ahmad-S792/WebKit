@@ -19,7 +19,7 @@ layer at (0,0) size 800x600
               chunk 1 text run 4 at (229.72,39.54) startOffset 3 endOffset 4 width 10.20: "t"
               chunk 1 text run 5 at (237.20,33.53) startOffset 4 endOffset 5 width 9.00: " "
               chunk 1 text run 6 at (249.38,27.89) startOffset 5 endOffset 6 width 18.00: "o"
-              chunk 1 text run 7 at (267.06,29.00) startOffset 6 endOffset 7 width 18.00: "n"
+              chunk 1 text run 7 at (267.06,28.99) startOffset 6 endOffset 7 width 18.00: "n"
               chunk 1 text run 8 at (278.59,35.91) startOffset 7 endOffset 8 width 9.00: " "
               chunk 1 text run 9 at (287.68,44.61) startOffset 8 endOffset 9 width 16.20: "a"
               chunk 1 text run 10 at (295.72,54.31) startOffset 9 endOffset 10 width 9.00: " "
@@ -36,18 +36,18 @@ layer at (0,0) size 800x600
             RenderSVGTSpan {tspan} at (0,40) size 53x53
               RenderSVGInlineText {#text} at (0,40) size 53x53
                 chunk 1 text run 1 at (37.04,136.62) startOffset 0 endOffset 1 width 19.69: "T"
-                chunk 1 text run 2 at (45.17,120.64) startOffset 1 endOffset 2 width 16.20: "e"
+                chunk 1 text run 2 at (45.17,120.63) startOffset 1 endOffset 2 width 16.20: "e"
             RenderSVGTSpan {tspan} at (31,28) size 43x40
               RenderSVGInlineText {#text} at (31,28) size 43x39
                 chunk 1 text run 1 at (54.72,106.46) startOffset 0 endOffset 1 width 18.00: "x"
             RenderSVGInlineText {#text} at (45,0) size 156x112
               chunk 1 text run 1 at (64.17,96.02) startOffset 0 endOffset 1 width 10.20: "t"
               chunk 1 text run 2 at (71.65,90.02) startOffset 1 endOffset 2 width 9.00: " "
-              chunk 1 text run 3 at (83.85,84.39) startOffset 2 endOffset 3 width 18.00: "o"
+              chunk 1 text run 3 at (83.85,84.38) startOffset 2 endOffset 3 width 18.00: "o"
               chunk 1 text run 4 at (101.52,85.48) startOffset 3 endOffset 4 width 18.00: "n"
               chunk 1 text run 5 at (113.05,92.40) startOffset 4 endOffset 5 width 9.00: " "
               chunk 1 text run 6 at (122.09,101.16) startOffset 5 endOffset 6 width 16.20: "a"
-              chunk 1 text run 7 at (130.07,110.90) startOffset 6 endOffset 7 width 9.00: " "
+              chunk 1 text run 7 at (130.08,110.90) startOffset 6 endOffset 7 width 9.00: " "
               chunk 1 text run 8 at (138.17,121.70) startOffset 7 endOffset 8 width 18.00: "p"
               chunk 1 text run 9 at (148.97,134.95) startOffset 8 endOffset 9 width 16.20: "a"
               chunk 1 text run 10 at (158.68,143.87) startOffset 9 endOffset 10 width 10.20: "t"
