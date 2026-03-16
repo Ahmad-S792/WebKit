@@ -864,7 +864,7 @@ void RenderReplaced::computePreferredLogicalWidths()
 
     // We cannot resolve any percent logical width here as the available logical
     // width may not be set on our containing block.
-    if (style().logicalWidth().isPercentOrCalculated())
+    if (style().logicalWidth().isPercentOrCalculated() || style().logicalWidth().isIntrinsicOrStretch())
         computeAspectRatioAdjustedIntrinsicLogicalWidths(m_minPreferredLogicalWidth, m_maxPreferredLogicalWidth);
     else
         m_minPreferredLogicalWidth = m_maxPreferredLogicalWidth = computeReplacedLogicalWidth(ShouldComputePreferred::ComputePreferred);

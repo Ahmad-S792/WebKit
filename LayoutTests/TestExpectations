@@ -4506,7 +4506,6 @@ imported/w3c/web-platform-tests/css/css-sizing/image-min-max-content-intrinsic-s
 imported/w3c/web-platform-tests/css/css-sizing/image-min-max-content-intrinsic-size-change-008.html [ ImageOnlyFailure ]
 imported/w3c/web-platform-tests/css/css-sizing/inline-intrinsic-size-calc.html [ ImageOnlyFailure ]
 imported/w3c/web-platform-tests/css/css-sizing/max-content-input-001.html [ ImageOnlyFailure ]
-imported/w3c/web-platform-tests/css/css-sizing/replaced-aspect-ratio-intrinsic-size-001.html [ ImageOnlyFailure ]
 imported/w3c/web-platform-tests/css/css-sizing/replaced-aspect-ratio-stretch-fit-003.html [ ImageOnlyFailure ]
 imported/w3c/web-platform-tests/css/css-sizing/vert-block-size-small-or-larger-than-container-with-min-or-max-content-1.html [ ImageOnlyFailure ]
 imported/w3c/web-platform-tests/css/css-sizing/aspect-ratio/intrinsic-size-017.html [ ImageOnlyFailure ]
