@@ -300,7 +300,7 @@ void RenderMathMLRoot::paint(PaintInfo& info, const LayoutPoint& paintOffset)
         auto horizontal = horizontalParameters(indexWidth);
         horizontalOffset += horizontal.kernBeforeDegree + indexWidth + horizontal.kernAfterDegree;
     }
-    radicalOperatorTopLeft.move(mirrorIfNeeded(horizontalOffset, m_radicalOperator.width()), m_radicalOperatorTop);
+    radicalOperatorTopLeft.move(mirrorIfNeeded(horizontalOffset, m_radicalOperator.width()), m_radicalOperatorTop + borderAndPaddingBefore());
     m_radicalOperator.paint(style(), info, radicalOperatorTopLeft, protect(document())->deviceScaleFactor());
 
     // We draw the radical line.
@@ -312,7 +312,7 @@ void RenderMathMLRoot::paint(PaintInfo& info, const LayoutPoint& paintOffset)
     info.context().setStrokeThickness(ruleThickness);
     info.context().setStrokeStyle(StrokeStyle::SolidStroke);
     info.context().setStrokeColor(style().visitedDependentColorApplyingColorFilter());
-    LayoutPoint ruleOffsetFrom = paintOffset + location() + LayoutPoint(0_lu, m_radicalOperatorTop + ruleThickness / 2);
+    LayoutPoint ruleOffsetFrom = paintOffset + location() + LayoutPoint(0_lu, m_radicalOperatorTop + borderAndPaddingBefore() + ruleThickness / 2);
     LayoutPoint ruleOffsetTo = ruleOffsetFrom;
     horizontalOffset += m_radicalOperator.width();
     ruleOffsetFrom.move(mirrorIfNeeded(horizontalOffset), 0_lu);

@@ -1,6 +1,6 @@
 
 PASS Inner binary operator should not affect position and size of outer fences.
-FAIL Fences are stretched symmetrically with respect to the math axis assert_approx_equals: expected 71.6875 +/- 2 but got 68.1171875
+PASS Fences are stretched symmetrically with respect to the math axis
 (
 (
 x

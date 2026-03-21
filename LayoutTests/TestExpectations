@@ -2106,10 +2106,7 @@ webkit.org/b/276413 imported/w3c/web-platform-tests/mathml/relations/css-styling
 imported/w3c/web-platform-tests/mathml/relations/css-styling/first-line-first-letter-pseudo-elements-001.html [ ImageOnlyFailure ]
 imported/w3c/web-platform-tests/mathml/relations/css-styling/first-line-first-letter-pseudo-elements-003.html [ ImageOnlyFailure ]
 imported/w3c/web-platform-tests/mathml/relations/css-styling/first-line-first-letter-pseudo-elements-004.html [ ImageOnlyFailure ]
-imported/w3c/web-platform-tests/mathml/relations/css-styling/padding-border-margin/padding-border-margin-005.html [ ImageOnlyFailure ]
-imported/w3c/web-platform-tests/mathml/relations/css-styling/padding-border-margin/padding-border-margin-006.html [ ImageOnlyFailure ]
 imported/w3c/web-platform-tests/mathml/relations/css-styling/table-width-3.html [ ImageOnlyFailure ]
-imported/w3c/web-platform-tests/mathml/relations/css-styling/width-height-002.html [ ImageOnlyFailure ]
 
 # This MathML test should be rewritten.
 webkit.org/b/201356 mathml/presentation/stretchy-depth-height-symmetric.html [ Skip ]
