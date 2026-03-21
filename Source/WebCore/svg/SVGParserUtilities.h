@@ -22,6 +22,7 @@
 #pragma once
 
 #include <wtf/Forward.h>
+#include <wtf/OptionSet.h>
 #include <wtf/text/ParsingUtilities.h>
 
 typedef std::pair<char32_t, char32_t> UnicodeRange;
@@ -32,14 +33,14 @@ namespace WebCore {
 class FloatPoint;
 class FloatRect;
 
-enum class SuffixSkippingPolicy {
-    DontSkip,
-    Skip
+enum class SVGWhitespaceMode : uint8_t {
+    AllowLeadingWhitespace  = 1 << 0,
+    AllowTrailingWhitespace = 1 << 1,
 };
 
-std::optional<float> NODELETE parseNumber(StringParsingBuffer<Latin1Character>&, SuffixSkippingPolicy = SuffixSkippingPolicy::Skip);
-std::optional<float> NODELETE parseNumber(StringParsingBuffer<char16_t>&, SuffixSkippingPolicy = SuffixSkippingPolicy::Skip);
-std::optional<float> parseNumber(StringView, SuffixSkippingPolicy = SuffixSkippingPolicy::Skip);
+std::optional<float> NODELETE parseNumber(StringParsingBuffer<Latin1Character>&, OptionSet<SVGWhitespaceMode> = { SVGWhitespaceMode::AllowLeadingWhitespace, SVGWhitespaceMode::AllowTrailingWhitespace });
+std::optional<float> NODELETE parseNumber(StringParsingBuffer<char16_t>&, OptionSet<SVGWhitespaceMode> = { SVGWhitespaceMode::AllowLeadingWhitespace, SVGWhitespaceMode::AllowTrailingWhitespace });
+std::optional<float> parseNumber(StringView, OptionSet<SVGWhitespaceMode> = { SVGWhitespaceMode::AllowLeadingWhitespace, SVGWhitespaceMode::AllowTrailingWhitespace });
 
 std::optional<std::pair<float, float>> parseNumberOptionalNumber(StringView);
 
@@ -49,8 +50,8 @@ std::optional<bool> NODELETE parseArcFlag(StringParsingBuffer<char16_t>&);
 std::optional<FloatPoint> parsePoint(StringView);
 std::optional<FloatRect> parseRect(StringView);
 
-std::optional<FloatPoint> NODELETE parseFloatPoint(StringParsingBuffer<Latin1Character>&);
-std::optional<FloatPoint> NODELETE parseFloatPoint(StringParsingBuffer<char16_t>&);
+std::optional<FloatPoint> parseFloatPoint(StringParsingBuffer<Latin1Character>&);
+std::optional<FloatPoint> parseFloatPoint(StringParsingBuffer<char16_t>&);
 
 std::optional<std::pair<UnicodeRanges, HashSet<String>>> parseKerningUnicodeString(StringView);
 std::optional<HashSet<String>> parseGlyphName(StringView);

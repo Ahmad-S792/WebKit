@@ -63,7 +63,7 @@ void SVGStopElement::attributeChanged(const QualifiedName& name, const AtomStrin
         if (isPercentage)
             valueView = valueView.left(valueView.length() - 1);
 
-        auto parsedValue = parseNumber(valueView, SuffixSkippingPolicy::DontSkip);
+        auto parsedValue = parseNumber(valueView, { });
         float value = parsedValue.value_or(0);
 
         if (parsedValue && isPercentage)
