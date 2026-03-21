@@ -72,8 +72,15 @@ MathMLOperatorElement::OperatorChar MathMLOperatorElement::parseOperatorChar(con
 
 const MathMLOperatorElement::OperatorChar& MathMLOperatorElement::operatorChar()
 {
-    if (!m_operatorChar)
-        m_operatorChar = parseOperatorChar(textContent());
+    if (!m_operatorChar) {
+        // Per the MathML Core spec, the operator dictionary is only consulted
+        // when "the core operator contains only text content".
+        // https://w3c.github.io/mathml-core/#algorithm-for-determining-the-properties-of-an-embellished-operator
+        if (firstElementChild())
+            m_operatorChar = OperatorChar();
+        else
+            m_operatorChar = parseOperatorChar(textContent());
+    }
     return m_operatorChar.value();
 }
 
