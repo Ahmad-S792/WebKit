@@ -209,6 +209,8 @@ void RenderMathMLMenclose::layoutBlock(RelayoutChildren relayoutChildren, Layout
     adjustLayoutForBorderAndPadding();
     m_contentRect.moveBy(LayoutPoint(borderLeft() + paddingLeft(), borderAndPaddingBefore()));
 
+    updateLogicalHeight();
+
     layoutOutOfFlowBoxes(relayoutChildren);
 }
 

@@ -243,6 +243,8 @@ void RenderMathMLOperator::layoutBlock(RelayoutChildren relayoutChildren, Layout
         setLogicalWidth(leadingSpaceValue + m_mathOperator.width() + trailingSpaceValue + borderAndPaddingLogicalWidth());
         setLogicalHeight(m_mathOperator.ascent() + m_mathOperator.descent() + borderAndPaddingLogicalHeight());
 
+        updateLogicalHeight();
+
         layoutOutOfFlowBoxes(relayoutChildren);
     } else {
         // We first do the normal layout without spacing.

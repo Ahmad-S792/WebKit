@@ -188,6 +188,8 @@ void RenderMathMLRow::layoutBlock(RelayoutChildren relayoutChildren, LayoutUnit)
 
     adjustLayoutForBorderAndPadding();
 
+    updateLogicalHeight();
+
     layoutOutOfFlowBoxes(relayoutChildren);
 }
 

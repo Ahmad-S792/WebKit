@@ -146,6 +146,8 @@ void RenderMathMLPadded::layoutBlock(RelayoutChildren relayoutChildren, LayoutUn
 
     adjustLayoutForBorderAndPadding();
 
+    updateLogicalHeight();
+
     layoutOutOfFlowBoxes(relayoutChildren);
 }
 
