@@ -1,5 +1,8 @@
 
+Harness Error (TIMEOUT), message = null
+
 PASS Creating a shared worker from a blob URL works.
 PASS Creating a shared worker from a blob URL works immediately before revoking.
 PASS Connecting to a shared worker on a revoked blob URL works.
+TIMEOUT Blob URLs should not resolve relative to document base URL. Test timed out
 

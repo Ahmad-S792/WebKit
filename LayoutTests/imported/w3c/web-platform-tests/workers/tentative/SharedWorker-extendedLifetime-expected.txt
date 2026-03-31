@@ -1,0 +1,3 @@
+
+FAIL SharedWorker lifetime should be extended with extendedLifetime assert_equals: expected (string) "00d9b8b7-03d3-4694-a045-3da805b43fec" but got (object) null
+

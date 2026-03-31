@@ -1,0 +1,4 @@
+
+FAIL Named SharedWorker should survive across navigations with extendedLifetime assert_equals: expected (string) "a73793fe-1266-4716-a77c-1ae377e98517" but got (object) null
+FAIL Module SharedWorker should survive across navigations with extendedLifetime assert_equals: expected (string) "d2af5a30-217e-4385-8ec5-dc9ea1ee8266" but got (object) null
+

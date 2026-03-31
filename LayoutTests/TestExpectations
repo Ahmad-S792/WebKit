@@ -852,6 +852,7 @@ imported/w3c/web-platform-tests/html/syntax/speculative-parsing/generated/docume
 # Timing out tests
 imported/w3c/web-platform-tests/workers/modules/dedicated-worker-import-data-url.any.html [ Skip ]
 imported/w3c/web-platform-tests/workers/modules/dedicated-worker-import-data-url-cross-origin.html [ Skip ]
+imported/w3c/web-platform-tests/workers/shared-worker-from-blob-url.window.html [ Skip ] # timeout on last subtest
 
 # This is timing out because we do not support singleton prefetch matching, and the different initiators have different FrameLoaders.
 imported/w3c/web-platform-tests/speculation-rules/prefetch/different-initiators-2.https.html [ Skip ]

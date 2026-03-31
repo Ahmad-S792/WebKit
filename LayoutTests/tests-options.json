@@ -7058,7 +7058,7 @@
     "imported/w3c/web-platform-tests/workers/semantics/multiple-workers/004.html": [
         "slow"
     ],
-    "imported/w3c/web-platform-tests/workers/semantics/multiple-workers/007.html": [
+    "imported/w3c/web-platform-tests/workers/shared-worker-partitioned-cookies.tentative.https.html": [
         "slow"
     ],
     "imported/w3c/web-platform-tests/worklets/animation-worklet-csp.https.html": [
