@@ -29,6 +29,8 @@
 
 #include "BlobRegistry.h"
 #include "ByteArrayPixelBuffer.h"
+#include "CrossOriginMode.h"
+#include "CrossOriginOpenerPolicy.h"
 #include "CryptoKeyAES.h"
 #include "CryptoKeyEC.h"
 #include "CryptoKeyHMAC.h"
@@ -36,6 +38,7 @@
 #include "CryptoKeyRSA.h"
 #include "CryptoKeyRSAComponents.h"
 #include "CryptoKeyRaw.h"
+#include "Document.h"
 #include "IDBValue.h"
 #include "ImageBuffer.h"
 #include "JSAudioWorkletGlobalScope.h"
@@ -2169,6 +2172,25 @@ private:
                 if (arrayBuffer->isShared() && (m_context == SerializationContext::WorkerPostMessage || m_forStorage == SerializationForStorage::Yes)) {
                     // https://html.spec.whatwg.org/multipage/structured-data.html#structuredserializeinternal
                     if (!JSC::Options::useSharedArrayBuffer() || m_forStorage == SerializationForStorage::Yes) {
+                        code = SerializationReturnCode::DataCloneError;
+                        return true;
+                    }
+                    // https://html.spec.whatwg.org/multipage/structured-data.html#structuredserializeinternal (step 13)
+                    // Check the current settings object's cross-origin isolated capability.
+                    // The process-level crossOriginMode() global may not reflect per-document
+                    // COOP/COEP isolation (e.g. in the layout test runner which does not
+                    // perform COOP-based process swaps). Fall back to checking the context's
+                    // COOP (for documents) or COEP (for workers) directly.
+                    bool isCrossOriginIsolated = ScriptExecutionContext::crossOriginMode() == CrossOriginMode::Isolated;
+                    if (!isCrossOriginIsolated) {
+                        if (auto* context = m_lexicalGlobalObject ? executionContext(m_lexicalGlobalObject) : nullptr) {
+                            if (RefPtr document = dynamicDowncast<Document>(context))
+                                isCrossOriginIsolated = document->crossOriginOpenerPolicy().value == CrossOriginOpenerPolicyValue::SameOriginPlusCOEP;
+                            else
+                                isCrossOriginIsolated = context->crossOriginEmbedderPolicy().value == CrossOriginEmbedderPolicyValue::RequireCORP;
+                        }
+                    }
+                    if (!isCrossOriginIsolated) {
                         code = SerializationReturnCode::DataCloneError;
                         return true;
                     }
