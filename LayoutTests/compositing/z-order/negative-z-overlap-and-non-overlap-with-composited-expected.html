@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <style>
+        .parent {
+            position: relative;
+            z-index: 1;
+        }
+
+        .neg-overlapping {
+            position: absolute;
+            z-index: -1;
+            top: 20px;
+            left: 0;
+            width: 200px;
+            height: 100px;
+            background-color: green;
+        }
+
+        .neg-non-overlapping {
+            position: absolute;
+            z-index: -1;
+            top: 500px;
+            left: 0;
+            width: 200px;
+            height: 50px;
+            background-color: blue;
+        }
+
+        .behind {
+            position: absolute;
+            top: 20px;
+            left: 0;
+            height: 200px;
+            width: 200px;
+            background-color: red;
+        }
+
+        .later-sibling {
+            position: relative;
+            z-index: 2;
+            width: 50px;
+            height: 50px;
+            margin-top: 600px;
+            background-color: purple;
+        }
+    </style>
+</head>
+<body>
+    <p>The green box should cover the red box. No red should be visible.</p>
+    <div class="parent">
+        <div class="neg-overlapping"></div>
+        <div class="neg-non-overlapping"></div>
+    </div>
+    <div class="behind"></div>
+    <div class="later-sibling"></div>
+</body>
+</html>

@@ -313,8 +313,14 @@ bool LayerOverlapMap::overlapsLayers(const RenderLayer& layer, const LayoutRect&
 {
     if (m_speculativeOverlapStack.isEmpty())
         return m_overlapStack.last()->overlapsLayers(layer, bounds, enclosingClippingLayers);
+    // When we have a speculative compositing container (pushed for a layer with negative
+    // z-order children that might need compositing), we still need to check for overlap
+    // against layers that were already composited before this speculative scope. The top
+    // of the speculative stack is the empty speculative container; the one below it is
+    // the parent scope containing existing composited layers' bounds.
     ASSERT(m_speculativeOverlapStack.last()->isEmpty());
-    return false;
+    ASSERT(m_speculativeOverlapStack.size() >= 2);
+    return m_speculativeOverlapStack[m_speculativeOverlapStack.size() - 2]->overlapsLayers(layer, bounds, enclosingClippingLayers);
 }
 
 void LayerOverlapMap::pushCompositingContainer(const RenderLayer& layer)
