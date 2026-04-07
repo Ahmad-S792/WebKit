@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2004, 2005, 2006, 2007, 2008, 2009, 2010, 2011, 2012 Apple Inc. All rights reserved.
+ * Copyright (C) 2004-2026 Apple Inc. All rights reserved.
  * Copyright (C) 2008, 2010 Nokia Corporation and/or its subsidiary(-ies)
  * Copyright (C) 2007 Alp Toker <alp@atoker.com>
  * Copyright (C) 2008 Eric Seidel <eric@webkit.org>
@@ -242,9 +242,16 @@ void CanvasPath::rect(float x, float y, float width, float height)
     m_path.addRect(FloatRect(x, y, width, height));
 }
 
-ExceptionOr<void> CanvasPath::roundRect(float x, float y, float width, float height, const RadiusVariant& radii)
+ExceptionOr<void> CanvasPath::roundRect(float x, float y, float width, float height, float radii)
 {
-    return roundRect(x, y, width, height, singleElementSpan(radii));
+    RadiusVariant radiusVariant { static_cast<double>(radii) };
+    return roundRect(x, y, width, height, singleElementSpan(radiusVariant));
+}
+
+ExceptionOr<void> CanvasPath::roundRect(float x, float y, float width, float height, const DOMPointInit& radii)
+{
+    RadiusVariant radiusVariant { radii };
+    return roundRect(x, y, width, height, singleElementSpan(radiusVariant));
 }
 
 ExceptionOr<void> CanvasPath::roundRect(float x, float y, float width, float height, std::span<const RadiusVariant> radii)

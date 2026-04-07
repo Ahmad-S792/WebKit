@@ -138,6 +138,10 @@ template<> struct InspectorCanvasArgumentProcessor<IDLDictionary<ImageDataSettin
     std::optional<InspectorCanvasProcessedArgument> NODELETE operator()(InspectorCanvas&, const ImageDataSettings&);
 };
 
+template<> struct InspectorCanvasArgumentProcessor<IDLDictionary<DOMPointInit>> {
+    std::optional<InspectorCanvasProcessedArgument> operator()(InspectorCanvas&, const DOMPointInit&);
+};
+
 // MARK: - Strings
 
 template<> struct InspectorCanvasArgumentProcessor<IDLDOMString> {

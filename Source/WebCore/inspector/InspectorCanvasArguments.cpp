@@ -64,6 +64,12 @@ auto InspectorCanvasArgumentProcessor<IDLDictionary<ImageDataSettings>>::operato
     return std::nullopt;
 }
 
+auto InspectorCanvasArgumentProcessor<IDLDictionary<DOMPointInit>>::operator()(InspectorCanvas&, const DOMPointInit&) -> std::optional<InspectorCanvasProcessedArgument>
+{
+    // FIXME: Implement. See https://webkit.org/b/233255.
+    return std::nullopt;
+}
+
 // MARK: - Strings
 
 auto InspectorCanvasArgumentProcessor<IDLDOMString>::operator()(InspectorCanvas& context, const String& argument) -> std::optional<InspectorCanvasProcessedArgument>
