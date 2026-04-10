@@ -106,10 +106,12 @@ static LayoutUnit usedValueOrZero(const Style::MarginEdge& marginEdge, std::opti
     if (auto fixed = marginEdge.tryFixed())
         return LayoutUnit { fixed->resolveZoom(zoomFactor) };
 
-    if (marginEdge.isAuto() || !availableWidth)
+    if (marginEdge.isAuto())
         return { };
 
-    return Style::evaluateMinimum<LayoutUnit>(marginEdge, *availableWidth, zoomFactor);
+    // During intrinsic sizing availableWidth is nullopt; resolve cyclic
+    // percentages with a 0 basis so that calc(0% + 30px) yields 30px.
+    return Style::evaluateMinimum<LayoutUnit>(marginEdge, availableWidth.value_or(0_lu), zoomFactor);
 }
 
 static LayoutUnit usedValueOrZero(const Style::PaddingEdge& paddingEdge, std::optional<LayoutUnit> availableWidth, Style::ZoomFactor usedZoom)
@@ -117,10 +119,9 @@ static LayoutUnit usedValueOrZero(const Style::PaddingEdge& paddingEdge, std::op
     if (auto fixed = paddingEdge.tryFixed())
         return LayoutUnit { fixed->resolveZoom(usedZoom) };
 
-    if (!availableWidth)
-        return { };
-
-    return Style::evaluateMinimum<LayoutUnit>(paddingEdge, *availableWidth, usedZoom);
+    // During intrinsic sizing availableWidth is nullopt; resolve cyclic
+    // percentages with a 0 basis so that calc(0% + 50px) yields 50px.
+    return Style::evaluateMinimum<LayoutUnit>(paddingEdge, availableWidth.value_or(0_lu), usedZoom);
 }
 
 static inline void adjustBorderForTableAndFieldset(const RenderBoxModelObject& renderer, RectEdges<LayoutUnit>& borderWidths)

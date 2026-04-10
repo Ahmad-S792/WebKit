@@ -4722,14 +4722,17 @@ RenderObject* InlineMinMaxIterator::next()
 }
 
 template <typename SizeType>
-auto borderMarginOrPaddingWidth(LayoutUnit childValue, const SizeType& marginOrPadding, const Style::ZoomFactor& zoomFactor) -> LayoutUnit {
+auto borderMarginOrPaddingWidth(const SizeType& marginOrPadding, const Style::ZoomFactor& zoomFactor) -> LayoutUnit {
     if (auto fixed = marginOrPadding.tryFixed())
         return LayoutUnit(fixed->resolveZoom(zoomFactor));
     if constexpr (std::same_as<SizeType, Style::MarginEdge>) {
         if (marginOrPadding.isAuto())
             return { };
     }
-    return childValue;
+    // During intrinsic sizing, cyclic percentages resolve with a 0% basis.
+    // Evaluate calc() expressions (e.g. calc(0% + 30px)) with 0 as the
+    // percentage reference so the fixed portion is preserved.
+    return Style::evaluateMinimum<LayoutUnit>(marginOrPadding, 0_lu, zoomFactor);
 };
 
 static LayoutUnit getBorderPaddingMargin(const RenderBoxModelObject& child, bool endOfInline)
@@ -4738,12 +4741,12 @@ static LayoutUnit getBorderPaddingMargin(const RenderBoxModelObject& child, bool
     const auto& childZoomFactor = childStyle.usedZoomForLength();
 
     if (endOfInline) {
-        return borderMarginOrPaddingWidth(child.marginEnd(), childStyle.marginEnd(), childZoomFactor) +
-            borderMarginOrPaddingWidth(child.paddingEnd(), childStyle.paddingEnd(), childZoomFactor) +
+        return borderMarginOrPaddingWidth(childStyle.marginEnd(), childZoomFactor) +
+            borderMarginOrPaddingWidth(childStyle.paddingEnd(), childZoomFactor) +
             child.borderEnd();
     }
-    return borderMarginOrPaddingWidth(child.marginStart(), childStyle.marginStart(), childZoomFactor) +
-        borderMarginOrPaddingWidth(child.paddingStart(), childStyle.paddingStart(), childZoomFactor) +
+    return borderMarginOrPaddingWidth(childStyle.marginStart(), childZoomFactor) +
+        borderMarginOrPaddingWidth(childStyle.paddingStart(), childZoomFactor) +
         child.borderStart();
 }
 
