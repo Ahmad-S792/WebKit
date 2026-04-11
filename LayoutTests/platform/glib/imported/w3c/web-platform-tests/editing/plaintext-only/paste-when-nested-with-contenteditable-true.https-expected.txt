@@ -1,0 +1,18 @@
+abc
+abc
+
+PASS Initializing the clipboard with <b>abc</b>...
+PASS The result should depend on the outermost editing host in the innermost non-editable element whether pasting with or without format
+PASS pasting in contenteditable="plaintext-only" in contenteditable="true"
+PASS pasting in contenteditable="plaintext-only" in contenteditable="true" and contenteditable="false"
+PASS pasting in contenteditable="true" in contenteditable="plaintext-only"
+PASS pasting in contenteditable="true" in contenteditable="plaintext-only" and contenteditable="false"
+FAIL pasting in contenteditable="plaintext-only" in contenteditable="true": beforeinput assert_true: beforeinput.dataTransfer should have the styled text as text/html expected true got false
+FAIL pasting in contenteditable="plaintext-only" in contenteditable="true": innerHTML assert_equals: expected "<div contenteditable=\"true\"><div contenteditable=\"plaintext-only\"><b>abc</b></div></div>" but got "<div contenteditable=\"true\"><div contenteditable=\"plaintext-only\">abc</div></div>"
+FAIL pasting in contenteditable="plaintext-only" in contenteditable="true" and contenteditable="false": beforeinput assert_true: beforeinput.dataTransfer should have the styled text as text/html expected true got false
+PASS pasting in contenteditable="plaintext-only" in contenteditable="true" and contenteditable="false": innerHTML
+FAIL pasting in contenteditable="true" in contenteditable="plaintext-only": beforeinput assert_true: beforeinput.dataTransfer should have the styled text as text/html expected true got false
+PASS pasting in contenteditable="true" in contenteditable="plaintext-only": innerHTML
+FAIL pasting in contenteditable="true" in contenteditable="plaintext-only" and contenteditable="false": beforeinput assert_true: beforeinput.dataTransfer should have the styled text as text/html expected true got false
+FAIL pasting in contenteditable="true" in contenteditable="plaintext-only" and contenteditable="false": innerHTML assert_equals: expected "<div contenteditable=\"plaintext-only\"><div contenteditable=\"false\"><div contenteditable=\"true\"><b>abc</b></div></div></div>" but got "<div contenteditable=\"plaintext-only\"><div contenteditable=\"false\"><div contenteditable=\"true\"><b>abc</b><br></div></div></div>"
+
