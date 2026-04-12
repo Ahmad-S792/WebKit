@@ -2421,13 +2421,19 @@ LayoutUnit RenderBox::perpendicularContainingBlockLogicalHeight() const
         return containingBlock->adjustContentBoxLogicalHeightForBoxSizing(LayoutUnit { fixedLogicalHeight->resolveZoom(containingBlockStyle.usedZoomForLength()) });
     }
 
-    LayoutUnit fillFallbackExtent = containingBlockStyle.writingMode().isHorizontal()
+    // Per CSS Writing Modes 4 section 7.3.1, when the containing block's block-size
+    // is indefinite, the available inline-size fallback is the smallest of:
+    //   - the containing block's inner max-size (if fixed), floored by its inner min-size (if fixed)
+    //   - the nearest ancestor scrollport's inner size (if fixed), else capped/floored by its max/min
+    //   - the initial containing block's size
+    // We approximate this by constraining the ICB extent with the containing block's
+    // own min/max-height and capping at the ICB (so min-height > ICB doesn't inflate it).
+    // FIXME: Handle the ancestor scrollport case separately from the containing block case.
+    LayoutUnit icbExtent = containingBlockStyle.writingMode().isHorizontal()
         ? view().frameView().layoutSize().height()
         : view().frameView().layoutSize().width();
-    LayoutUnit fillAvailableExtent = containingBlock->availableLogicalHeight(AvailableLogicalHeightType::ExcludeMarginBorderPadding);
     view().addPercentHeightDescendant(const_cast<RenderBox&>(*this));
-    // FIXME: https://bugs.webkit.org/show_bug.cgi?id=158286 We also need to perform the same percentHeightDescendant treatment to the element which dictates the return value for containingBlock()->availableLogicalHeight() above.
-    return std::min(fillAvailableExtent, fillFallbackExtent);
+    return std::min(containingBlock->constrainContentBoxLogicalHeightByMinMax(icbExtent, std::nullopt), icbExtent);
 }
 
 void RenderBox::mapLocalToContainer(const RenderLayerModelObject* ancestorContainer, TransformState& transformState, OptionSet<MapCoordinatesMode> mode, bool* wasFixed) const
