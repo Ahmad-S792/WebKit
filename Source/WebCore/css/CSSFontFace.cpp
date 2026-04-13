@@ -661,7 +661,7 @@ size_t CSSFontFace::pump(ExternalResourceDownloadPolicy policy)
             // but it seems that this behavior is a requirement of the design of FontRanges. FIXME: Perhaps rethink
             // this design.
             if (policy == ExternalResourceDownloadPolicy::Allow || !source->requiresExternalResource()) {
-                if (policy == ExternalResourceDownloadPolicy::Allow && m_status == Status::Pending)
+                if (m_status == Status::Pending)
                     setStatus(Status::Loading);
                 source->load(m_trustedType, protect(document()).get());
             }
@@ -684,7 +684,7 @@ size_t CSSFontFace::pump(ExternalResourceDownloadPolicy policy)
                 setStatus(Status::Success);
             return i;
         case CSSFontFaceSource::Status::Failure:
-            if (policy == ExternalResourceDownloadPolicy::Allow && m_status == Status::Pending)
+            if ((policy == ExternalResourceDownloadPolicy::Allow || !source->requiresExternalResource()) && m_status == Status::Pending)
                 setStatus(Status::Loading);
             break;
         }
