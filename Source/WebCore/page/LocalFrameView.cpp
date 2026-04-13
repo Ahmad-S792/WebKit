@@ -1295,8 +1295,15 @@ void LocalFrameView::willDoLayout(SingleThreadWeakPtr<RenderElement> layoutRoot)
     }
     auto firstLayout = !layoutContext().didFirstLayout();
     if (firstLayout) {
-        m_lastViewportSize = sizeForResizeEvent();
-        m_lastUsedZoomFactor = layoutRoot->style().usedZoom();
+        // Only pre-initialize viewport size if the document was NOT loaded while
+        // hidden (e.g. parent had display:none). When a subframe is loaded while
+        // hidden, its viewport transitions from 0x0 to actual size on first layout,
+        // which is a genuine resize per the CSSOM View spec. Skipping pre-initialization
+        // lets scheduleResizeEventIfNeeded() detect the change.
+        if (!m_loadedWhileHidden) {
+            m_lastViewportSize = sizeForResizeEvent();
+            m_lastUsedZoomFactor = layoutRoot->style().usedZoom();
+        }
         m_firstLayoutCallbackPending = true;
     }
     adjustScrollbarsForLayout(firstLayout);
