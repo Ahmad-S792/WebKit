@@ -8174,6 +8174,15 @@ imported/w3c/web-platform-tests/svg/text/reftests/textpath-side-005.svg [ ImageO
 
 webkit.org/b/312264 imported/w3c/web-platform-tests/css/cssom-view/interrupt-hidden-smooth-scroll.html [ Pass Failure ]
 
+
+imported/w3c/web-platform-tests/css/CSS2/css1/c43-rpl-ibx-000.xht [ ImageOnlyFailure ]
+imported/w3c/web-platform-tests/css/CSS2/css1/c5502-imrgn-r-003.xht [ ImageOnlyFailure ]
+imported/w3c/web-platform-tests/css/CSS2/css1/c5504-imrgn-l-003.xht [ ImageOnlyFailure ]
+imported/w3c/web-platform-tests/css/CSS2/css1/c5507-ipadn-r-003.xht [ ImageOnlyFailure ]
+imported/w3c/web-platform-tests/css/CSS2/css1/c5507-padn-r-000.xht [ ImageOnlyFailure ]
+imported/w3c/web-platform-tests/css/CSS2/css1/c5509-ipadn-l-003.xht [ ImageOnlyFailure ]
+imported/w3c/web-platform-tests/css/CSS2/css1/c5510-padn-000.xht [ ImageOnlyFailure ]
+
 # webkit.org/b/308565 LBSE specific compositing tests
 svg/compositing/foreground-layer-composited-html-in-foreignobject-between-rects.html [ ImageOnlyFailure ]
 svg/compositing/foreground-layer-composited-svg-rect-and-foreignobject-interleaved.html [ ImageOnlyFailure ]
