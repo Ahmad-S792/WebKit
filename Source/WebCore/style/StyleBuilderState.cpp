@@ -315,6 +315,11 @@ unsigned BuilderState::siblingCount()
 
     ASSERT(element());
 
+    // https://drafts.csswg.org/css-shadow-1/#tree-scoped-name-loosely-matched
+    // "loosely-matched tree-scoped references" return 0 for cross-tree styling.
+    if (m_currentProperty && m_currentProperty->styleScopeOrdinal <= ScopeOrdinal::ContainingHost)
+        return 0;
+
     auto* parent = element()->parentElement();
     if (!parent)
         return 1;
@@ -336,6 +341,11 @@ unsigned BuilderState::siblingIndex()
     // https://drafts.csswg.org/css-values-5/#funcdef-sibling-index
 
     ASSERT(element());
+
+    // https://drafts.csswg.org/css-shadow-1/#tree-scoped-name-loosely-matched
+    // "loosely-matched tree-scoped references" return 0 for cross-tree styling.
+    if (m_currentProperty && m_currentProperty->styleScopeOrdinal <= ScopeOrdinal::ContainingHost)
+        return 0;
 
     auto* parent = element()->parentElement();
     if (!parent)
