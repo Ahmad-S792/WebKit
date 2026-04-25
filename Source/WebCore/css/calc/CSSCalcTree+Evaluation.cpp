@@ -32,6 +32,7 @@
 #include "CSSCalcTree+Mappings.h"
 #include "CSSCalcTree+Simplification.h"
 #include "CSSCalcTree.h"
+#include "CSSCalcType.h"
 #include "CSSUnevaluatedCalc.h"
 #include "RenderStyle.h"
 #include "StyleBuilderState.h"
@@ -56,6 +57,9 @@ static auto evaluate(const IndirectNode<Product>&, const EvaluationOptions&) -> 
 static auto evaluate(const IndirectNode<Min>&, const EvaluationOptions&) -> std::optional<double>;
 static auto evaluate(const IndirectNode<Max>&, const EvaluationOptions&) -> std::optional<double>;
 static auto evaluate(const IndirectNode<Hypot>&, const EvaluationOptions&) -> std::optional<double>;
+static auto evaluate(const IndirectNode<Sin>&, const EvaluationOptions&) -> std::optional<double>;
+static auto evaluate(const IndirectNode<Cos>&, const EvaluationOptions&) -> std::optional<double>;
+static auto evaluate(const IndirectNode<Tan>&, const EvaluationOptions&) -> std::optional<double>;
 static auto evaluate(const IndirectNode<Random>&, const EvaluationOptions&) -> std::optional<double>;
 static auto evaluate(const IndirectNode<Anchor>&, const EvaluationOptions&) -> std::optional<double>;
 static auto evaluate(const IndirectNode<AnchorSize>&, const EvaluationOptions&) -> std::optional<double>;
@@ -191,6 +195,33 @@ std::optional<double> evaluate(const IndirectNode<Max>& root, const EvaluationOp
 std::optional<double> evaluate(const IndirectNode<Hypot>& root, const EvaluationOptions& options)
 {
     return executeVariadicMathOperationAfterUnwrapping(root, options);
+}
+
+template<typename Op> static std::optional<double> evaluateTrig(const IndirectNode<Op>& root, const EvaluationOptions& options)
+{
+    auto a = evaluate(root->a, options);
+    if (!a)
+        return std::nullopt;
+
+    auto type = getType(root->a);
+    if (type.template matchesAny<Type::Match::Angle>())
+        return executeOperation<ToCalculationTreeOp<Op>::op>(deg2rad(*a));
+    return executeOperation<ToCalculationTreeOp<Op>::op>(*a);
+}
+
+std::optional<double> evaluate(const IndirectNode<Sin>& root, const EvaluationOptions& options)
+{
+    return evaluateTrig(root, options);
+}
+
+std::optional<double> evaluate(const IndirectNode<Cos>& root, const EvaluationOptions& options)
+{
+    return evaluateTrig(root, options);
+}
+
+std::optional<double> evaluate(const IndirectNode<Tan>& root, const EvaluationOptions& options)
+{
+    return evaluateTrig(root, options);
 }
 
 std::optional<double> evaluate(const IndirectNode<Random>& root, const EvaluationOptions& options)
