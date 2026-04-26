@@ -680,12 +680,24 @@ void RenderReplaced::computeAspectRatioAdjustedIntrinsicLogicalWidths(LayoutUnit
 
     if (auto fixedLogicalHeight = style.logicalHeight().tryFixed())
         computedIntrinsicLogicalWidth = fixedLogicalHeight->resolveZoom(style.usedZoomForLength()) * computedAspectRatio;
+    else if (style.logicalHeight().isPercentOrCalculated()) {
+        if (auto resolvedHeight = computePercentageLogicalHeight(style.logicalHeight(), UpdatePercentageHeightDescendants::No))
+            computedIntrinsicLogicalWidth = *resolvedHeight * computedAspectRatio;
+    }
 
     if (auto fixedLogicalMaxHeight = style.logicalMaxHeight().tryFixed())
         computedIntrinsicLogicalWidth = std::min(computedIntrinsicLogicalWidth, LayoutUnit { fixedLogicalMaxHeight->resolveZoom(style.usedZoomForLength()) * computedAspectRatio });
+    else if (style.logicalMaxHeight().isPercentOrCalculated()) {
+        if (auto resolvedMaxHeight = computePercentageLogicalHeight(style.logicalMaxHeight(), UpdatePercentageHeightDescendants::No))
+            computedIntrinsicLogicalWidth = std::min(computedIntrinsicLogicalWidth, LayoutUnit { *resolvedMaxHeight * computedAspectRatio });
+    }
 
     if (auto fixedLogicalMinHeight = style.logicalMinHeight().tryFixed())
         computedIntrinsicLogicalWidth = std::max(computedIntrinsicLogicalWidth, LayoutUnit { fixedLogicalMinHeight->resolveZoom(style.usedZoomForLength()) * computedAspectRatio });
+    else if (style.logicalMinHeight().isPercentOrCalculated()) {
+        if (auto resolvedMinHeight = computePercentageLogicalHeight(style.logicalMinHeight(), UpdatePercentageHeightDescendants::No))
+            computedIntrinsicLogicalWidth = std::max(computedIntrinsicLogicalWidth, LayoutUnit { *resolvedMinHeight * computedAspectRatio });
+    }
 
     minLogicalWidth = computedIntrinsicLogicalWidth;
     maxLogicalWidth = minLogicalWidth;
@@ -864,6 +876,14 @@ void RenderReplaced::computeIntrinsicKeywordLogicalWidths(LayoutUnit& minLogical
             minLogicalWidth = heightDerivedWidth;
             maxLogicalWidth = heightDerivedWidth;
             return;
+        }
+        if (style().logicalHeight().isPercentOrCalculated()) {
+            if (auto resolvedHeight = computePercentageLogicalHeight(style().logicalHeight(), UpdatePercentageHeightDescendants::No)) {
+                auto heightDerivedWidth = LayoutUnit { *resolvedHeight * computeIntrinsicAspectRatio() };
+                minLogicalWidth = heightDerivedWidth;
+                maxLogicalWidth = heightDerivedWidth;
+                return;
+            }
         }
     }
     RenderBox::computeIntrinsicKeywordLogicalWidths(minLogicalWidth, maxLogicalWidth);

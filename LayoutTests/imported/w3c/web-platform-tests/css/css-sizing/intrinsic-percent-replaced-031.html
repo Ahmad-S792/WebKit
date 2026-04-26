@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>Replaced element with percentage width and height in inline-flex with definite height</title>
+<link rel="author" title="Ahmad Saleem">
+<link rel="help" href="https://drafts.csswg.org/css-sizing-3/#intrinsic-sizes">
+<link rel="help" href="https://drafts.csswg.org/css-sizing-3/#replaced-percentage-min-contribution">
+
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script src="/resources/check-layout-th.js"></script>
+
+<style>
+.wrapper {
+  display: inline-flex;
+  height: 40px;
+  overflow: hidden;
+  align-items: center;
+  border: 1px solid black;
+}
+.wrapper img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+</style>
+
+<!-- Test: inline-flex with height:40px, img with width:100% height:100% (1:1 aspect ratio) -->
+<div>
+  <div class="wrapper" data-expected-client-width="40" data-expected-client-height="40">
+    <img src="/images/green-256x256.png">
+  </div>
+</div>
+
+<!-- Test: 2:1 aspect ratio image -->
+<div>
+  <div class="wrapper" data-expected-client-width="80" data-expected-client-height="40">
+    <img src="/images/green-100x50.png">
+  </div>
+</div>
+
+<!-- Test: percentage height with max-content width (1:1) -->
+<div>
+  <div class="wrapper" style="width: max-content;" data-expected-client-width="40" data-expected-client-height="40">
+    <img src="/images/green-256x256.png">
+  </div>
+</div>
+
+<!-- Test: percentage height with max-content width (2:1) -->
+<div>
+  <div class="wrapper" style="width: max-content;" data-expected-client-width="80" data-expected-client-height="40">
+    <img src="/images/green-100x50.png">
+  </div>
+</div>
+
+<script>
+window.addEventListener("load", function() {
+  checkLayout(".wrapper");
+});
+</script>
