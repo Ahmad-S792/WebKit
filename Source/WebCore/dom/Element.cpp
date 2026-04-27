@@ -922,6 +922,17 @@ bool Element::isFocusable() const
         RefPtr canvas = ancestorsOfType<HTMLCanvasElement>(*this).first();
         if (canvas && !canvas->hasFocusableStyle())
             return false;
+        // When the canvas represents embedded content, descendants are not rendered
+        // but can still be focusable. Verify the element is actually in the flat tree
+        // and not excluded by shadow DOM (e.g. unslotted children of a shadow host).
+        if (CheckedPtr canvasRenderer = canvas ? canvas->renderer() : nullptr; canvasRenderer && canvasRenderer->isRenderHTMLCanvas()) {
+            for (RefPtr<const Node> node = this; node && node != canvas.get(); node = node->parentElement()) {
+                if (RefPtr parent = node->parentElement()) {
+                    if (parent->shadowRoot() && !node->assignedSlot())
+                        return false;
+                }
+            }
+        }
     }
 
     return hasFocusableStyle();
