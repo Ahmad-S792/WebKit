@@ -229,6 +229,8 @@ struct Tree {
 
 size_t computeDepth(const Tree&);
 
+std::optional<double> extractPurePercentageForTableLayout(const Tree&);
+
 // Math Operators.
 
 struct Sum {

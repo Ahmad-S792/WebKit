@@ -27,6 +27,7 @@
 #include "RenderTableCol.h"
 #include "RenderTableInlines.h"
 #include "RenderTableSection.h"
+#include "StyleCalculationValue.h"
 #include "StylePreferredSize.h"
 #include "StylePrimitiveNumericTypes+Evaluation.h"
 
@@ -103,8 +104,12 @@ float FixedTableLayout::calcWidthArray()
         float effectiveColWidth = 0;
         if (auto fixedColStyleLogicalWidth = colStyleLogicalWidth.tryFixed(); fixedColStyleLogicalWidth && fixedColStyleLogicalWidth->isPositive())
             effectiveColWidth = fixedColStyleLogicalWidth->resolveZoom(colUsedZoom);
-        else if (colStyleLogicalWidth.isCalculated())
-            colStyleLogicalWidth = CSS::Keyword::Auto { };
+        else if (auto calc = colStyleLogicalWidth.tryCalc()) {
+            if (auto percentage = Style::Calculation::extractPurePercentageForTableLayout(calc->calculation().tree()))
+                colStyleLogicalWidth = Style::PreferredSize::Percentage { static_cast<float>(*percentage) };
+            else
+                colStyleLogicalWidth = CSS::Keyword::Auto { };
+        }
 
         unsigned span = col->span();
         while (span) {
@@ -151,8 +156,12 @@ float FixedTableLayout::calcWidthArray()
         if (auto fixedLogicalWidth = logicalWidth.tryFixed(); fixedLogicalWidth && fixedLogicalWidth->isPositive()) {
             fixedBorderBoxLogicalWidth = cell->adjustBorderBoxLogicalWidthForBoxSizing(*fixedLogicalWidth);
             logicalWidth = Style::PreferredSize::Fixed { fixedBorderBoxLogicalWidth };
-        } else if (logicalWidth.isCalculated())
-            logicalWidth = CSS::Keyword::Auto { };
+        } else if (auto calc = logicalWidth.tryCalc()) {
+            if (auto percentage = Style::Calculation::extractPurePercentageForTableLayout(calc->calculation().tree()))
+                logicalWidth = Style::PreferredSize::Percentage { static_cast<float>(*percentage) };
+            else
+                logicalWidth = CSS::Keyword::Auto { };
+        }
 
         unsigned usedSpan = 0;
         while (usedSpan < span && currentColumn < nEffCols) {

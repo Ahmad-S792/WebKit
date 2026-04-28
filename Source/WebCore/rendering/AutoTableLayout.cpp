@@ -32,6 +32,7 @@
 #include "RenderTableInlines.h"
 #include "RenderTableSection.h"
 #include "RenderView.h"
+#include "StyleCalculationValue.h"
 #include "StylePreferredSize.h"
 
 namespace WebCore {
@@ -110,6 +111,7 @@ void AutoTableLayout::recalcColumn(unsigned effCol)
                         if (fixedCellLogicalWidth->resolveZoom(cellUsedZoom) > cCellMaxWidth)
                             cellLogicalWidth = Style::PreferredSize::Fixed { cCellMaxWidth };
                     }
+
                     WTF::switchOn(cellLogicalWidth,
                         [&](const Style::PreferredSize::Fixed& fixedCellLogicalWidth) {
                             if (fixedCellLogicalWidth.isPositiveOrZero() && !columnLayout.logicalWidth.isPercentOrCalculated()) {
@@ -135,8 +137,15 @@ void AutoTableLayout::recalcColumn(unsigned effCol)
                             if (auto percentageColumnLayoutLogicalWidth = columnLayout.logicalWidth.tryPercentage(); percentageCellLogicalWidth.value > 0 && (!percentageColumnLayoutLogicalWidth || percentageCellLogicalWidth.value > percentageColumnLayoutLogicalWidth->value))
                                 columnLayout.logicalWidth = cellLogicalWidth;
                         },
-                        [&](const Style::PreferredSize::Calc&) {
-                            columnLayout.logicalWidth = CSS::Keyword::Auto { };
+                        [&](const Style::PreferredSize::Calc& calc) {
+                            // Per https://github.com/w3c/csswg-drafts/issues/3482
+                            // treat calc(% + 0px) as pure percentage, others as auto.
+                            if (auto percentage = Style::Calculation::extractPurePercentageForTableLayout(calc.calculation().tree())) {
+                                m_hasPercent = true;
+                                if (auto percentageColumnLayoutLogicalWidth = columnLayout.logicalWidth.tryPercentage(); *percentage > 0 && (!percentageColumnLayoutLogicalWidth || *percentage > percentageColumnLayoutLogicalWidth->value))
+                                    columnLayout.logicalWidth = Style::PreferredSize::Percentage { static_cast<float>(*percentage) };
+                            } else
+                                columnLayout.logicalWidth = CSS::Keyword::Auto { };
                         },
                         [&](const auto&) { }
                     );

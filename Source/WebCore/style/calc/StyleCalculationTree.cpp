@@ -133,6 +133,44 @@ size_t computeDepth(const Tree& tree)
     return computeDepth(tree.root);
 }
 
+std::optional<double> extractPurePercentageForTableLayout(const Tree& tree)
+{
+    return WTF::switchOn(tree.root.value,
+        [&](const Percentage& percentage) -> std::optional<double> {
+            return percentage.value;
+        },
+        [&](const IndirectNode<Sum>& sum) -> std::optional<double> {
+            if (sum->children.size() != 2)
+                return std::nullopt;
+
+            bool hasPercentage = false;
+            bool hasZeroDimension = false;
+            double percentValue = 0;
+
+            for (const auto& child : sum->children) {
+                WTF::switchOn(child.value,
+                    [&](const Percentage& percentage) {
+                        hasPercentage = true;
+                        percentValue = percentage.value;
+                    },
+                    [&](const Dimension& dimension) {
+                        if (!dimension.value)
+                            hasZeroDimension = true;
+                    },
+                    [&](const auto&) { }
+                );
+            }
+
+            if (hasPercentage && hasZeroDimension)
+                return percentValue;
+            return std::nullopt;
+        },
+        [&](const auto&) -> std::optional<double> {
+            return std::nullopt;
+        }
+    );
+}
+
 template<typename Op>
 static auto dumpVariadic(TextStream&, const IndirectNode<Op>&, ASCIILiteral prefix, ASCIILiteral between) -> TextStream&;
 
