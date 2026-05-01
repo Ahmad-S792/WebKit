@@ -8182,7 +8182,7 @@ TEST(ProcessSwap, NavigateBackAfterNavigatingAwayFromCrossOriginOpenerPolicyUsin
 
     auto pid1 = [webView _webProcessIdentifier];
 
-    [webView _evaluateJavaScriptWithoutUserGesture:@"window.history.pushState({}, null, '/foo')" completionHandler:nil];
+    [webView _evaluateJavaScriptWithoutUserGesture:@"window.history.pushState({}, null, '#foo')" completionHandler:nil];
     Util::run(&done);
     done = false;
 
