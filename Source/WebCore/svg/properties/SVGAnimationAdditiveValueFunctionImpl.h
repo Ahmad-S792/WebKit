@@ -72,13 +72,21 @@ public:
 
     void setFromAndToValues(SVGElement& targetElement, const String& from, const String& to) override
     {
+        m_isValid = true;
         m_from = SVGPropertyTraits<Color>::fromString(targetElement, from);
         m_to = SVGPropertyTraits<Color>::fromString(targetElement, to);
+        if (!from.isEmpty() && !m_from.isValid())
+            m_isValid = false;
+        if (!m_to.isValid())
+            m_isValid = false;
     }
 
     void setToAtEndOfDurationValue(SVGElement& targetElement, const String& toAtEndOfDuration) override
     {
+        m_isValid = true;
         m_toAtEndOfDuration = SVGPropertyTraits<Color>::fromString(targetElement, toAtEndOfDuration);
+        if (!m_toAtEndOfDuration->isValid())
+            m_isValid = false;
     }
 
     void animate(SVGElement&, float progress, unsigned repeatCount, Color& animated)
@@ -153,13 +161,22 @@ public:
 
     void setFromAndToValues(SVGElement&, const String& from, const String& to) override
     {
-        m_from = SVGLengthValue(m_lengthMode, from);
-        m_to = SVGLengthValue(m_lengthMode, to);
+        m_isValid = true;
+        m_from = SVGLengthValue(m_lengthMode);
+        m_to = SVGLengthValue(m_lengthMode);
+        // Allow empty 'from' for to-animation mode.
+        if (!from.isEmpty() && m_from.setValueAsString(from).hasException())
+            m_isValid = false;
+        if (m_to.setValueAsString(to).hasException())
+            m_isValid = false;
     }
 
     void setToAtEndOfDurationValue(SVGElement&, const String& toAtEndOfDuration) override
     {
-        m_toAtEndOfDuration = SVGLengthValue(m_lengthMode, toAtEndOfDuration);
+        m_isValid = true;
+        m_toAtEndOfDuration = SVGLengthValue(m_lengthMode);
+        if (m_toAtEndOfDuration->setValueAsString(toAtEndOfDuration).hasException())
+            m_isValid = false;
     }
 
     void animate(SVGElement& targetElement, float progress, unsigned repeatCount, SVGLengthValue& animated)

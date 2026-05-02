@@ -39,6 +39,7 @@ class SVGPropertyAnimator : public SVGAttributeAnimator {
     WTF_MAKE_TZONE_ALLOCATED_TEMPLATE(SVGPropertyAnimator);
 public:
     bool isDiscrete() const override { return m_function.isDiscrete(); }
+    bool isValid() const override { return m_function.isValid(); }
 
     void setFromAndToValues(SVGElement& targetElement, const String& from, const String& to) override
     {

@@ -42,6 +42,9 @@ public:
     virtual void setToAtEndOfDurationValue(SVGElement& targetElement, const String&) = 0;
 
     virtual std::optional<float> calculateDistance(SVGElement&, const String&, const String&) const { return { }; }
+
+    bool isValid() const { return m_isValid; }
+
 protected:
     SVGAnimationFunction(AnimationMode animationMode)
         : m_animationMode(animationMode)
@@ -51,6 +54,7 @@ protected:
     virtual void addFromAndToValues(SVGElement&) { }
 
     AnimationMode m_animationMode;
+    bool m_isValid { true };
 };
 
 } // namespace WebCore

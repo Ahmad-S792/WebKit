@@ -92,6 +92,7 @@ public:
     virtual SVGAnimatorType animatorType() const = 0;
 
     virtual bool isDiscrete() const { return false; }
+    virtual bool isValid() const { return true; }
 
     virtual void setFromAndToValues(SVGElement&, const String&, const String&) { }
     virtual void setFromAndByValues(SVGElement&, const String&, const String&) { }

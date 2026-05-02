@@ -108,7 +108,7 @@ bool SVGAnimateElementBase::setFromAndToValues(const String& fromString, const S
 
     if (RefPtr animator = this->animator()) {
         animator->setFromAndToValues(*target, animateRangeString(fromString), animateRangeString(toString));
-        return true;
+        return animator->isValid();
     }
     return false;
 }
@@ -127,7 +127,7 @@ bool SVGAnimateElementBase::setFromAndByValues(const String& fromString, const S
 
     if (RefPtr animator = this->animator()) {
         animator->setFromAndByValues(*target, animateRangeString(fromString), animateRangeString(byString));
-        return true;
+        return animator->isValid();
     }
     return false;
 }
@@ -143,7 +143,7 @@ bool SVGAnimateElementBase::setToAtEndOfDurationValue(const String& toAtEndOfDur
 
     if (RefPtr animator = this->animator()) {
         animator->setToAtEndOfDurationValue(*target, animateRangeString(toAtEndOfDurationString));
-        return true;
+        return animator->isValid();
     }
     return false;
 }
