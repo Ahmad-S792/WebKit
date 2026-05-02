@@ -5523,6 +5523,19 @@ bool Element::isSpellCheckingEnabled() const
     return true;
 }
 
+bool Element::computedWritingSuggestionsValue() const
+{
+    for (Ref ancestor : composedTreeLineage(*this)) {
+        auto& value = ancestor->attributeWithoutSynchronization(HTMLNames::writingsuggestionsAttr);
+        if (value.isNull())
+            continue;
+        if (equalLettersIgnoringASCIICase(value, "false"_s))
+            return false;
+        return true;
+    }
+    return true;
+}
+
 bool Element::isWritingSuggestionsEnabled() const
 {
     // If none of the following conditions are true, then return `false`.
@@ -5555,16 +5568,8 @@ bool Element::isWritingSuggestionsEnabled() const
     // not in the `default` state and the nearest such ancestor's `writingsuggestions` content attribute
     // is in the `false` state, then return `false`.
 
-    for (Ref ancestor : composedTreeLineage(*this)) {
-        auto& value = ancestor->attributeWithoutSynchronization(HTMLNames::writingsuggestionsAttr);
-
-        if (value.isNull())
-            continue;
-        if (value.isEmpty() || equalLettersIgnoringASCIICase(value, "true"_s))
-            return true;
-        if (equalLettersIgnoringASCIICase(value, "false"_s))
-            return false;
-    }
+    if (!computedWritingSuggestionsValue())
+        return false;
 
     // This is not yet part of the spec, but it improves web-compatibility; if autocomplete
     // is intentionally off, the site author probably wants writingsuggestions off too.

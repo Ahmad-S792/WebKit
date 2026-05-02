@@ -758,6 +758,7 @@ public:
     bool isInVisibilityAdjustmentSubtree() const;
 
     bool isSpellCheckingEnabled() const;
+    bool computedWritingSuggestionsValue() const;
     WEBCORE_EXPORT bool isWritingSuggestionsEnabled() const;
 
     inline bool hasID() const;

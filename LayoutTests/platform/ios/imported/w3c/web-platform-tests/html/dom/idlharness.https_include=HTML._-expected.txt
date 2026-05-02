@@ -139,7 +139,7 @@ PASS HTMLElement interface: attribute accessKey
 PASS HTMLElement interface: attribute accessKeyLabel
 PASS HTMLElement interface: attribute draggable
 PASS HTMLElement interface: attribute spellcheck
-FAIL HTMLElement interface: attribute writingSuggestions assert_true: The prototype object must have a property "writingSuggestions" expected true got false
+PASS HTMLElement interface: attribute writingSuggestions
 PASS HTMLElement interface: attribute autocapitalize
 PASS HTMLElement interface: attribute autocorrect
 PASS HTMLElement interface: attribute innerText
@@ -248,7 +248,7 @@ PASS HTMLElement interface: document.createElement("noscript") must inherit prop
 PASS HTMLElement interface: document.createElement("noscript") must inherit property "accessKeyLabel" with the proper type
 PASS HTMLElement interface: document.createElement("noscript") must inherit property "draggable" with the proper type
 PASS HTMLElement interface: document.createElement("noscript") must inherit property "spellcheck" with the proper type
-FAIL HTMLElement interface: document.createElement("noscript") must inherit property "writingSuggestions" with the proper type assert_inherits: property "writingSuggestions" not found in prototype chain
+PASS HTMLElement interface: document.createElement("noscript") must inherit property "writingSuggestions" with the proper type
 PASS HTMLElement interface: document.createElement("noscript") must inherit property "autocapitalize" with the proper type
 PASS HTMLElement interface: document.createElement("noscript") must inherit property "autocorrect" with the proper type
 PASS HTMLElement interface: document.createElement("noscript") must inherit property "innerText" with the proper type

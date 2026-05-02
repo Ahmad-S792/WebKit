@@ -1,7 +1,7 @@
 /*
  * Copyright (C) 1999 Lars Knoll (knoll@kde.org)
  *           (C) 1999 Antti Koivisto (koivisto@kde.org)
- * Copyright (C) 2004-2025 Apple Inc. All rights reserved.
+ * Copyright (C) 2004-2026 Apple Inc. All rights reserved.
  * Copyright (C) 2021-2024 Google Inc. All rights reserved.
  * Copyright (C) 2009 Torch Mobile Inc. All rights reserved. (http://www.torchmobile.com/)
  * Copyright (C) 2011 Motorola Mobility. All rights reserved.
@@ -670,14 +670,9 @@ void HTMLElement::setSpellcheck(bool enable)
     setAttributeWithoutSynchronization(spellcheckAttr, enable ? trueAtom() : falseAtom());
 }
 
-bool HTMLElement::writingsuggestions() const
+const AtomString& HTMLElement::writingSuggestions() const
 {
-    return isWritingSuggestionsEnabled();
-}
-
-void HTMLElement::setWritingsuggestions(bool enable)
-{
-    setAttributeWithoutSynchronization(writingsuggestionsAttr, enable ? trueAtom() : falseAtom());
+    return computedWritingSuggestionsValue() ? trueAtom() : falseAtom();
 }
 
 void HTMLElement::effectiveSpellcheckAttributeChanged(bool newValue)
