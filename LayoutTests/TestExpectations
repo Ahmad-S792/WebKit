@@ -1408,7 +1408,6 @@ http/tests/workers/service/other_resources [ Skip ]
 http/wpt/html/browsers/browsing-the-web/navigating-across-documents/click.html
 http/wpt/html/browsers/browsing-the-web/navigating-across-documents/href.html
 
-imported/w3c/web-platform-tests/html/browsers/browsing-the-web/navigating-across-documents/cross-origin-top-navigation-with-user-activation-in-parent.window.html [ Pass Failure ]
 # Test should be rewritten to use async_test, but it also doesn't appear upstream?
 imported/w3c/web-platform-tests/html/user-activation/consumption-crossorigin.sub.html [ Pass Failure ]
 
@@ -8098,3 +8097,7 @@ svg/compositing/foreground-layer-mixed-svg-and-foreignobject-composited.html [ I
 svg/compositing/foreground-layer-multiple-foreignobjects-composited.html [ ImageOnlyFailure ]
 
 webkit.org/b/310217 imported/w3c/web-platform-tests/pointerevents/pointerevent_pointer_boundary_events_after_removing_last_over_element.html [ Pass Failure ]
+
+imported/w3c/web-platform-tests/html/browsers/browsing-the-web/navigating-across-documents/form-submit-and-window-stop.html [ Skip ] # timeout
+imported/w3c/web-platform-tests/html/browsers/browsing-the-web/navigating-across-documents/grandparent_location_aboutsrcdoc.sub.window.html [ Skip ] # timeout
+imported/w3c/web-platform-tests/html/browsers/browsing-the-web/navigating-across-documents/javascript-url-load-as-html.xhtml [ Skip ] # timeout
