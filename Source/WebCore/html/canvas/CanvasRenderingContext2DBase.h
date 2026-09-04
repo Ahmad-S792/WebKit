@@ -352,8 +352,8 @@ public:
     const Vector<State, 1>& stateStack() LIFETIME_BOUND;
 
 protected:
-    static const int DefaultFontSize;
-    static const ASCIILiteral DefaultFontFamily;
+    static constexpr int DefaultFontSize = 10;
+    static constexpr ASCIILiteral DefaultFontFamily = "sans-serif"_s;
 
     const State& state() const LIFETIME_BOUND { return m_stateStack.last(); }
     void realizeSaves();
