@@ -24,6 +24,7 @@
 
 #include "CSSParserContext.h"
 #include "CSSParserTokenRange.h"
+#include "CSSPrimitiveNumericTypes+Serialization.h"
 #include "CSSPropertyParserConsumer+AngleDefinitions.h"
 #include "CSSPropertyParserConsumer+MetaConsumer.h"
 #include "CSSPropertyParserConsumer+NumberDefinitions.h"
@@ -31,7 +32,6 @@
 #include "ExceptionOr.h"
 #include <wtf/MathExtras.h>
 #include <wtf/TZoneMallocInlines.h>
-#include <wtf/text/MakeString.h>
 
 namespace WebCore {
 
@@ -76,20 +76,32 @@ void SVGAngleValue::setValue(float value)
     ASSERT_NOT_REACHED();
 }
 
+static inline CSS::AngleUnit svgAngleTypeToCSSAngleUnit(SVGAngleValue::Type type)
+{
+    switch (type) {
+    case SVGAngleValue::SVG_ANGLETYPE_DEG:  return CSS::AngleUnit::Deg;
+    case SVGAngleValue::SVG_ANGLETYPE_RAD:  return CSS::AngleUnit::Rad;
+    case SVGAngleValue::SVG_ANGLETYPE_GRAD: return CSS::AngleUnit::Grad;
+    case SVGAngleValue::SVG_ANGLETYPE_TURN: return CSS::AngleUnit::Turn;
+    case SVGAngleValue::SVG_ANGLETYPE_UNSPECIFIED:
+    case SVGAngleValue::SVG_ANGLETYPE_UNKNOWN:
+        break;
+    }
+    ASSERT_NOT_REACHED();
+    return CSS::AngleUnit::Deg;
+}
+
 String SVGAngleValue::valueAsString() const
 {
     switch (m_unitType) {
     case SVG_ANGLETYPE_DEG:
-        return makeString(m_valueInSpecifiedUnits, "deg"_s);
     case SVG_ANGLETYPE_RAD:
-        return makeString(m_valueInSpecifiedUnits, "rad"_s);
     case SVG_ANGLETYPE_TURN:
-        return makeString(m_valueInSpecifiedUnits, "turn"_s);
     case SVG_ANGLETYPE_GRAD:
-        return makeString(m_valueInSpecifiedUnits, "grad"_s);
+        return CSS::formatCSSNumberValue(CSS::SerializableNumber { m_valueInSpecifiedUnits, CSS::unitString(svgAngleTypeToCSSAngleUnit(m_unitType)) });
     case SVG_ANGLETYPE_UNSPECIFIED:
     case SVG_ANGLETYPE_UNKNOWN:
-        return String::number(m_valueInSpecifiedUnits);
+        return CSS::formatCSSNumberValue(CSS::SerializableNumber { m_valueInSpecifiedUnits, { } });
     }
 
     ASSERT_NOT_REACHED();
