@@ -32,16 +32,8 @@
 #include "NavigatorWebDriverActivePolicy.h"
 #include "Page.h"
 #include "Settings.h"
-#include <wtf/TZoneMallocInlines.h>
 
 namespace WebCore {
-using namespace JSC;
-
-WTF_MAKE_TZONE_ALLOCATED_IMPL(NavigatorWebDriver);
-
-NavigatorWebDriver::NavigatorWebDriver() = default;
-
-NavigatorWebDriver::~NavigatorWebDriver() = default;
 
 bool NavigatorWebDriver::isControlledByAutomation(const Navigator& navigator)
 {
@@ -58,17 +50,6 @@ bool NavigatorWebDriver::isControlledByAutomation(const Navigator& navigator)
         break;
     }
     return frame->page()->isControlledByAutomation();
-}
-
-NavigatorWebDriver* NavigatorWebDriver::from(Navigator* navigator)
-{
-    auto* supplement = downcast<NavigatorWebDriver>(Supplement<Navigator>::from(navigator, supplementName()));
-    if (!supplement) {
-        auto newSupplement = makeUnique<NavigatorWebDriver>();
-        supplement = newSupplement.get();
-        provideTo(navigator, supplementName(), WTF::move(newSupplement));
-    }
-    return supplement;
 }
 
 bool NavigatorWebDriver::webdriver(const Navigator& navigator)
