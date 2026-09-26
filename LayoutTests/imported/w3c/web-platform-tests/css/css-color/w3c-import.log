@@ -82,6 +82,9 @@ List of files:
 /LayoutTests/imported/w3c/web-platform-tests/css/css-color/color-layers-no-blend-mode-expected.html
 /LayoutTests/imported/w3c/web-platform-tests/css/css-color/color-layers-no-blend-mode-ref.html
 /LayoutTests/imported/w3c/web-platform-tests/css/css-color/color-layers-no-blend-mode.html
+/LayoutTests/imported/w3c/web-platform-tests/css/css-color/color-layers-unresolved-colors-expected.html
+/LayoutTests/imported/w3c/web-platform-tests/css/css-color/color-layers-unresolved-colors-ref.html
+/LayoutTests/imported/w3c/web-platform-tests/css/css-color/color-layers-unresolved-colors.html
 /LayoutTests/imported/w3c/web-platform-tests/css/css-color/color-mix-basic-001-expected.html
 /LayoutTests/imported/w3c/web-platform-tests/css/css-color/color-mix-basic-001-ref.html
 /LayoutTests/imported/w3c/web-platform-tests/css/css-color/color-mix-basic-001.html
